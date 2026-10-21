@@ -1,6 +1,6 @@
 # ChessDep — техническое задание
 
-Версия: 1.0 · 2026-10-21
+Версия: 1.1 · 2026-10-22 (коллекции, маркет, дарение)
 
 Документ обязателен для любого исполнителя. Всё, что здесь не описано, исполнитель **не придумывает сам**, а задаёт вопрос. Термины «ДОЛЖЕН», «ЗАПРЕЩЕНО» понимаются буквально.
 
@@ -106,48 +106,67 @@ ChessDep — онлайн-шахматы (PvP) с элементами кази�
 
 ---
 
-## 4. Предметы: скины, кейсы, апгрейд
+## 4. Предметы: коллекции, скины, кейсы, апгрейд, маркет, дарение
 
-### 4.1 Каталог (item_defs)
+### 4.1 Коллекции
+- Скины выпускаются **коллекциями**. Коллекция создаётся и наполняется в админке, затем выпускается.
+- `collections.status`: `draft` → `released` → `retired`.
+  - `draft` — не видна игрокам; можно свободно создавать, править и удалять её скины и кейсы.
+  - `released` — видна игрокам, её кейсы открываются, её скины — цели апгрейда.
+  - `retired` — снята с выпуска: кейсы больше не открываются, скины перестают быть целями апгрейда. Уже выпавшие предметы остаются у игроков, их можно экипировать, продавать и дарить.
+- Выпуск (`release`) разрешён только если в коллекции есть хотя бы один скин и у каждого её кейса есть хотя бы один дроп.
+- После выпуска у скина можно менять только `name`, `asset`, `value`, `is_upgrade_target`. Менять `kind`, `piece_type`, `rarity` и удалять скин нельзя: экземпляры уже у игроков.
+- Сид-данные: выпущенная коллекция **Genesis** со скинами-заглушками и двумя кейсами (список — в task-004).
+
+### 4.2 Скины (item_defs)
 - `kind`: `piece_skin` (обязателен `piece_type ∈ {P,N,B,R,Q,K}`) или `board_skin` (`piece_type = NULL`). Скин короля допустим — запрещён только деп короля.
-- `rarity`: `common, uncommon, rare, epic, legendary, mythic`. Цвета: `#9aa4b2, #38e8ff, #8b5cf6, #ffc93c, #ff7847, #ff5470`.
+- `rarity`: `common, uncommon, rare, epic, legendary, mythic`. Цвета редкости (для рамок и карточек UI): `#9aa4b2, #38e8ff, #8b5cf6, #ffc93c, #ff7847, #ff5470`.
 - `value` — ценность в ◈ (целое > 0). Используется для апгрейда.
-- `asset` (jsonb) — **заглушка** до появления реальных скинов:
-  - piece_skin: `{"color": "#38e8ff", "glow": "#38e8ff"}` — фигура рисуется Unicode-глифом (U+2654..265F + U+FE0E) этим цветом;
-  - board_skin: `{"light": "#454f77", "dark": "#262e4d", "accent": "#ffc93c"}`.
-- Сид-данные (миграция): по 3 скина на каждый `piece_type` (common/rare/epic) + 4 доски (common/uncommon/epic/mythic) + 2 кейса. Конкретный список — в task-файле фазы 4.
+- `asset` (jsonb) — внешний вид. Пока поддерживается только тип `stub` (заглушка):
+  - piece_skin: `{"type": "stub", "color": "#ffffff"}`;
+  - board_skin: `{"type": "stub", "light": "#ffffff", "dark": "#e5e5e5"}`.
+  - **Все текущие скины — белые заглушки.** Различаются названием и редкостью. Реальные скины позже заменят `asset` у тех же item_defs через админку (поэтому `asset` редактируется и после выпуска). Новые типы `asset` добавляются отдельной задачей.
 
-### 4.2 Экземпляры
-- `inventory_items`: владелец, `item_def_id`, `wear ∈ [0,1)` (генерируется CSPRNG при создании), источник (`case | upgrade | admin_grant`), статус (`owned | burned`). Сгоревшие предметы не удаляются физически (история).
-- Exterior по `wear`: FN `[0,0.07)`, MW `[0.07,0.15)`, FT `[0.15,0.38)`, WW `[0.38,0.45)`, BS `[0.45,1)`. В MVP чисто косметика, на `value` не влияет.
+### 4.3 Экземпляры
+- `inventory_items`: владелец, `item_def_id`, `wear ∈ [0,1)` (CSPRNG при создании), источник (`case | upgrade | admin_grant`), статус (`owned | listed | burned`), `acquired_at` (время получения текущим владельцем). Сгоревшие предметы физически не удаляются.
+- Exterior по `wear`: FN `[0,0.07)`, MW `[0.07,0.15)`, FT `[0.15,0.38)`, WW `[0.38,0.45)`, BS `[0.45,1)`. Пока чисто косметика, на `value` не влияет.
+- Экипировать, апгрейдить, выставлять и дарить можно только предмет в статусе `owned`.
 
-### 4.3 Экипировка (loadout)
+### 4.4 Экипировка (loadout)
 - Слоты: `P, N, B, R, Q, K, board`. В слот кладётся только свой `owned` предмет подходящего вида.
-- Один экземпляр — максимум в одном слоте (у слотов разный тип, так что автоматически).
-- При старте партии лоадауты обоих игроков **снапшотятся** в `games.white_loadout / black_loadout` (jsonb с `asset`). Смена экипировки во время партии на текущую партию не влияет.
-- В партии фигуры каждого игрока рисуются его скинами (соперник видит твои скины). Доску каждый видит **своим** скином доски.
-- Фигура после успешного депа рисуется скином нового типа.
+- При старте партии лоадауты обоих игроков **снапшотятся** в `games.white_loadout / black_loadout`: `{slot: {code, name, rarity, asset}}`. Смена экипировки во время партии на текущую партию не влияет.
+- В партии фигуры каждого игрока рисуются его скинами (соперник видит твои скины). Доску каждый видит **своим** скином доски. Фигура после успешного депа рисуется скином нового типа.
+- Сторона различается **формой глифа**, а не цветом: белые — контурные глифы U+2654–2659, чёрные — сплошные U+265A–265F; скин задаёт цвет заливки/контура. Поэтому белые заглушки не ломают читаемость.
 
-### 4.4 Кейсы
-- `cases`: цена в ◈, активность, порядок. `case_drops`: `(case_id, item_def_id, weight > 0)`.
+### 4.5 Кейсы
+- Кейс принадлежит одной коллекции и роняет только её скины. `cases`: цена в ◈, `is_active`, порядок. `case_drops`: `(case_id, item_def_id, weight > 0)`.
+- Кейс открывается, только если `is_active` и коллекция `released`.
 - Шансы дропа публичны: `GET /cases/{id}` отдаёт проценты (`weight / Σweight`).
-- Открытие (`POST /cases/{id}/open`), одна транзакция:
-  1. Блокировка строки пользователя (`SELECT … FOR UPDATE`), проверка `balance ≥ price`.
-  2. Списание, запись в `ledger` (`case_purchase`).
-  3. Взвешенный выбор CSPRNG, создание `inventory_item` (source=`case`), запись в `rolls`.
-  4. Генерация ленты для анимации: 60 def-id (филлеры тоже по весам, CSPRNG), победитель на индексе `win_index` (случайный из `[45, 54]`).
+- Автозаполнение весов по редкости: настройка `rarity_weights` (по умолчанию common 7992, uncommon 1598, rare 320, epic 64, legendary 20, mythic 6 — доли CS). Вес редкости делится поровну между скинами этой редкости в кейсе; редкости без скинов пропускаются.
+- Открытие (`POST /cases/{id}/open`), одна транзакция: блокировка пользователя → списание (`ledger case_purchase`) → взвешенный выбор CSPRNG → создание `inventory_item` → запись в `rolls` → лента для анимации: 60 def-id, победитель на `win_index ∈ [45, 54]`, филлеры по тем же весам.
 - Ответ содержит предмет, ленту, `win_index`, новый баланс. Фронт только проигрывает анимацию.
 
-### 4.5 Апгрейд скинов
-- Вход: от 1 до `upgrade_max_inputs` (10) своих `owned` предметов + целевой `item_def` (активный, `is_upgrade_target = true`).
-- `chance = Σ(value_inputs) / target.value × (1 − upgrade_edge)`. Допустимо, только если `upgrade_min_chance ≤ chance ≤ upgrade_max_chance` (по умолчанию 0.01 … 0.80), иначе `400 UPGRADE_CHANCE_OUT_OF_RANGE`.
+### 4.6 Апгрейд скинов
+- Вход: от 1 до `upgrade_max_inputs` (10) **разных** своих `owned` предметов + целевой `item_def` (коллекция `released`, `is_upgrade_target = true`).
+- `chance = Σ(value_inputs) / target.value × (1 − upgrade_edge)`. Допустимо, только если `upgrade_min_chance ≤ chance ≤ upgrade_max_chance` (0.01 … 0.80), иначе `400 UPGRADE_CHANCE_OUT_OF_RANGE`.
 - Экипированные входы автоматически снимаются со слотов.
 - Бросок `r`; успех ⇔ `r < chance`. **Все входы сгорают** при любом исходе; при успехе создаётся экземпляр цели (source=`upgrade`).
-- Ответ: `success`, `chance`, `roll_value = r` (для анимации: колесо/бар останавливается на позиции `r`, win-зона `[0, chance)`), сгоревшие id, новый предмет или `null`.
-- `POST /upgrade/preview` — посчитать шанс без броска (для UI). Фронт шанс не считает.
+- Ответ: `success`, `chance`, `roll_value = r` (колесо/бар останавливается на `r`, win-зона `[0, chance)`), сгоревшие id, новый предмет или `null`. `POST /upgrade/preview` считает шанс без броска.
 
-### 4.6 Вне скоупа (не делать)
-Маркет и продажа предметов, дарение, trade-up 10→1, слоты, crash, mines, plinko, coinflip, колесо дня, квесты, промокоды, реальные платежи, депозит/вывод, зрители партий, бот, чат.
+### 4.7 Маркет (игрок ↔ игрок)
+- Выставить: свой `owned` предмет (экипированный снимается со слота) за цену `1 … 10 000 000` ◈. Предмет переходит в статус `listed`. Активных лотов у игрока не больше `market_max_listings` (50).
+- Купить: одна транзакция. Блокируются лот, предмет, затем покупатель и продавец по возрастанию id. Покупатель ≠ продавец, баланса хватает. Покупатель `−price` (`ledger market_buy`), продавец `+(price − fee)` (`ledger market_sale`), где `fee = ceil(price × market_fee)` (0.05). Предмет переходит к покупателю (`owned`, новый `acquired_at`), лот → `sold`, запись в `item_transfers`.
+- Снять лот может только продавец: предмет снова `owned`.
+- Просмотр: лента лотов с фильтрами (коллекция, тип, фигура, редкость, скин) и сортировкой (цена ↑/↓, новые); по каждому скину — активные лоты и история цен продаж.
+- Комиссия маркета — единственный «сток» ◈ из оборота игроков, её размер в настройках.
+
+### 4.8 Дарение
+- Подарить свой `owned` предмет другому игроку по логину, с запиской до 140 символов. Нельзя себе, нельзя забаненному. Экипированный предмет снимается со слота.
+- Передача мгновенная, запись в `item_transfers` (kind `gift`). У получателя подарок отмечен как непросмотренный, пока он не откроет список подарков.
+- Против отмывания: предмет, полученный меньше `trade_hold_hours` назад (по `acquired_at`), нельзя выставить или подарить. По умолчанию 0 — без задержки; админ может включить.
+
+### 4.9 Вне скоупа (не делать)
+Trade-up 10→1, обмен предмет-на-предмет, торги/ставки на маркете, продажа предметов системе, слоты, crash, mines, plinko, coinflip, колесо дня, квесты, промокоды, реальные платежи, депозит/вывод, зрители партий, бот, чат.
 
 ---
 
@@ -171,6 +190,10 @@ ChessDep — онлайн-шахматы (PvP) с элементами кази�
 | `upgrade_max_inputs` | 10 | Макс. предметов на вход |
 | `time_controls` | `["3+2","5+0","10+0"]` | Пресеты |
 | `abort_first_move_s` | 30 | Время на первый ход |
+| `rarity_weights` | `{"common":7992,"uncommon":1598,"rare":320,"epic":64,"legendary":20,"mythic":6}` | Веса редкостей для автозаполнения кейсов |
+| `market_fee` | 0.05 | Комиссия маркета |
+| `market_max_listings` | 50 | Макс. активных лотов на игрока |
+| `trade_hold_hours` | 0 | Задержка перед продажей/дарением полученного предмета |
 
 Константы в коде (не настройки): ценности фигур, `DEP_LIMIT_PER_GAME = 10`, «0 или 1 деп за ход».
 
@@ -278,17 +301,23 @@ legacy/  site/  templates/       # старый фронт, только как 
 
 **rolls**: `id bigserial pk`, `user_id fk`, `kind text check in ('dep','case_open','upgrade')`, `ref text` (game_id / case_id), `chance numeric(10,8) null`, `roll_value double precision not null`, `input jsonb`, `outcome jsonb`, `created_at`. Индекс `(user_id, created_at desc)`.
 
-**ledger**: `id bigserial pk`, `user_id fk`, `delta bigint not null`, `balance_after bigint not null`, `reason text check in ('signup_bonus','daily_bonus','game_win','game_draw','case_purchase','admin_adjust')`, `ref text null`, `actor_id fk users null`, `created_at`. Индекс `(user_id, created_at desc)`.
+**ledger**: `id bigserial pk`, `user_id fk`, `delta bigint not null`, `balance_after bigint not null`, `reason text check in ('signup_bonus','daily_bonus','game_win','game_draw','case_purchase','admin_adjust','market_buy','market_sale')`, `ref text null`, `actor_id fk users null`, `created_at`. Индекс `(user_id, created_at desc)`.
 
-**item_defs**: `id serial pk`, `code text unique`, `name text`, `kind text check in ('piece_skin','board_skin')`, `piece_type char(1) null check in ('P','N','B','R','Q','K')`, check `(kind='piece_skin') = (piece_type is not null)`, `rarity text check in (...)`, `value int check > 0`, `asset jsonb`, `is_active bool default true`, `is_upgrade_target bool default true`.
+**collections**: `id serial pk`, `code text unique` (slug `^[a-z0-9-]{2,40}$`), `name text`, `description text`, `status text check in ('draft','released','retired') default 'draft'`, `created_at`, `released_at null`, `retired_at null`.
 
-**inventory_items**: `id bigserial pk`, `user_id fk`, `item_def_id fk`, `wear real check (wear >= 0 and wear < 1)`, `status text check in ('owned','burned') default 'owned'`, `source text check in ('case','upgrade','admin_grant')`, `source_ref text`, `created_at`, `burned_at null`. Индекс `(user_id, status)`.
+**item_defs**: `id serial pk`, `collection_id fk not null`, `code text unique`, `name text`, `kind text check in ('piece_skin','board_skin')`, `piece_type char(1) null check in ('P','N','B','R','Q','K')`, check `(kind='piece_skin') = (piece_type is not null)`, `rarity text check in (...)`, `value int check > 0`, `asset jsonb`, `is_upgrade_target bool default true`, `created_at`.
+
+**inventory_items**: `id bigserial pk`, `user_id fk`, `item_def_id fk`, `wear real check (wear >= 0 and wear < 1)`, `status text check in ('owned','listed','burned') default 'owned'`, `source text check in ('case','upgrade','admin_grant')`, `source_ref text`, `created_at`, `acquired_at`, `burned_at null`. Индекс `(user_id, status)`.
 
 **loadouts**: `user_id fk`, `slot text check in ('P','N','B','R','Q','K','board')`, `inventory_item_id fk unique`, pk `(user_id, slot)`.
 
-**cases**: `id serial pk`, `code text unique`, `name`, `price int check > 0`, `is_active bool`, `sort int`.
+**cases**: `id serial pk`, `collection_id fk not null`, `code text unique`, `name`, `price int check > 0`, `is_active bool default true`, `sort int default 0`.
 
-**case_drops**: `case_id fk`, `item_def_id fk`, `weight int check > 0`, pk `(case_id, item_def_id)`.
+**case_drops**: `case_id fk`, `item_def_id fk`, `weight int check > 0`, pk `(case_id, item_def_id)`; скин обязан быть из коллекции кейса.
+
+**market_listings**: `id bigserial pk`, `item_id fk inventory_items`, `seller_id fk`, `price bigint check 1..10000000`, `status text check in ('active','sold','cancelled')`, `buyer_id fk null`, `fee bigint null`, `created_at`, `closed_at null`. Частичный unique-индекс `(item_id) where status='active'`.
+
+**item_transfers**: `id bigserial pk`, `item_id fk`, `from_user_id fk`, `to_user_id fk`, `kind text check in ('market','gift')`, `ref text` (listing id), `note text null` (≤140), `seen bool default false`, `created_at`.
 
 **admin_audit**: `id bigserial`, `admin_id fk`, `action text`, `target text`, `payload jsonb`, `created_at`.
 
@@ -398,32 +427,36 @@ legacy/  site/  templates/       # старый фронт, только как 
 - Клиент шлёт только `{"type":"ping"}`, сервер отвечает `{"type":"pong"}`. Любое другое сообщение клиента игнорируется.
 - Клиент отбрасывает `state` с `version` меньше уже показанной. После переподключения — `GET /games/{id}`.
 
-### 9.7 Предметы и экипировка
+### 9.7 Коллекции, предметы и экипировка
 | Метод | Путь | Ответ |
 |---|---|---|
-| GET | `/inventory?kind=&slot=&sort=rarity|value|new` | `[{id, def:{id,code,name,kind,piece_type,rarity,value,asset}, wear, exterior, equipped_slot}]` |
-| GET | `/loadout` | `{P: Item|null, …, board: Item|null}` |
-| PUT | `/loadout/{slot}` | тело `{inventory_item_id: int|null}` → `Loadout`; `ITEM_NOT_OWNED`, `ITEM_SLOT_MISMATCH` |
-| GET | `/item-defs?upgrade_target=true` | каталог (для выбора цели апгрейда) |
+| GET | `/collections` | выпущенные и снятые коллекции `[{code, name, description, status, released_at, items_count}]` |
+| GET | `/collections/{code}` | коллекция + её скины |
+| GET | `/item-defs?upgrade_target=true` | каталог целей апгрейда |
+| GET | `/inventory?kind=&slot=&sort=rarity\|value\|new` | `[{id, def, wear, exterior, status, equipped_slot, acquired_at}]` |
+| GET | `/loadout` | `{P: Item\|null, …, board: Item\|null}` |
+| PUT | `/loadout/{slot}` | тело `{inventory_item_id: int\|null}` → `Loadout`; `ITEM_NOT_OWNED`, `ITEM_SLOT_MISMATCH` |
 
 ### 9.8 Кейсы и апгрейд
 | Метод | Путь | Тело | Ответ |
 |---|---|---|---|
-| GET | `/cases` | — | `[{id, code, name, price}]` |
-| GET | `/cases/{id}` | — | `{id, name, price, drops:[{def, chance, chance_text}]}` |
-| POST | `/cases/{id}/open` | — | `{item: Item, strip: [def_id×60], win_index, defs: {def_id: def}, balance}`; `INSUFFICIENT_FUNDS` |
-| POST | `/upgrade/preview` | `{input_ids:[…], target_def_id}` | `{chance, chance_text, allowed, reason}` |
-| POST | `/upgrade` | `{input_ids:[…], target_def_id}` | `{success, chance, chance_text, roll_value, roll_id, burned_ids, item: Item|null}`; `UPGRADE_CHANCE_OUT_OF_RANGE`, `ITEM_NOT_OWNED`, `TOO_MANY_INPUTS` |
+| GET | `/cases` | — | открываемые кейсы `[{id, code, name, price, collection}]` |
+| GET | `/cases/{id}` | — | `{id, name, price, collection, drops:[{def, chance, chance_text}]}` |
+| POST | `/cases/{id}/open` | — | `{item, strip: [def_id×60], win_index, defs: {def_id: def}, balance}`; `INSUFFICIENT_FUNDS`, `CASE_NOT_AVAILABLE` |
+| POST | `/upgrade/preview` | `{input_ids, target_def_id}` | `{chance, chance_text, allowed, reason}` |
+| POST | `/upgrade` | `{input_ids, target_def_id}` | `{success, chance, chance_text, roll_value, roll_id, burned_ids, item\|null}` |
 
-### 9.9 Лидерборд и админ
+### 9.9 Маркет и дарение (фаза 5)
+- `GET /market?collection=&kind=&piece_type=&rarity=&def_id=&sort=price_asc|price_desc|new&cursor=` — активные лоты.
+- `GET /market/defs/{def_id}` — активные лоты скина + последние 50 продаж `{price, closed_at}`.
+- `POST /market/listings` `{item_id, price}`; `DELETE /market/listings/{id}`; `POST /market/listings/{id}/buy`; `GET /me/listings`.
+- `POST /gifts` `{item_id, to_login, note}`; `GET /me/gifts?direction=in|out` (входящие при чтении помечаются `seen`); `GET /me/gifts/unseen-count`.
+
+### 9.10 Лидерборд и админ
 - `GET /leaderboard?by=elo|balance&limit=50` → `[{rank, login, elo, balance}]` (публично).
 - Админ (роль admin, всё пишет в `admin_audit`):
-  - `GET /admin/users?q=` ; `POST /admin/users/{id}/ban` ; `POST /admin/users/{id}/unban` (бан отзывает сессии и сдаёт активную партию);
-  - `POST /admin/users/{id}/balance` `{delta, comment}` (через `economy.apply_delta`, reason `admin_adjust`);
-  - `POST /admin/users/{id}/grant-item` `{item_def_id}`;
-  - `GET /admin/settings` ; `PUT /admin/settings/{key}` `{value}` (валидация типа по таблице раздела 5);
-  - CRUD `/admin/item-defs`, `/admin/cases`, `PUT /admin/cases/{id}/drops` `[{item_def_id, weight}]`;
-  - `GET /admin/rolls?user_id=&kind=` ; `GET /admin/games/{id}/events`.
+  - **Каталог (фаза 4):** CRUD `/admin/collections`, `POST /admin/collections/{id}/release`, `POST /admin/collections/{id}/retire`; скины `POST /admin/collections/{id}/items`, `PATCH|DELETE /admin/item-defs/{id}`; кейсы `POST /admin/collections/{id}/cases`, `PATCH|DELETE /admin/cases/{id}`, `PUT /admin/cases/{id}/drops`, `POST /admin/cases/{id}/drops/auto`; `POST /admin/users/{id}/grant-item`.
+  - **Пользователи и прочее (фаза 5):** `GET /admin/users?q=`, бан/разбан (бан отзывает сессии и сдаёт активную партию), `POST /admin/users/{id}/balance` `{delta, comment}`, `GET|PUT /admin/settings`, `GET /admin/rolls`, `GET /admin/games/{id}/events`, `GET /admin/market` (лоты и продажи), снятие лота админом.
 - `GET /internal/require-admin` → 204/403 (для nginx `auth_request`; наружу nginx этот путь не проксирует).
 
 ---
@@ -446,10 +479,13 @@ legacy/  site/  templates/       # старый фронт, только как 
 | `game.html?id=` | `/games/{id}`, WS, `/dep-options`, `/dep`, `/move`, … | `templates/layout/board-skeleton.html`, `templates/chess/match-hud.html`, `templates/chess/board-upgrade-fx.html`, `templates/chess/upgrade-linear-race.html` |
 | `inventory.html` | `/inventory`, `/loadout` | `templates/skins/skin-inventory.html`, `templates/skins/item-cards.html`, `templates/skins/board-skins.html` |
 | `cases.html`, `case.html?id=` | `/cases`, `/cases/{id}`, `/open` | `templates/layout/lobby-case-grid.html`, `templates/cases/case-strip-horizontal.html` |
+| `collections.html`, `collection.html?code=` | `/collections` | `templates/skins/skin-gallery.html` |
+| `market.html`, `market-item.html?def=` | `/market/*` | `templates/skins/skin-gallery.html`, `templates/skins/skin-detail.html` |
+| `gifts.html` | `/gifts`, `/me/gifts` | `templates/skins/gift-flow.html` |
 | `upgrade.html` | `/inventory`, `/item-defs`, `/upgrade/preview`, `/upgrade` | `site/upgrade.html` (разметка колеса), `templates/wheels/wheel-conic-gradient.html` |
 | `profile.html` | `/me`, `/me/ledger`, `/me/games`, `/me/password` | `site/profile.html` |
 | `leaderboard.html` | `/leaderboard` | `site/leaderboard.html` |
-| `admin.html` | `/admin/*` | `site/admin.html` (только разметка) |
+| `admin.html` | `/admin/*`: пользователи, настройки, **коллекции → скины → кейсы → дропы → выпуск** | `site/admin.html` (только разметка) |
 | общие | тосты, модалки, счётчик баланса | `templates/fx/*` |
 
 Палитра: bg `#0b0e16`, панель `#131725`, бордер `#242b3d`, золото `#ffc93c` + цвета редкостей (4.1).
@@ -503,8 +539,8 @@ legacy/  site/  templates/       # старый фронт, только как 
 | 1 | `tasks/task-001-infra-auth.md` | compose, nginx, migrate, модели users/sessions/settings/ledger/admin_audit, auth, Origin, rate-limit, CLI, тесты, перенос в `legacy/` |
 | 2 | `task-002` | `chess_engine` + все unit-тесты 11.1 по движку |
 | 3 | `task-003` | games, invites, матчмейкинг, WS, worker (часы), Elo, награды |
-| 4 | `task-004` | item_defs/inventory/loadouts/cases/upgrade + сид-данные |
-| 5 | `task-005` | история, лидерборд, админ-API |
-| 6 | `task-006` | фронтенд по разделу 10 |
+| 4 | `task-004` | коллекции, скины, кейсы, дропы, инвентарь, экипировка (+ снапшот в партию), открытие кейсов, апгрейд, админ-API каталога, сид Genesis |
+| 5 | `task-005` | маркет, дарение, история передач, лидерборд, админ-API пользователей/настроек/бросков/маркета |
+| 6 | `task-006` | фронтенд по разделу 10 (включая админку каталога) |
 
 После каждой фазы — полное ревью кода, прогон тестов, затем следующая фаза.
