@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 30 — магазин скинов (фигуры/доски)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:26px}
+.wrap{max-width:1080px;margin:0 auto}
+.head{display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+.head h1{font-size:21px}
+.balance{margin-left:auto;display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;background:#131725;border:1px solid #242b3d;font-family:ui-monospace,monospace;font-size:14px}
+.balance b{color:#ffc93c}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+
+.filters{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.fchip{padding:8px 15px;border-radius:999px;border:1px solid #242b3d;color:#8a93ab;font-size:12.5px;font-weight:700}
+.fchip.on{color:#fff;border-color:#8b5cf6;background:rgba(139,92,246,.16)}
+.search{flex:1;min-width:180px;max-width:280px;margin-left:auto;display:flex}
+.search input{flex:1;padding:10px 14px;border-radius:10px;border:1px solid #242b3d;background:#0d1019;color:inherit;font-family:inherit;font-size:13.5px}
+.search input:focus{outline:none;border-color:#8b5cf6}
+
+.ggrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.sk{--c:#9aa4b2;--top:#9aa4b2;position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 10px 14px;border-radius:14px;border:1px solid color-mix(in srgb,var(--c) 30%,#1d2334);background:linear-gradient(180deg,color-mix(in srgb,var(--c) 7%,#161b29),#12151f);transition:transform .16s,box-shadow .16s}
+.sk:hover{transform:translateY(-4px);box-shadow:0 14px 34px rgba(0,0,0,.5),0 0 24px color-mix(in srgb,var(--c) 24%,transparent)}
+.sk .glyph{font-size:44px;line-height:1;color:var(--c);filter:drop-shadow(0 0 12px color-mix(in srgb,var(--c) 55%,transparent))}
+.sk .nm{font-size:12.5px;font-weight:700;text-align:center}
+.sk .rt{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.6px;color:var(--c);text-transform:uppercase}
+.sk .wear{width:82%;height:5px;border-radius:4px;background:#0d1019;margin-top:4px;overflow:hidden}
+.sk .wear i{display:block;height:100%;width:30%;background:linear-gradient(90deg,#7dffb0,#ffc93c 60%,#ff5470)}
+.sk .wear i{margin-left:0}
+.sk .pr{display:flex;gap:8px;width:100%;margin-top:8px}
+.sk .pr button{flex:1;padding:9px 4px;border-radius:9px;font-size:11.5px;font-weight:800}
+.sk .pr .buy{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703}
+.sk .pr .eq{border:1px solid #2a3145;color:#8a93ab}
+.sk.eqd{border-color:#7dffb0}
+.sk .eqtag{position:absolute;top:8px;left:8px;font-size:9.5px;font-weight:800;color:#7dffb0;border:1px solid rgba(125,255,176,.5);padding:2px 7px;border-radius:999px;letter-spacing:.5px}
+.sk .aura{position:absolute;top:-40px;left:50%;transform:translateX(-50%);width:130px;height:90px;border-radius:50%;background:radial-gradient(closest-side,color-mix(in srgb,var(--c) 30%,transparent),transparent);pointer-events:none}
+
+.common{--c:#9aa4b2;--top:#9aa4b2}.uncommon{--c:#38e8ff;--top:#38e8ff}.rare{--c:#8b5cf6;--top:#8b5cf6}.epic{--c:#ffc93c;--top:#ffc93c}.legendary{--c:#ff7847;--top:#ff7847}.mythic{--c:#ff5470;--top:#ff5470}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>Шаблон 30 — магазин скинов</h1>
+    <span class="balance">◈ <b id="balance">—</b></span>
+  </div>
+
+  <div class="filters" id="filters"><input class="search" id="q" placeholder="поиск по скину"></div>
+  <div class="ggrid" id="grid"></div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getMarket() {
+    return {
+      balance: 1250,
+      skins: [
+        { id: 's01', slot: 'piece',  pieceKind: 'knight', name: 'Мятно-стальной конь', rarity: 'uncommon',  price: 60,  wear: 0.12, owned: true,  equipped: true,  glyph: '\u265E\uFE0E' },
+        { id: 's02', slot: 'piece',  pieceKind: 'queen',  name: 'Золотоноша',          rarity: 'epic',      price: 240, wear: 0.03, owned: false, equipped: false, glyph: '\u265B\uFE0E' },
+        { id: 's03', slot: 'piece',  pieceKind: 'pawn',   name: 'Пешка-карбонка',      rarity: 'common',    price: 25,  wear: 0.45, owned: true,  equipped: false, glyph: '\u265F\uFE0E' },
+        { id: 's04', slot: 'board',  pieceKind: '',       name: 'Мраморный каррьер',   rarity: 'rare',      price: 130, wear: 0.20, owned: false, equipped: false, glyph: '\u2658\uFE0E' },
+        { id: 's05', slot: 'board',  pieceKind: '',       name: 'Ретро-клетчатый',     rarity: 'common',    price: 40,  wear: 0.68, owned: true,  equipped: false, glyph: '\u265F\uFE0E' },
+        { id: 's06', slot: 'frame',  pieceKind: '',       name: 'Пурпурная рамка',     rarity: 'rare',      price: 110, wear: 0.15, owned: false, equipped: false, glyph: '\u25C6\uFE0E' },
+        { id: 's07', slot: 'piece',  pieceKind: 'rook',   name: 'Синедь-ладья',        rarity: 'uncommon',  price: 70,  wear: 0.30, owned: false, equipped: false, glyph: '\u265C\uFE0E' },
+        { id: 's08', slot: 'piece',  pieceKind: 'king',   name: 'Обсидиановый король', rarity: 'mythic',    price: 900, wear: 0.01, owned: false, equipped: false, glyph: '\u265A\uFE0E' }
+      ]
+    };
+  }
+};
+
+const SORTS = [
+  { id: 'all',    label: 'Всё' },
+  { id: 'piece',  label: 'На фигуры' },
+  { id: 'board',  label: 'На доски' },
+  { id: 'frame',  label: 'Рамки' },
+  { id: 'equipped', label: 'Экип' }
+];
+
+const RCLASS = { common: 'common', uncommon: 'uncommon', rare: 'rare', epic: 'epic', legendary: 'legendary', mythic: 'mythic' };
+
+const filtersEl = document.getElementById('filters');
+const gridEl = document.getElementById('grid');
+let filter = 'all', query = '';
+const onBuy = sk => console.log('buy:', sk);
+const onEquip = sk => console.log('equip:', sk);
+const onFilter = f => console.log('filter:', f);
+
+filtersEl.addEventListener('click', e => {
+  const c = e.target.closest('.fchip');
+  if (!c) return;
+  filter = c.dataset.f;
+  document.querySelectorAll('.fchip').forEach(x => x.classList.toggle('on', x === c));
+  render();
+  onFilter(filter);
+});
+
+function wearClass(w) {
+  return w <= .07 ? '#7dffb0' : w <= .15 ? '#38e8ff' : w <= .38 ? '#ffc93c' : w <= .45 ? '#ff7847' : '#ff5470';
+}
+
+(async () => {
+  const M = await ServerAPI.getMarket();
+  const SKINS = M.skins;
+  document.getElementById('balance').textContent = M.balance.toLocaleString('ru-RU');
+
+  filtersEl.innerHTML = SORTS.map(s =>
+    `<button class="fchip${s.id === 'all' ? ' on' : ''}" data-f="${s.id}">${s.label}</button>`
+  ).join('');
+
+  const qEl = document.getElementById('q');
+  qEl.addEventListener('input', () => { query = qEl.value.toLowerCase(); render(); });
+
+  function render() {
+    gridEl.innerHTML = SKINS.filter(sk => {
+      if (filter === 'equipped') return sk.equipped;
+      if (filter !== 'all' && sk.slot !== filter) return false;
+      if (!query || (sk.name + sk.rarity + sk.slot).toLowerCase().includes(query)) return true;
+      return false;
+    }).map(sk => `
+      <div class="sk ${RCLASS[sk.rarity]}${sk.equipped ? ' eqd' : ''}" data-id="${sk.id}">
+        <span class="aura"></span>
+        ${sk.equipped ? '<span class="eqtag">ЭКИП</span>' : ''}
+        <span class="glyph">${sk.glyph}</span>
+        <span class="nm">${sk.name}</span>
+        <span class="rt">${sk.rarity} · ${sk.slot === 'piece' ? 'фигура' : sk.slot === 'board' ? 'доска' : 'рамка'}</span>
+        <span class="wear" title="износ ~ ${sk.wear}"><i style="width:${Math.round(sk.wear * 100)}%;background:${wearClass(sk.wear)}"></i></span>
+        <span class="pr">
+          ${sk.owned
+            ? `<button class="eq">${sk.equipped ? 'В док' : 'Экипировать'}</button>`
+            : `<button class="eq">${sk.price} ◈</button><button class="buy">Купить</button>`}
+        </span>
+      </div>`
+    ).join('');
+  }
+
+  gridEl.addEventListener('click', e => {
+    const card = e.target.closest('.sk');
+    if (!card) return;
+    const sk = SKINS.find(x => x.id === card.dataset.id);
+    if (e.target.classList.contains('buy')) { onBuy(sk); }
+    if (e.target.classList.contains('eq') && sk.owned) { sk.equipped = !sk.equipped; onEquip(sk); }
+    render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

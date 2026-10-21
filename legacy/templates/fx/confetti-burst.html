@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 16 — конфетти-канонада на canvas</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px;overflow:hidden}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:24px;width:min(560px,100%);text-align:center;z-index:2}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:20px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:13px 30px;border-radius:12px;margin:0 5px}
+.btn.ghost{background:none;border:1px solid rgba(255,84,112,.45);color:#ff5470;font-weight:700}
+canvas#fx{position:fixed;inset:0;z-index:1;pointer-events:none}
+</style>
+</head>
+<body>
+
+<canvas id="fx"></canvas>
+
+<div class="panel">
+  <h1>Шаблон 16 — конфетти</h1>
+  <p class="sub">burst(x, y, opts) — баббл из прямоугольничков и кружков с гравитацией и фейдом. Лепестки и цвета — в конфиге.</p>
+
+  <button class="btn" id="b-win">Джекпот-залп</button>
+  <button class="btn ghost" id="b-mid">Средний залп</button>
+</div>
+
+<script>
+const PALETTE_MYTHIC = ['#ff5470', '#ffc93c', '#8b5cf6', '#38e8ff', '#f4f6ff'];
+const PALETTE_MID    = ['#ffc93c', '#f4f6ff'];
+const GRAVITY = 0.16, DRAG = 0.985, FADE = 0.016, MAX_PARTICLES = 350;
+
+const cv = document.getElementById('fx');
+const ctx = cv.getContext('2d');
+let parts = [], running = false;
+
+function resize() { cv.width = innerWidth; cv.height = innerHeight; }
+addEventListener('resize', resize);
+resize();
+
+function burst(x, y, opts = {}) {
+  const n = opts.count || 90;
+  const colors = opts.colors || PALETTE_MYTHIC;
+  const power = opts.power || 11;
+  const spread = opts.spread || Math.PI;
+  const angle0 = opts.angle0 != null ? opts.angle0 : -Math.PI / 2;
+
+  for (let i = 0; i < n && parts.length < MAX_PARTICLES; i++) {
+    const a = angle0 + (Math.random() - .5) * spread;
+    const v = power * (.45 + Math.random() * .75);
+    parts.push({
+      x, y,
+      vx: Math.cos(a) * v, vy: Math.sin(a) * v,
+      g: GRAVITY * (.7 + Math.random() * .6),
+      w: 5 + Math.random() * 7, h: 8 + Math.random() * 8,
+      rot: Math.random() * Math.PI, vr: (Math.random() - .5) * .3,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      shape: Math.random() < .22 ? 'dot' : 'rect',
+      life: 1
+    });
+  }
+  if (!running) { running = true; requestAnimationFrame(tick); }
+}
+
+function tick() {
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  parts = parts.filter(p => p.life > 0);
+  for (const p of parts) {
+    p.vy += p.g;
+    p.vx *= DRAG; p.vy *= DRAG;
+    p.x += p.vx; p.y += p.vy;
+    p.rot += p.vr;
+    p.life -= FADE;
+    if (p.y > cv.height + 30) p.life = 0;
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    if (p.shape === 'dot') {
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.w / 2, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w * (p.life > .7 ? 1 : p.life), p.h);
+    }
+    ctx.restore();
+  }
+  if (parts.length) requestAnimationFrame(tick);
+  else running = false;
+}
+
+document.getElementById('b-win').addEventListener('click', () => {
+  const b = document.getElementById('b-win').getBoundingClientRect();
+  burst(b.left + b.width / 2, b.top, { count: 150, power: 13 });
+});
+document.getElementById('b-mid').addEventListener('click', () => {
+  const b = document.getElementById('b-mid').getBoundingClientRect();
+  burst(b.left + b.width / 2, b.top, { count: 60, power: 9, colors: PALETTE_MID });
+});
+
+const intro = document.querySelector('.panel').getBoundingClientRect();
+burst(intro.left + intro.width / 2, intro.top + 60, { count: 70, power: 10 });
+</script>
+</body>
+</html>

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 28 — FX апгрейда фигуры на доске</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(640px,100%);text-align:center}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:14px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:12px 24px;border-radius:12px}
+.btn.ghost{background:none;border:1px solid #2a3145;color:#8a93ab;font-weight:700}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+
+.zone{display:grid;grid-template-columns:minmax(0,1fr) 172px;gap:14px;align-items:start;text-align:left}
+.board{position:relative;display:grid;grid-template-columns:repeat(8,1fr);aspect-ratio:1;border:2px solid #323a55;border-radius:10px;overflow:hidden}
+.sq{position:relative;display:grid;place-items:center;font-size:min(5.6vw,34px);line-height:1}
+.sq.light{background:#454f77}
+.sq.dark{background:#262e4d}
+.sq .glyph{color:#f4f6ff;filter:drop-shadow(0 2px 6px rgba(0,0,0,.55))}
+.sq .glyph.enemy{color:#ff5470}
+
+.cells-fx{position:absolute;top:0;right:0;bottom:0;left:50%;transform:translateX(-50%);box-shadow:0 0 0 3px #ffc93c,0 0 26px rgba(255,201,60,.7);border-radius:2px;pointer-events:none;opacity:0}
+.cells-fx.on{opacity:1;animation:aimpulse .8s infinite alternate}
+@keyframes aimpulse{to{box-shadow:0 0 0 5px #ffc93c,0 0 40px rgba(255,201,60,.9)}}
+
+.piece-morph{position:relative;display:inline-grid;width:1.25em;height:1.25em;place-items:center}
+.piece-morph .old{position:absolute;inset:0;margin:auto;font-size:1em;color:#f4f6ff;filter:drop-shadow(0 2px 6px rgba(0,0,0,.55));transition:transform .45s,opacity .45s}
+.piece-morph .new{position:absolute;inset:0;margin:auto;font-size:1em;color:#fff;opacity:0;transform:scale(.2) rotate(-40deg);filter:drop-shadow(0 0 16px rgba(255,201,60,.9))}
+.piece-morph.up .old{transform:scale(1.6) rotate(24deg) translateY(-18%);opacity:0}
+.piece-morph.up .new{opacity:1;transform:scale(1) rotate(0);animation:newpop .5s cubic-bezier(.2,1.7,.4,1)}
+@keyframes newpop{0%{transform:scale(.2) rotate(-40deg)}100%{transform:scale(1) rotate(0)}}
+.piece-morph.fall .old{animation:crack .5s;transform:none;opacity:1}
+@keyframes crack{0%,100%{transform:translateX(0)}25%{transform:translateX(-14%) rotate(-16deg)}55%{transform:translateX(12%) rotate(12deg)}80%{transform:translateX(-8%)}}
+
+.ring{position:absolute;top:0;right:0;bottom:0;left:50%;transform:translateX(-50%) scale(.3);width:74%;aspect-ratio:1;border-radius:50%;border:3px solid #ffc93c;opacity:0;pointer-events:none}
+.ring.burst{animation:ringburst .7s ease-out}
+@keyframes ringburst{0%{opacity:.9;transform:translateX(-50%) scale(.3)}100%{opacity:0;transform:translateX(-50%) scale(1.9)}}
+
+.spark{position:absolute;inset:24%;pointer-events:none;opacity:0}
+.spark.big{opacity:1}
+.spark i{position:absolute;top:50%;left:50%;width:7px;height:7px;background:#ffc93c;box-shadow:0 0 8px currentColor}
+.spark.b i{background:#ff5470;box-shadow:0 0 8px #ff5470}
+
+.valfly{position:absolute;top:-6px;right:0;left:50%;transform:translateX(-50%);font-family:ui-monospace,monospace;font-size:15px;font-weight:800;color:#ffc93c;opacity:0;pointer-events:none;text-shadow:0 0 10px rgba(255,201,60,.7)}
+.valfly.go{animation:flyup .9s ease-out forwards}
+@keyframes flyup{0%{opacity:0;transform:translate(-50%,6px)}18%{opacity:1}100%{opacity:0;transform:translate(-50%,-40px)}}
+
+.logline{display:flex;flex-direction:column;gap:16px;background:#0d1019;border:1px solid #242b3d;border-radius:12px;padding:12px;min-height:190px;font-family:ui-monospace,monospace;font-size:11.5px}
+.logline h4{color:#8a93ab;letter-spacing:.5px;text-transform:uppercase;font-size:10.5px}
+.logline .ll{color:#8a93ab}
+.logline .ll.win{color:#ffc93c}
+.logline .ll.fall{color:#ff5470}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 28 — FX апгрейда фигуры</h1>
+  <p class="sub">Морфинг глифа в клетке: lift → смена → burst ring, при провале — тряска и «трещина». Вердикт и выплата приходит от сервера (roll / cascadeStep) — фронт только отыгрывает анимацию. Каскад ферзь×2 (demo кнопка).</p>
+
+  <div class="zone">
+    <div>
+      <div class="board" id="board"></div>
+      <div style="display:flex;gap:10px;margin-top:14px">
+        <button class="btn" id="roll">Точно e2 · шанс с бэка</button>
+        <button class="btn ghost" id="casc">Каскад: ферзь → ферзь×2</button>
+      </div>
+    </div>
+    <div class="logline" id="log"><h4>лента</h4><div class="ll">готов жрать удачу</div></div>
+  </div>
+</div>
+
+<script>
+const ServerAPI = {
+  async roll(from, to) {
+    const win = Math.random() < 0.276;
+    const DELTA = { 'N:Q': 6, 'Q:Q': 9 };
+    return { ok: win, from, to, flyText: win ? `+${DELTA[`${from}:${to}`]} ◈` : '0 ◈' };
+  },
+  async cascadeStep(stage) {
+    const ok = stage === 1 ? true : Math.random() < 0.276;
+    return { ok, from: 'Q', to: 'Q', flyText: ok ? '+9 ◈' : '0 ◈' };
+  }
+};
+const PIECE = {
+  r: '\u2656\uFE0E', n: '\u2658\uFE0E', b: '\u2657\uFE0E', q: '\u2655\uFE0E', k: '\u2654\uFE0E', p: '\u2659\uFE0E',
+  R: '\u265C\uFE0E', N: '\u265E\uFE0E', B: '\u265D\uFE0E', Q: '\u265B\uFE0E', K: '\u265A\uFE0E', P: '\u265F\uFE0E'
+};
+
+const boardEl = document.getElementById('board');
+const log = document.getElementById('log');
+const rollBtn = document.getElementById('roll');
+const cascBtn = document.getElementById('casc');
+const onResult = out => console.log('fx result:', out);
+
+const FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
+const cellsArr = [];
+FEN.split('/').forEach(row => {
+  for (const ch of row) {
+    if (/[1-8]/.test(ch)) { for (let n = 0; n < +ch; n++) cellsArr.push('.'); }
+    else cellsArr.push(ch);
+  }
+});
+
+const CELL_TARGET = 36;
+
+function render() {
+  boardEl.innerHTML = cellsArr.map((code, i) => {
+    const r = Math.floor(i / 8), c = i % 8;
+    const light = (r + c) % 2 === 0;
+    const enemy = code !== '.' && code === code.toLowerCase();
+    const g = code === '.' ? '' : `<span class="glyph${enemy ? ' enemy' : ''}">${PIECE[code]}</span>`;
+    const id = i === CELL_TARGET ? ' sq-target' : '';
+    const fx = i === CELL_TARGET
+      ? `<span class="cells-fx"></span><span class="ring"></span><span class="spark"></span><span class="valfly"></span>` : '';
+    return `<div class="sq ${(light ? 'light' : 'dark')}${id}">${g}${fx}</div>`;
+  }).join('');
+}
+render();
+
+const targetSq = () => boardEl.querySelector('.sq-target');
+
+function addLog(text, cls) {
+  const d = document.createElement('div');
+  d.className = 'll ' + (cls || '');
+  d.textContent = text;
+  log.appendChild(d);
+  while (log.children.length > 9) log.children[1].remove();
+}
+
+function sparks(cell, fail) {
+  const box = cell.querySelector('.spark');
+  if (!box) return;
+  box.innerHTML = '';
+  box.classList.toggle('b', !!fail);
+  const n = fail ? 7 : 13;
+  for (let i = 0; i < n; i++) {
+    const s = document.createElement('i');
+    const a = Math.random() * Math.PI * 2;
+    const d = 28 + Math.random() * 44;
+    s.style.left = '50%';
+    s.style.top = '50%';
+    s.style.transform = 'translate(-50%,-50%)';
+    s.animate([
+      { transform: 'translate(-50%,-50%)', opacity: 1 },
+      { transform: `translate(calc(-50% + ${Math.cos(a) * d}px), calc(-50% + ${Math.sin(a) * d}px))`, opacity: 0 }
+    ], { duration: 520 + Math.random() * 320, easing: 'ease-out', fill: 'forwards' });
+    box.appendChild(s);
+  }
+  box.classList.toggle('big', true);
+  setTimeout(() => box.classList.remove('big'), 900);
+}
+
+function upgradeFx({ from, to, ok, flyText }) {
+  const sq = targetSq();
+  if (!sq) return;
+  const piece = document.createElement('div');
+  piece.className = 'piece-morph';
+  piece.innerHTML = `<span class="old">${PIECE[from]}</span><span class="new">${PIECE[to]}</span>`;
+  const glyph = sq.querySelector('.glyph');
+  sq.replaceChild(piece, glyph);
+  void piece.offsetWidth;
+
+  if (ok) {
+    piece.classList.add('up');
+    const ring = targetSq().querySelector('.ring');
+    ring.classList.remove('burst'); void ring.offsetWidth; ring.classList.add('burst');
+    sparks(targetSq(), false);
+    const fly = targetSq().querySelector('.valfly');
+    fly.textContent = flyText;
+    fly.classList.remove('go'); void fly.offsetWidth; fly.classList.add('go');
+    addLog(`АПГРЕЙД ${PIECE[from]}→${PIECE[to]} ${flyText}`, 'win');
+  } else {
+    piece.classList.add('fall');
+    sparks(targetSq(), true);
+    addLog(`Мимо: ${PIECE[from]} остаётся`, 'fall');
+  }
+  onResult({ ok, from, to });
+}
+
+let busy = false;
+rollBtn.addEventListener('click', async () => {
+  if (busy) return;
+  busy = true;
+  rollBtn.disabled = true;
+  const out = await ServerAPI.roll('N', 'Q');
+  upgradeFx(out);
+  setTimeout(() => { busy = false; rollBtn.disabled = false; }, 1200);
+});
+
+cascBtn.addEventListener('click', () => {
+  if (busy) return;
+  busy = true;
+  cascBtn.disabled = true;
+  addLog('каскад: ферзь(9) → ферзь×2(18)', 'win');
+  let stage = 0;
+  const run = async () => {
+    stage++;
+    const out = await ServerAPI.cascadeStep(stage);
+    upgradeFx(out);
+    if (out.ok) {
+      cellsArr[CELL_TARGET + 1] = 'Q';
+      render();
+    }
+    if (stage < 2) setTimeout(run, 1250);
+    else busy = false;
+  };
+  run();
+});
+
+targetSq().querySelector('.cells-fx').classList.add('on');
+</script>
+</body>
+</html>

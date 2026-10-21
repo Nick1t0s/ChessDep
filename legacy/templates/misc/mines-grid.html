@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 21 — мины 5×5</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(460px,100%);text-align:center}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:16px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:12px 22px;border-radius:12px}
+.btn.cash{background:linear-gradient(180deg,#7dffb0,#2fb76f);color:#04170c}
+.btn.ghost{background:none;border:1px solid #2a3145;color:#8a93ab;font-weight:700}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+
+.mrows{display:grid;grid-template-columns:minmax(0,1fr) 128px;gap:14px;align-items:start}
+.mines{display:grid;grid-template-columns:repeat(5,46px);gap:6px;justify-content:center;margin-bottom:14px}
+.tile{position:relative;width:46px;height:46px;border-radius:10px;background:#1a2033;border:1px solid #242b3d;display:grid;place-items:center;font-size:20px;color:#ffc93c;cursor:pointer;transition:transform .12s,background .2s;user-select:none}
+.tile:hover{background:#20263c}
+.tile.dim{background:#12151f;cursor:default}
+.tile.gem{background:rgba(120,255,176,.08);box-shadow:0 0 0 1px rgba(125,255,176,.5)}
+.tile.boom{background:rgba(255,84,112,.14);box-shadow:0 0 0 1px rgba(255,84,112,.55)}
+.tile.gem .glyph{animation:pop .3s cubic-bezier(.2,1.6,.4,1)}
+@keyframes pop{0%{transform:scale(0)}100%{transform:scale(1)}}
+
+.side{background:#0d1019;border:1px solid #242b3d;border-radius:12px;padding:12px;text-align:left}
+.side .lbl{color:#565f79;font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;font-weight:700}
+.side .val{font-family:ui-monospace,monospace;font-size:19px;font-weight:800;color:#ffc93c;margin:2px 0 10px}
+.side .val.safe{color:#7dffb0}
+.ladder{display:flex;flex-direction:column;gap:3px;font-family:ui-monospace,monospace;font-size:11px;color:#8a93ab;max-height:150px;overflow:hidden}
+.ladder span.on{color:#ffc93c;font-weight:800}
+#result{font-family:ui-monospace,monospace;font-size:14.5px;min-height:22px}
+#result.win{color:#7dffb0}
+#result.lose{color:#ff5470}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 21 — мины</h1>
+  <p class="sub">Поле 5×5, фактические мины в MINE_COUNT. Открывай тайлы кратно, множитель растёт по формуле, «Забрать» в любой момент.</p>
+
+  <div class="mrows">
+    <div class="mines" id="mines"></div>
+    <div class="side">
+      <div class="lbl">след. шаг</div>
+      <div class="val" id="mult">×1.10</div>
+      <div class="lbl">забрать сейчас</div>
+      <div class="val safe" id="cash">0 ◈</div>
+      <div class="lbl">лестница</div>
+      <div class="ladder" id="ladder"></div>
+    </div>
+  </div>
+
+  <div class="mrow" style="display:flex;gap:8px;justify-content:center">
+    <button class="btn" id="bet">Ставка 40 ◈</button>
+    <button class="btn cash" id="take" disabled>Забрать</button>
+    <button class="btn ghost" id="renew">Заново</button>
+  </div>
+  <div id="result"></div>
+</div>
+
+<script>
+const ServerAPI = {
+  async newRound() {
+    const SIZE = 25, MINE_COUNT = 3;
+    const S = Array(SIZE - MINE_COUNT).fill('gem').concat(Array(MINE_COUNT).fill('bomb'));
+    for (let i = S.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [S[i], S[j]] = [S[j], S[i]];
+    }
+    const LADDER = [
+      { mult: '×1.28', cash: '51 ◈' },
+      { mult: '×1.64', cash: '66 ◈' },
+      { mult: '×2.11', cash: '84 ◈' },
+      { mult: '×2.71', cash: '108 ◈' },
+      { mult: '×3.49', cash: '140 ◈' },
+      { mult: '×4.48', cash: '179 ◈' },
+      { mult: '×5.76', cash: '230 ◈' },
+      { mult: '×7.41', cash: '296 ◈' },
+      { mult: '×9.53', cash: '381 ◈' },
+      { mult: '×12.25', cash: '490 ◈' },
+      { mult: '×15.76', cash: '630 ◈' },
+      { mult: '×20.26', cash: '810 ◈' },
+      { mult: '×26.07', cash: '1043 ◈' },
+      { mult: '×33.54', cash: '1342 ◈' },
+      { mult: '×43.16', cash: '1727 ◈' },
+      { mult: '×55.54', cash: '2222 ◈' },
+      { mult: '×71.47', cash: '2859 ◈' },
+      { mult: '×91.96', cash: '3679 ◈' },
+      { mult: '×118.33', cash: '4734 ◈' },
+      { mult: '×152.23', cash: '6090 ◈' },
+      { mult: '×195.82', cash: '7833 ◈' },
+      { mult: '×251.89', cash: '10076 ◈' }
+    ];
+    return { layout: S, ladder: LADDER };
+  }
+};
+
+const gem = '\u25C6\uFE0E';
+const bomb = '\u2620\uFE0E';
+
+const minesEl = document.getElementById('mines');
+const multEl = document.getElementById('mult');
+const cashEl = document.getElementById('cash');
+const ladder = document.getElementById('ladder');
+const betBtn = document.getElementById('bet');
+const takeBtn = document.getElementById('take');
+const bumpBtn = document.getElementById('renew');
+const result = document.getElementById('result');
+let mines = [], LADDER = [], picks = 0, live = false;
+const onResult = out => console.log('mines result:', out);
+
+async function newRound(started) {
+  const r = await ServerAPI.newRound();
+  mines = r.layout;
+  LADDER = r.ladder;
+  picks = 0;
+  minesEl.innerHTML = mines.map(() => `<button class="tile"><span class="glyph"></span></button>`).join('');
+  updateSide();
+  renderLadder();
+  live = started;
+}
+
+function updateSide() {
+  multEl.textContent = LADDER[picks] ? LADDER[picks].mult : '—';
+  cashEl.textContent = picks > 0 ? LADDER[picks - 1].cash : '0 ◈';
+}
+
+function renderLadder() {
+  const rows = [];
+  for (let n = 1; n <= Math.min(9, LADDER.length); n++) {
+    const on = n <= picks;
+    rows.push(`<span${on ? ' class="on"' : ''}>${n}× ${LADDER[n - 1].mult}${on ? ' ✔' : ''}</span>`);
+  }
+  ladder.innerHTML = rows.slice(-10).join('');
+}
+
+minesEl.addEventListener('click', e => {
+  const t = e.target.closest('.tile');
+  if (!t || !live) return;
+  const idx = [...minesEl.children].indexOf(t);
+  if (t.classList.contains('dim') || t.classList.contains('gem') || t.classList.contains('boom')) return;
+  const kind = mines[idx];
+  if (kind === 'bomb') {
+    t.classList.add('boom', 'dim');
+    t.querySelector('.glyph').textContent = bomb;
+    mines.forEach((k, i) => {
+      const x = minesEl.children[i];
+      if (k === 'bomb') { x.classList.add('boom', 'dim'); x.querySelector('.glyph').textContent = bomb; }
+    });
+    live = false;
+    result.className = 'lose';
+    result.textContent = `Мина на ${picks > 0 ? picks + '-м' : '1-м'} шаге. Ставка сгорела`;
+    onResult({ kind: 'boom', picks });
+  } else {
+    picks++;
+    t.classList.add('gem', 'dim');
+    t.querySelector('.glyph').textContent = gem;
+    updateSide();
+    renderLadder();
+  }
+});
+
+betBtn.addEventListener('click', async () => {
+  live = true;
+  betBtn.disabled = true;
+  takeBtn.disabled = false;
+  result.textContent = '';
+  bumpBtn.disabled = true;
+  await newRound(true);
+});
+
+takeBtn.addEventListener('click', () => {
+  if (!live || picks === 0) return;
+  live = false;
+  mines.forEach((k, i) => {
+    const x = minesEl.children[i];
+    x.classList.add('dim');
+    if (k === 'bomb') { x.classList.add('boom'); x.querySelector('.glyph').textContent = bomb; }
+  });
+  result.className = 'win';
+  result.textContent = `Забрано ${LADDER[picks - 1].cash} на ${LADDER[picks - 1].mult}`;
+  onResult({ kind: 'cash', picks });
+  takeBtn.disabled = true;
+  betBtn.disabled = false;
+  bumpBtn.disabled = false;
+});
+
+bumpBtn.addEventListener('click', () => {
+  result.textContent = '';
+  live = false;
+  betBtn.disabled = false;
+  takeBtn.disabled = true;
+  bumpBtn.disabled = true;
+  newRound(false);
+});
+
+takeBtn.disabled = true;
+bumpBtn.disabled = true;
+newRound(false);
+</script>
+</body>
+</html>

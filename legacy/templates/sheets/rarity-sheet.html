@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 11 — палитра редкостей</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;background:#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:30px}
+.wrap{max-width:1000px;margin:0 auto}
+h1{font-size:22px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:20px}
+.rarity-row{display:flex;align-items:center;gap:16px;padding:14px;border:1px solid #242b3d;border-radius:14px;background:#12151f;margin-bottom:10px}
+.swatch{width:54px;height:54px;border-radius:12px;flex:0 0 54px;display:grid;place-items:center;font-size:30px;background:#0d1019}
+.rarity-name{font-weight:800;font-size:15px;width:150px}
+.rarity-hex{font-family:ui-monospace,monospace;font-size:12px;color:#8a93ab;width:110px}
+.pill{padding:4px 12px;border-radius:999px;font-size:11.5px;font-weight:800;letter-spacing:.4px;color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);border:1px solid color-mix(in srgb,var(--c) 42%,transparent)}
+.tag-btn{padding:9px 16px;border-radius:10px;font-size:13px;font-weight:700;color:#0b0e16;background:var(--c);box-shadow:0 6px 18px color-mix(in srgb,var(--c) 40%,transparent);border:0;cursor:default}
+.chip{padding:5px 10px;border-radius:8px;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--c);border:1px dashed color-mix(in srgb,var(--c) 45%,transparent)}
+
+.common{--c:#9aa4b2}.uncommon{--c:#38e8ff}.rare{--c:#8b5cf6}.epic{--c:#ffc93c}.legendary{--c:#ff7847}.mythic{--c:#ff5470}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Шаблон 11 — палитра редкостей</h1>
+  <p class="sub">Единая шкала: --c для каждого класса. Свотч, pill, кнопка, dashed-чип. Копируй классы в любой шаблон.</p>
+
+  <div id="rows"></div>
+</div>
+
+<script>
+const RARITY = {
+  common:    { label: 'Обычный',    hex: '#9aa4b2' },
+  uncommon:  { label: 'Необычный',  hex: '#38e8ff' },
+  rare:      { label: 'Редкий',     hex: '#8b5cf6' },
+  epic:      { label: 'Эпик',       hex: '#ffc93c' },
+  legendary: { label: 'Легендарный', hex: '#ff7847' },
+  mythic:    { label: 'Мифический', hex: '#ff5470' }
+};
+const rows = document.getElementById('rows');
+rows.innerHTML = Object.keys(RARITY).map(k => {
+  const r = RARITY[k];
+  return `<div class="rarity-row ${k}">
+    <div class="swatch"><span style="color:var(--c);filter:drop-shadow(0 0 8px var(--c))">&#981B;&#xFE0E;</span></div>
+    <span class="rarity-name" style="color:var(--c)">${r.label}</span>
+    <span class="rarity-hex">${r.hex}</span>
+    <span class="pill">${r.label}</span>
+    <span class="tag-btn">${r.label}</span>
+    <span class="chip">border-radius:10px</span>
+  </div>`;
+}).join('');
+</script>
+</body>
+</html>

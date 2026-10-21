@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 02 — вертикальная лента кейса</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.wrap{display:flex;gap:20px;align-items:stretch}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(340px,100%)}
+h1{font-size:18px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:12.5px;margin-bottom:16px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.btn{width:100%;background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:13px 0;border-radius:12px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+#result{margin-top:14px;font-family:ui-monospace,monospace;font-size:14px;min-height:22px;color:#ffc93c}
+
+.reel-box{position:relative;overflow:hidden;border:1px solid #242b3d;border-radius:14px;background:#0a0d15;width:190px;height:420px}
+.reel-box::before,.reel-box::after{content:"";position:absolute;left:0;right:0;height:110px;z-index:5;pointer-events:none}
+.reel-box::before{top:0;background:linear-gradient(180deg,#0a0d15,transparent)}
+.reel-box::after{bottom:0;background:linear-gradient(0deg,#0a0d15,transparent)}
+.reel{display:flex;flex-direction:column;gap:10px;will-change:transform}
+.reel-anim{transition:transform 5.2s cubic-bezier(.1,.82,.14,1.01)}
+.reel-item{--c:#9aa4b2;height:130px;flex:0 0 130px;display:flex;align-items:center;gap:12px;padding:12px;background:#161b29;border:1px solid #242b3d;border-radius:12px}
+.reel-item .glyph{font-size:40px;color:var(--c);filter:drop-shadow(0 0 10px color-mix(in srgb,var(--c) 55%,transparent))}
+.reel-item .nm{font-size:13px;font-weight:600}
+.reel-item .vl{font-family:ui-monospace,monospace;font-size:11.5px;color:#8a93ab}
+.marker-line{position:absolute;left:10px;right:10px;top:50%;height:2px;margin-top:-1px;background:#ffc93c;box-shadow:0 0 12px rgba(255,201,60,.9);z-index:6}
+.common{--c:#9aa4b2}.uncommon{--c:#38e8ff}.rare{--c:#8b5cf6}.epic{--c:#ffc93c}.legendary{--c:#ff7847}.mythic{--c:#ff5470}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="reel-box">
+    <div class="marker-line"></div>
+    <div class="reel" id="reel"></div>
+  </div>
+
+  <div class="panel">
+    <h1>Шаблон 02 — вертикальная лента</h1>
+    <p class="sub">Кейс «уронил» предмет сверху вниз. Пул и результат — payload от бэка (getCaseContents / rollCase), фронт крутит ленту.</p>
+    <button class="btn" id="open">Крутить</button>
+    <div id="result"></div>
+  </div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getCaseContents() {
+    return [
+      { name: 'Пешка ×3',  glyph: '\u265F\uFE0E', rarity: 'common',    val: 10 },
+      { name: 'Конь',      glyph: '\u265E\uFE0E', rarity: 'uncommon',  val: 30 },
+      { name: 'Слон',      glyph: '\u265D\uFE0E', rarity: 'uncommon',  val: 30 },
+      { name: 'Ладья',     glyph: '\u265C\uFE0E', rarity: 'rare',      val: 60 },
+      { name: 'Ферзь',     glyph: '\u265B\uFE0E', rarity: 'epic',      val: 120 },
+      { name: 'Ферзь ×2',  glyph: '\u265B\uFE0E', rarity: 'mythic',    val: 240 },
+      { name: 'Король',    glyph: '\u265A\uFE0E', rarity: 'legendary', val: 400 }
+    ];
+  },
+  async rollCase() {
+    const w = { 0: 36, 1: 24, 2: 16, 3: 12, 4: 7, 5: 3, 6: 2 };
+    const bag = this.pool.flatMap((p, i) => Array(w[i]).fill(p));
+    return bag[Math.floor(Math.random() * bag.length)];
+  }
+};
+
+const ITEM_H = 130, GAP = 10;
+const STRIP_LEN = 40;
+const WIN_INDEX = 30;
+const DURATION = 5200;
+const onResult = it => console.log('result:', it);
+
+const reel = document.getElementById('reel');
+const btn = document.getElementById('open');
+const result = document.getElementById('result');
+let spinning = false, POOL = [];
+
+const RCLASS = { common: 'common', uncommon: 'uncommon', rare: 'rare', epic: 'epic', legendary: 'legendary', mythic: 'mythic' };
+
+(async () => {
+  POOL = await ServerAPI.getCaseContents();
+
+  const pick = () => POOL[Math.floor(Math.random() * POOL.length)];
+
+  function build(winnerItem) {
+    reel.classList.remove('reel-anim');
+    reel.style.transform = 'translateY(0)';
+    reel.innerHTML = '';
+    for (let i = 0; i < STRIP_LEN; i++) {
+      const it = i === WIN_INDEX ? winnerItem : pick();
+      const d = document.createElement('div');
+      d.className = 'reel-item ' + RCLASS[it.rarity];
+      d.innerHTML = `<span class="glyph">${it.glyph}</span><span><span class="nm">${it.name}</span><br><span class="vl">${it.val} ◈</span></span>`;
+      reel.appendChild(d);
+    }
+  }
+
+  btn.addEventListener('click', async () => {
+    if (spinning) return;
+    spinning = true;
+    btn.disabled = true;
+    result.textContent = '';
+    const win = await ServerAPI.rollCase();
+
+    build(win);
+    void reel.offsetHeight;
+    reel.classList.add('reel-anim');
+
+    const offset = WIN_INDEX * (ITEM_H + GAP) + ITEM_H / 2 - reel.parentElement.clientHeight / 2;
+    reel.style.transform = `translateY(${-offset}px)`;
+
+    setTimeout(() => {
+      result.textContent = `Уронил: ${win.name} (${win.val} ◈)`;
+      spinning = false;
+      btn.disabled = false;
+      onResult(win);
+    }, DURATION + 100);
+  });
+
+  build(POOL[0]);
+})();
+</script>
+</body>
+</html>

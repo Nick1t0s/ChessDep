@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChessDep — Админка</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-auth="admin">
+
+<nav class="topbar">
+  <a class="logo" href="index.html"><span class="logo-glyph">&#9822;&#xFE0E;</span>Chess<span class="logo-dot">Dep</span></a>
+  <div class="nav-links">
+    <a href="index.html">Главная</a>
+    <a href="upgrade.html">Апгрейдер</a>
+    <a href="case.html">Кейсы</a>
+    <a href="skins.html">Скины</a>
+    <a href="skin-case.html">Скин-кейс</a>
+    <a href="slots.html">Слоты</a>
+    <a href="board.html">Доска</a>
+    <a href="inventory.html">Инвентарь</a>
+    <a href="leaderboard.html">Топ</a>
+    <a href="admin.html" class="active">Админка</a>
+  </div>
+  <div class="nav-right" id="nav-right"></div>
+</nav>
+
+<main class="container">
+
+  <div class="page-head">
+    <h1>Админка <span>/ полный контроль</span></h1>
+    <p>Пользователи, балансы, склады, экономический конфиг и общий лог событий. Первый зарегистрированный юзер получает эту панель автоматически.</p>
+  </div>
+
+  <div class="stats stats-4">
+    <div class="stat"><b id="ad-users">0</b><span>аккаунтов</span></div>
+    <div class="stat"><b id="ad-balance">0</b><span>◈ у всех игроков</span></div>
+    <div class="stat"><b id="ad-pieces">0</b><span>фигур на всех складах</span></div>
+    <div class="stat"><b id="ad-spins">0</b><span>спинов сделано всеми</span></div>
+  </div>
+
+  <section class="panel">
+    <div class="panel-title">Пользователи <span class="sub">действия применяются мгновенно</span></div>
+    <div class="table-tools">
+      <input id="usr-search" placeholder="Поиск по логину или email…">
+    </div>
+    <table class="table" id="users-table">
+      <thead>
+        <tr>
+          <th>Игрок</th>
+          <th>Роль</th>
+          <th>Баланс</th>
+          <th>Склад</th>
+          <th>Регистрация</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <div class="admin-cols">
+    <section class="panel">
+      <div class="panel-title">Экономический конфиг</div>
+      <div class="cfg-grid">
+        <div class="field">
+          <label>Стартовый баланс, ◈</label>
+          <input id="cf-start" type="number" min="0">
+        </div>
+        <div class="field">
+          <label>Цена кейса, ◈</label>
+          <input id="cf-case" type="number" min="0">
+        </div>
+        <div class="field">
+          <label>Комиссия апгрейдера, %</label>
+          <input id="cf-fee" type="number" min="0" max="50">
+        </div>
+      </div>
+      <button class="btn btn-gold" id="btn-cfg">Сохранить конфиг</button>
+      <p class="cfg-note" id="cfg-note" style="margin-top:12px;color:var(--dim);font-size:12.5px"></p>
+      <div style="margin-top:18px;border-top:1px dashed var(--line);padding-top:16px">
+        <div class="panel-title">Скины и слоты</div>
+        <div class="cfg-grid">
+          <div class="field">
+            <label>Цена скин-кейса, ◈</label>
+            <input id="cf-skin-cost" type="number" min="0">
+          </div>
+          <div class="field">
+            <label>Ставка слота, ◈</label>
+            <input id="cf-slot-cost" type="number" min="0">
+          </div>
+        </div>
+        <div class="field">
+          <label>Веса редкостей скин-кейса (JSON)</label>
+          <textarea id="cf-skin-weights" rows="3" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--text);font-family:var(--mono);font-size:13px;outline:none;resize:vertical"></textarea>
+        </div>
+        <button class="btn btn-gold" id="btn-cfg-skins" style="margin-top:14px">Сохранить скин-конфиг</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title">Общий лог <span class="sub">последние 30 событий</span></div>
+      <div id="logs-list"></div>
+    </section>
+  </div>
+
+  <footer class="footer">
+    <span>ChessDep · шаблоны фронтенда v0.2 · демо, без реальных ставок</span>
+  </footer>
+
+</main>
+
+<div class="toasts" id="toasts"></div>
+
+<script src="js/common.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>

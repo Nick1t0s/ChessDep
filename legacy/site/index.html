@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChessDep — шахматное апгрейд-казино</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav class="topbar">
+  <a class="logo" href="index.html"><span class="logo-glyph">&#9822;&#xFE0E;</span>Chess<span class="logo-dot">Dep</span></a>
+  <div class="nav-links">
+    <a href="index.html" class="active">Главная</a>
+    <a href="upgrade.html">Апгрейдер</a>
+    <a href="case.html">Кейсы</a>
+    <a href="skins.html">Скины</a>
+    <a href="skin-case.html">Скин-кейс</a>
+    <a href="slots.html">Слоты</a>
+    <a href="board.html">Доска</a>
+    <a href="inventory.html">Инвентарь</a>
+    <a href="leaderboard.html">Топ</a>
+    <a href="admin.html">Админка</a>
+  </div>
+  <div class="nav-right" id="nav-right"></div>
+</nav>
+
+<main class="container">
+
+  <section class="hero panel">
+    <div class="hero-text">
+      <span class="kicker">ставь фигуры · крути шанс · забирай ×2</span>
+      <h1>Ставь коня — поймай <em>ферзя</em>.<br>Ставь ферзя — вытяни <em>двух</em>.</h1>
+      <p>ChessDep — механика апгрейд-казино поверх шахматных фигур. Каждая постановка на доску, каждое колесо и каждый кейс работают на честной формуле: шанс = ценность ставки ÷ ценность цели.</p>
+      <div class="hero-actions">
+        <a class="btn btn-gold" href="upgrade.html">Открыть апгрейдер</a>
+        <a class="btn btn-violet" href="case.html">Открыть кейс</a>
+        <a class="btn btn-ghost" href="board.html">Сыграть на доске</a>
+      </div>
+    </div>
+    <div class="hero-glyphs">
+      <span class="g1">&#9823;&#xFE0E;</span>
+      <span class="g2">&#9822;&#xFE0E;</span>
+      <span class="g3">&#9820;&#xFE0E;</span>
+      <span class="g4">&#9819;&#xFE0E;</span>
+      <span class="g5">&#9818;&#xFE0E;</span>
+    </div>
+  </section>
+
+  <section class="features">
+    <a class="panel feature" href="upgrade.html">
+      <span class="glyph r-legendary" style="--c:var(--gold);color:var(--c)">&#9821;&#xFE0E;</span>
+      <h3>Апгрейдер</h3>
+      <p>Колесо шанса по формуле «ставка ÷ цель». Победа — фигура нового уровня, провал — она уходит в казну.</p>
+      <span class="go">Крутить колесо →</span>
+    </a>
+    <a class="panel feature" href="case.html">
+      <span class="glyph" style="color:var(--gold)">&#9823;&#xFE0E;</span>
+      <h3>Кейсы</h3>
+      <p>Лента дропов в стиле открывания кейсов: от пешки до короля. Цена 200 ◈, шанс всегда подписан.</p>
+      <span class="go">Открыть кейс →</span>
+    </a>
+    <a class="panel feature" href="skins.html">
+      <span class="glyph" style="color:var(--red)">&#9819;&#xFE0E;</span>
+      <h3>Скины</h3>
+      <p>Косметика фигур: скин-кейсы, экипировка по слотам и свето-контрастные фигуры на доске. Продаются обратно в ◈.</p>
+      <span class="go">Экипировать →</span>
+    </a>
+    <a class="panel feature" href="slots.html">
+      <span class="glyph" style="color:var(--gold)">&#9670;&#xFE0E;</span>
+      <h3>Слоты</h3>
+      <p>Три барабана с фигурами: джекпот за три кристалла, фигуры за тройки, ◈ за пары.</p>
+      <span class="go">Крутить →</span>
+    </a>
+    <a class="panel feature" href="board.html">
+      <span class="glyph" style="color:var(--uncommon)">&#9822;&#xFE0E;</span>
+      <h3>Доска</h3>
+      <p>Классика с подвохом: при постановке фигуры срабатывает шанс апгрейд-каскада прямо на клетке.</p>
+      <span class="go">К доске →</span>
+    </a>
+    <a class="panel feature" href="inventory.html">
+      <span class="glyph" style="color:var(--muted)">&#9819;&#xFE0E;</span>
+      <h3>Склад</h3>
+      <p>Инвентарь фигур с редкостями, статистикой склада и обменом на ◈.</p>
+      <span class="go">Посмотреть →</span>
+    </a>
+  </section>
+
+  <section>
+    <div class="page-head">
+      <h1>Как это работает</h1>
+      <p>Леттрейшн-флоу без Веер-меню, всё на пальцах.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <b class="num">01</b>
+        <h4>Выбери ставку</h4>
+        <p>Пешка, конь, ладья — что угодно со склада. Ценность фигуры определяет твой шанс.</p>
+      </div>
+      <div class="step">
+        <b class="num">02</b>
+        <h4>Выбери цель</h4>
+        <p>Следующий уровень или же сразу два ферзя. Чем жирнее цель, тем меньше шанс.</p>
+      </div>
+      <div class="step">
+        <b class="num">03</b>
+        <h4>Крути шанс</h4>
+        <p>Колесо умножает сумасшедший мультипликатор прямо под указатель. До ×98% — уже победа.</p>
+      </div>
+      <div class="step">
+        <b class="num">04</b>
+        <h4>Забирай или иди дальше</h4>
+        <p>Выигрыш летит на склад и снова в оборот. Проигрыш — это цена попытки.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <span>ChessDep · шаблоны фронтенда v0.3 · демо, без реальных ставок</span>
+    <div class="footer-links">
+      <a href="upgrade.html">Апгрейдер</a>
+      <a href="case.html">Кейсы</a>
+      <a href="skins.html">Скины</a>
+      <a href="slots.html">Слоты</a>
+      <a href="board.html">Доска</a>
+      <a href="inventory.html">Инвентарь</a>
+      <a href="leaderboard.html">Топ</a>
+    </div>
+  </footer>
+
+</main>
+
+<div class="toasts" id="toasts"></div>
+
+<script src="js/common.js"></script>
+</body>
+</html>

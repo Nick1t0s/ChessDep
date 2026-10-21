@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 10 — карточки предметов вне кейса</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:30px}
+h1{font-size:22px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:12px}
+.wrap{max-width:1000px;margin:0 auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-top:16px}
+.item{
+  --c:#9aa4b2;
+  position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;
+  padding:20px 10px 14px;border-radius:14px;
+  border:1px solid color-mix(in srgb,var(--c) 32%,#1d2334);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--c) 7%,#161b29),#12151f);
+  transition:transform .18s,box-shadow .18s,border-color .18s;
+}
+.item:hover{transform:translateY(-4px);box-shadow:0 14px 34px rgba(0,0,0,.5),0 0 26px color-mix(in srgb,var(--c) 28%,transparent);border-color:var(--c)}
+.item .glyph{font-size:46px;line-height:1;color:var(--c);filter:drop-shadow(0 0 12px color-mix(in srgb,var(--c) 55%,transparent))}
+.item .name{font-size:13px;font-weight:700}
+.item .val{font-family:ui-monospace,monospace;font-size:12px;color:#8a93ab}
+.item .val b{color:#ffc93c;font-weight:600}
+.item .count{position:absolute;top:8px;right:8px;font-family:ui-monospace,monospace;font-size:11px;color:#ffc93c;background:rgba(255,201,60,.12);border:1px solid rgba(255,201,60,.35);padding:2px 7px;border-radius:999px}
+.item .badge{position:absolute;top:8px;left:8px;font-size:10px;font-weight:800;letter-spacing:.5px;color:var(--c);border:1px solid var(--c);padding:2px 6px;border-radius:999px}
+.item .sell{margin-top:6px;padding:6px 12px;border-radius:8px;border:1px solid #2a3145;color:#8a93ab;font-size:11px;font-weight:700;cursor:pointer;transition:.15s}
+.item .sell:hover{color:#ffc93c;border-color:rgba(255,201,60,.5)}
+
+.common{--c:#9aa4b2}.uncommon{--c:#38e8ff}.rare{--c:#8b5cf6}.epic{--c:#ffc93c}.legendary{--c:#ff7847}.mythic{--c:#ff5470}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Шаблон 10 — карточки предметов</h1>
+  <p class="sub">Модуль карточек для инвентаря/дропов: редкость задаётся классом r-*, всё красится через переменную --c. Плюс бейджи count/x2/sell.</p>
+
+  <div class="grid">
+    <div class="item common"><span class="glyph">&#9823;&#xFE0E;</span><span class="name">Пешка</span><span class="val">10 <b>◈</b></span><span class="count">×12</span></div>
+    <div class="item uncommon"><span class="glyph">&#9822;&#xFE0E;</span><span class="name">Конь</span><span class="val">30 <b>◈</b></span><span class="count">×3</span></div>
+    <div class="item uncommon"><span class="glyph">&#9821;&#xFE0E;</span><span class="name">Слон</span><span class="val">30 <b>◈</b></span></div>
+    <div class="item rare"><span class="glyph">&#9820;&#xFE0E;</span><span class="name">Ладья</span><span class="val">60 <b>◈</b></span><span class="count">×1</span></div>
+    <div class="item epic"><span class="glyph">&#9819;&#xFE0E;</span><span class="name">Ферзь</span><span class="val">120 <b>◈</b></span><span class="badge">×2</span></div>
+    <div class="item legendary"><span class="glyph">&#9818;&#xFE0E;</span><span class="name">Король</span><span class="val">400 <b>◈</b></span></div>
+    <div class="item mythic"><span class="glyph">&#9819;&#xFE0E;</span><span class="name">Ферзь ×2</span><span class="val">240 <b>◈</b></span><span class="badge">MYTH</span></div>
+    <div class="item epic"><button class="sell" style="border:0;background:0;cursor:pointer;font:inherit;color:inherit">Продать · 30 ◈</button><span class="glyph" style="font-size:46px;color:var(--c);filter:drop-shadow(0 0 12px color-mix(in srgb,var(--c) 55%,transparent))">&#9822;&#xFE0E;</span><span class="name">Конь</span><span class="val">30 <b>◈</b></span></div>
+  </div>
+</div>
+</body>
+</html>

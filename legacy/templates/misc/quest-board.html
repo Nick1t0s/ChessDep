@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 25 — квесты дня + уровни</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(520px,100%)}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:16px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+
+.lvlbar{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.lvl-badge{width:52px;height:52px;border-radius:15px;display:grid;place-items:center;background:linear-gradient(135deg,#6d3df0,#c04cff);font-weight:800;font-size:18px;box-shadow:0 4px 20px rgba(139,92,246,.45)}
+.lvl-badge small{display:block;font-size:8.5px;color:rgba(255,255,255,.75);letter-spacing:1px;text-transform:uppercase}
+.xp-zone{flex:1}
+.lvl-num{display:flex;justify-content:space-between;font-family:ui-monospace,monospace;font-size:11px;color:#8a93ab;margin-bottom:5px}
+.lvl-bar{position:relative;height:12px;border-radius:8px;background:#1d2334;border:1px solid #242b3d;overflow:hidden}
+.lvl-fill{position:absolute;left:0;top:0;bottom:0;width:0%;border-radius:7px;background:linear-gradient(90deg,#8b5cf6,#c04cff);transition:width .8s cubic-bezier(.2,.9,.3,1);box-shadow:0 0 12px rgba(139,92,246,.6)}
+
+.quests{display:flex;flex-direction:column;gap:10px}
+.q{
+  --c:#ffc93c;position:relative;display:flex;align-items:center;gap:12px;
+  padding:13px 14px;border:1px solid #242b3d;border-radius:14px;background:#161b29;overflow:hidden;
+}
+.q .glyph{font-size:30px;color:var(--c);flex:0 0 auto;filter:drop-shadow(0 0 10px color-mix(in srgb,var(--c) 50%,transparent))}
+.q .body{flex:1;min-width:0}
+.q h4{font-size:13.5px}
+.q .sub{color:#8a93ab;font-size:11.5px;margin-top:2px}
+.q .bar{position:relative;height:7px;border-radius:5px;background:#0d1019;margin-top:7px;overflow:hidden}
+.q .fill{position:absolute;left:0;top:0;bottom:0;background:var(--c);border-radius:5px;transition:width .9s cubic-bezier(.2,.9,.3,1);box-shadow:0 0 9px var(--c)}
+.q .meta{display:flex;align-items:center;gap:8px;margin-bottom:0}
+.q .reward{font-family:ui-monospace,monospace;font-size:11.5px;color:#ffc93c;white-space:nowrap}
+.q .btn{flex:0 0 auto;padding:9px 14px;border-radius:10px;font-size:12px;font-weight:800}
+.q .btn.ready{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703}
+.q .btn.locked{border:1px solid #2a3145;color:#565f79;cursor:default}
+.q .btn.done{border:1px solid rgba(125,255,176,.45);color:#7dffb0;cursor:default}
+.q.dying{animation:claimfade .5s ease forwards}
+@keyframes claimfade{40%{opacity:1}100%{opacity:.42}}
+.q .flash{position:absolute;inset:0;background:radial-gradient(240px 120px at 50% 50%,rgba(255,201,60,.28),transparent 70%);opacity:0;pointer-events:none}
+.q.dying .flash{opacity:1;transition:opacity .4s}
+.sim{display:flex;gap:8px;margin-top:16px}
+.simnote{color:#565f79;font-size:11.5px;margin-top:10px;text-align:center}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 25 — квесты дня + уровни</h1>
+  <p class="sub">Список квестов с прогрессом, забор награды, XP-бар и уровень поверх. Данные — в QUESTS.</p>
+
+  <div class="lvlbar">
+    <div class="lvl-badge"><small>уровень</small><span id="lvl">7</span></div>
+    <div class="xp-zone">
+      <div class="lvl-num"><span id="xp-txt">1 250 / 2 400 XP</span><span id="xp-left">до 8 ур. — 1 150</span></div>
+      <div class="lvl-bar"><div class="lvl-fill" id="xp-fill"></div></div>
+    </div>
+  </div>
+
+  <div class="quests" id="quests"></div>
+
+  <div class="sim">
+    <button class="btn" id="prog" style="background:#1d2334;color:#e8ecf4;border:1px solid #2a3145;font-weight:700">Продвинуть квесты (demo)</button>
+  </div>
+  <div style="color:#565f79;font-size:11.5px;margin-top:10px;text-align:center">прогрессом рулит бэк; кнопка-стимулятор для проверки состояний</div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getQuests() {
+    return {
+      quests: [
+        { id: 'q1', glyph: 'pawn',   name: 'Крутни 3 кейса',    sub: 'любые кейсы',      target: 3,  progress: 1,  reward: 30,  xp: 40 },
+        { id: 'q2', glyph: 'knight', name: 'Поставь 2 фигуры',  sub: 'в матче за ◈',     target: 2,  progress: 2,  reward: 45,  xp: 60 },
+        { id: 'q3', glyph: 'rook',   name: 'Апгрейд до эпика',  sub: 'успешный апгрейд', target: 1,  progress: 0,  reward: 60,  xp: 90 },
+        { id: 'q4', glyph: 'gem',    name: 'Проблеск дня',      sub: 'выиграй в плинко ×5', target: 5, progress: 0, reward: 100, xp: 150 },
+        { id: 'q5', glyph: 'queen',  name: 'Марафон 25 матчей', sub: 'сезонный',         target: 25, progress: 13, reward: 250, xp: 400 }
+      ],
+      xp: { level: 7, xp: 1250, need: 2400 }
+    };
+  },
+  async claim(id) {
+    const q = (await this.getQuests()).quests.find(x => x.id === id);
+    const need = Math.round(2400 * 1.25 / 10) * 10;
+    return q ? { id, reward: q.reward, xp: q.xp, claimed: true, xpAfter: { level: 8, xp: 1290, need } } : { id, claimed: false };
+  },
+  async tickProgress(id) {
+    const q = (await this.getQuests()).quests.find(x => x.id === id);
+    return q ? { id, progress: Math.min(q.progress + 1, q.target), target: q.target } : { id };
+  }
+};
+const Q_GLYPH = {
+  rook: '\u265C\uFE0E', knight: '\u265E\uFE0E', gem: '\u25C6\uFE0E',
+  queen: '\u265B\uFE0E', pawn: '\u265F\uFE0E'
+};
+
+const Q_COLORS = { pawn: '#9aa4b2', knight: '#38e8ff', rook: '#8b5cf6', queen: '#ffc93c', gem: '#ff5470' };
+
+const box = document.getElementById('quests');
+const lvlEl = document.getElementById('lvl');
+const xpTxt = document.getElementById('xp-txt');
+const xpLeft = document.getElementById('xp-left');
+const xpFill = document.getElementById('xp-fill');
+const progBtn = document.getElementById('prog');
+const onResult = out => console.log('quest result:', out);
+
+(async () => {
+  const M = await ServerAPI.getQuests();
+  const QUESTS = M.quests;
+  const XP_CUR = M.xp;
+
+  function esc(k) {
+    return '&#' + Q_GLYPH[k].codePointAt(0).toString(10) + ';&#xFE0E;';
+  }
+
+  function renderQuests() {
+    box.innerHTML = QUESTS.map(q => {
+      const done = q.progress >= q.target;
+      const claimed = !!q.claimed;
+      const pct = Math.min(100, Math.round(q.progress / q.target * 100));
+      return `<div class="q" data-id="${q.id}" style="--c:${Q_COLORS[q.glyph]}">
+        <span class="glyph">${esc(q.glyph)}</span>
+        <span class="body">
+          <h4>${q.name}</h4>
+          <span class="sub">${q.sub} · ${Math.min(q.progress, q.target)}/${q.target}</span>
+          <div class="bar"><div class="fill" style="width:${pct}%"></div></div>
+        </span>
+        <span class="reward">+${q.reward} ◈<br>+${q.xp} xp</span>
+        <button class="btn ${claimed ? 'done' : done ? 'ready' : 'locked'}">${claimed ? 'Забрано' : done ? 'Забрать' : '&nbsp;&nbsp;...'}</button>
+        <span class="flash"></span>
+      </div>`;
+    }).join('');
+  }
+
+  function renderXP() {
+    const pct = Math.min(100, Math.round(XP_CUR.xp / XP_CUR.need * 100));
+    lvlEl.textContent = XP_CUR.level;
+    xpTxt.textContent = `${XP_CUR.xp.toLocaleString('ru-RU')} / ${XP_CUR.need.toLocaleString('ru-RU')} XP`;
+    xpLeft.textContent = `до ${XP_CUR.level + 1} ур. — ${(XP_CUR.need - XP_CUR.xp).toLocaleString('ru-RU')}`;
+    xpFill.style.width = pct + '%';
+  }
+
+  box.addEventListener('click', async e => {
+    const b = e.target.closest('.btn');
+    if (!b) return;
+    const q = QUESTS.find(x => x.id === b.closest('.q').dataset.id);
+    if (!q || b.classList.contains('locked') || b.classList.contains('done')) return;
+    await ServerAPI.claim(q.id).then(qc => {
+      q.claimed = true;
+      if (qc.xpAfter) Object.assign(XP_CUR, qc.xpAfter);
+    });
+    b.closest('.q').classList.add('dying');
+    renderQuests();
+    renderXP();
+    onResult({ kind: 'claim', id: q.id, reward: q.reward, xp: q.xp });
+  });
+
+  progBtn.addEventListener('click', async () => {
+    for (const q of QUESTS) {
+      if (!q.claimed && q.progress < q.target) {
+        const r = await ServerAPI.tickProgress(q.id);
+        q.progress = r.progress;
+      }
+    }
+    renderQuests();
+    onResult({ kind: 'progress', touched: QUESTS.filter(q => q.progress >= q.target && !q.claimed).length });
+  });
+
+  renderQuests();
+  renderXP();
+})();
+</script>
+</body>
+</html>

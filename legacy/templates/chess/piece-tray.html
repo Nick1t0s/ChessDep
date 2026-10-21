@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 27 — док фигур в матче + ставка</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.match{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(760px,100%);text-align:center}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:16px}
+
+.board{display:grid;grid-template-columns:repeat(8,1fr);gap:0;max-width:520px;margin:0 auto 4px;border:2px solid #323a55;border-radius:10px;overflow:hidden}
+.sq{position:relative;aspect-ratio:1;display:grid;place-items:center;font-size:clamp(18px,4.6vw,30px);line-height:1;cursor:pointer;transition:box-shadow .12s}
+.sq.light{background:#454f77}
+.sq.dark{background:#262e4d}
+.sq .glyph{filter:drop-shadow(0 2px 5px rgba(0,0,0,.5));color:#f4f6ff}
+.sq.enemy .glyph{color:#ff5470}
+.sq.dim{filter:brightness(.55)}
+.sq.aim{box-shadow:inset 0 0 0 3px #ffc93c}
+.sq .dots{position:absolute;inset:0;display:grid;place-items:center}
+.sq .dots i{width:26%;height:26%;border-radius:50%;background:rgba(255,201,60,.4)}
+
+.tray{max-width:560px;margin:14px auto 0;background:#0d1019;border:1px solid #242b3d;border-radius:14px;padding:12px}
+.tray-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.tray-head h3{font-size:13px;color:#8a93ab;letter-spacing:.5px;text-transform:uppercase}
+.tray-head .valsum{font-family:ui-monospace,monospace;font-size:12px;color:#ffc93c}
+.tray-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.tray-row::-webkit-scrollbar{display:none}
+.pc{--c:#9aa4b2;position:relative;flex:0 0 auto;width:74px;padding:10px 4px 8px;border-radius:12px;border:1px solid #242b3d;background:#161b29;text-align:center;cursor:pointer;transition:.15s}
+.pc .glyph{font-size:34px;line-height:1;color:var(--c);filter:drop-shadow(0 0 10px color-mix(in srgb,var(--c) 45%,transparent))}
+.pc b{display:block;font-family:ui-monospace,monospace;font-size:12.5px;color:#ffc93c;margin-top:3px}
+.pc small{color:#565f79;font-size:9.5px}
+.pc.sel{border-color:var(--c);background:color-mix(in srgb,var(--c) 10%,#161b29);box-shadow:0 0 18px color-mix(in srgb,var(--c) 16%,transparent);transform:translateY(-3px)}
+.pc .cnt{position:absolute;top:6px;right:6px;font-family:ui-monospace,monospace;font-size:10px;color:#e8ecf4;background:rgba(255,255,255,.07);padding:1px 6px;border-radius:999px}
+
+.aim-panel{max-width:560px;margin:12px auto 0;display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #242b3d;border-radius:14px;background:#10141f;flex-wrap:wrap}
+.aim-panel .readout{font-family:ui-monospace,monospace;font-size:12.5px;color:#8a93ab}
+.aim-panel .readout b{color:#ffc93c}
+.commit{margin-left:auto;background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:12px 22px;border-radius:12px;border:0;cursor:pointer;font-family:inherit;min-height:44px}
+.commit:disabled{opacity:.35;cursor:not-allowed}
+#result{font-family:ui-monospace,monospace;font-size:14px;min-height:22px;color:#7dffb0}
+#result.lose{color:#ff5470}
+</style>
+</head>
+<body>
+
+<div class="match">
+  <h1>Шаблон 27 — док фигур и ставка</h1>
+  <p class="sub">Выбираешь фигуру из дока (ценности, остатки и шансы — payload getDock), жмякаешь пустую клетку — фигура ставится. Вердикт апгрейда решает сервер (rollStake), фронт только показывает.</p>
+
+  <div class="board" id="board"></div>
+
+  <div class="tray">
+    <div class="tray-head"><h3>Мой док</h3><span class="valsum" id="valsum"></span></div>
+    <div class="tray-row" id="tray"></div>
+    <div class="aim-panel">
+      <span class="readout">цель апгрейда: <b id="aim-txt">ферзь · 27.6%</b></span>
+      <button class="commit" id="commit">Ставка сделана</button>
+    </div>
+  </div>
+  <div id="result"></div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getDock() {
+    return {
+      values: {
+        pawn:   { name: 'Пешка', glyph: '\u265F\uFE0E', val: 1 },
+        knight: { name: 'Конь',  glyph: '\u265E\uFE0E', val: 3 },
+        bishop: { name: 'Слон',  glyph: '\u265D\uFE0E', val: 3 },
+        rook:   { name: 'Ладья', glyph: '\u265C\uFE0E', val: 5 },
+        queen:  { name: 'Ферзь', glyph: '\u265B\uFE0E', val: 9 }
+      },
+      dock: { pawn: 4, knight: 2, bishop: 1, rook: 1 },
+      target: 'queen',
+      chances: { pawn: '92%', knight: '30.7%', bishop: '30.7%', rook: '55.2%' }
+    };
+  },
+  async rollStake(pieceKey) {
+    return { piece: pieceKey, target: 'queen', win: Math.random() < 0.276 };
+  }
+};
+
+const onPlace = (cell, piece) => console.log('placed:', cell, piece);
+const onCommit = state => console.log('commit:', state);
+
+(async () => {
+  const M = await ServerAPI.getDock();
+  const boardEl = document.getElementById('board');
+  const trayEl = document.getElementById('tray');
+  const aimTxt = document.getElementById('aim-txt');
+  const commitBtn = document.getElementById('commit');
+  const valsum = document.getElementById('valsum');
+  const result = document.getElementById('result');
+
+  let selected = 'pawn';
+  const placed = {};
+
+  function renderTray() {
+    trayEl.innerHTML = Object.keys(M.dock).map(k => {
+      const cnt = placed[k] ? M.dock[k] - placed[k] : M.dock[k];
+      return `<div class="pc${k === selected ? ' sel' : ''}" data-k="${k}" style="--c:${{pawn:'#9aa4b2',knight:'#38e8ff',bishop:'#38e8ff',rook:'#8b5cf6'}[k]}">
+        <span class="glyph">${M.values[k].glyph}</span><b>${M.values[k].val} ◈</b><small>${M.values[k].name}</small>
+        <span class="cnt">×${cnt}</span></div>`;
+    }).join('');
+    const total = Object.keys(M.dock).reduce((acc, k) => acc + M.dock[k] * M.values[k].val, 0);
+    valsum.textContent = 'в доке: ' + total + ' ◈';
+  }
+
+  function renderBoard() {
+    const FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
+    const cells = [];
+    FEN.split('/').forEach(row => {
+      for (const ch of row) {
+        if (/[1-8]/.test(ch)) { for (let n = 0; n < +ch; n++) cells.push('.'); }
+        else cells.push(ch);
+      }
+    });
+    boardEl.innerHTML = cells.map((code, idx) => {
+      const r = Math.floor(idx / 8), c = idx % 8;
+      const light = (r + c) % 2 === 0;
+      const enemy = code !== '.' && code === code.toLowerCase();
+      return `<div class="sq ${light ? 'light' : 'dark'}${enemy ? ' enemy' : ''}" data-i="${idx}">${code === '.' ? '' : `<span class="glyph">${PIECE[code]}</span>`}</div>`;
+    }).join('');
+  }
+
+  const PIECE = {
+    r: '\u2656\uFE0E', n: '\u2658\uFE0E', b: '\u2657\uFE0E', q: '\u2655\uFE0E', k: '\u2654\uFE0E', p: '\u2659\uFE0E',
+    R: '\u265C\uFE0E', N: '\u265E\uFE0E', B: '\u265D\uFE0E', Q: '\u265B\uFE0E', K: '\u265A\uFE0E', P: '\u265F\uFE0E'
+  };
+
+  const aimText = k => `${M.values[M.target].name} · ${M.chances[k] || '—'}`;
+
+  renderBoard();
+  renderTray();
+  aimTxt.textContent = aimText(selected);
+
+  boardEl.addEventListener('mouseover', e => {
+    const sq = e.target.closest('.sq');
+    if (!sq || !selected || sq.querySelector('.glyph')) return;
+    sq.classList.add('aim');
+  });
+  boardEl.addEventListener('mouseout', e => {
+    const sq = e.target.closest('.sq');
+    if (sq) sq.classList.remove('aim');
+  });
+
+  boardEl.addEventListener('click', e => {
+    const sq = e.target.closest('.sq');
+    if (!sq || sq.querySelector('.glyph') || !selected) return;
+    const idx = parseInt(sq.dataset.i, 10);
+    sq.innerHTML = `<span class="glyph">${M.values[selected].glyph}</span>`;
+    placed[selected] = (placed[selected] || 0) + 1;
+    if ((M.dock[selected] || 0) - (placed[selected] || 0) <= 0) {
+      selected = Object.keys(M.dock).find(k => (M.dock[k] || 0) - (placed[k] || 0) > 0) || null;
+    }
+    renderTray();
+    onPlace(idx, selected || 'empty');
+  });
+
+  trayEl.addEventListener('click', e => {
+    const pc = e.target.closest('.pc');
+    if (!pc) return;
+    const k = pc.dataset.k;
+    if ((M.dock[k] || 0) - (placed[k] || 0) <= 0) return;
+    selected = k;
+    renderTray();
+    if (selected) aimTxt.textContent = aimText(selected);
+  });
+
+  commitBtn.addEventListener('click', async () => {
+    if (!selected) return;
+    commitBtn.disabled = true;
+    result.className = '';
+    const r = await ServerAPI.rollStake(selected);
+    result.textContent = r.win
+      ? `АПГРЕЙД ЗАШЁЛ: ${M.values[r.piece].name} превращается в ${M.values[r.target].name}`
+      : `Мимо: фигура отправлена дома`;
+    result.className = r.win ? '' : 'lose';
+    onCommit(r);
+    setTimeout(() => { commitBtn.disabled = false; }, 1400);
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChessDep — Топ игроков</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/leaderboard.css">
+</head>
+<body data-auth="optional">
+
+<nav class="topbar">
+  <a class="logo" href="index.html"><span class="logo-glyph">&#9822;&#xFE0E;</span>Chess<span class="logo-dot">Dep</span></a>
+  <div class="nav-links">
+    <a href="index.html">Главная</a>
+    <a href="upgrade.html">Апгрейдер</a>
+    <a href="case.html">Кейсы</a>
+    <a href="skins.html">Скины</a>
+    <a href="skin-case.html">Скин-кейс</a>
+    <a href="slots.html">Слоты</a>
+    <a href="board.html">Доска</a>
+    <a href="inventory.html">Инвентарь</a>
+    <a href="leaderboard.html" class="active">Топ</a>
+    <a href="admin.html">Админка</a>
+  </div>
+  <div class="nav-right" id="nav-right"></div>
+</nav>
+
+<main class="container">
+
+  <div class="page-head">
+    <h1>Топ игроков <span>/ склад + баланс</span></h1>
+    <p>Сортировка по суммарному состоянию: ценность склада фигур плюс баланс ◈.</p>
+  </div>
+
+  <div class="stats lb-stats">
+    <div class="stat"><b id="lb-users">0</b><span>игроков в зачёте</span></div>
+    <div class="stat"><b id="lb-top">0</b><span>◈ у лидера</span></div>
+    <div class="stat"><b id="lb-mine">0</b><span>◈ у тебя</span></div>
+  </div>
+
+  <section class="panel">
+    <div class="table-tools">
+      <input id="lb-search" placeholder="Найди себя по логину…">
+    </div>
+    <div class="lb-table-wrap">
+      <table class="table lb-table">
+        <thead>
+          <tr>
+            <th>Место</th>
+            <th>Игрок</th>
+            <th>Фигур</th>
+            <th>Склад</th>
+            <th>Баланс</th>
+            <th>Всего ◈</th>
+          </tr>
+        </thead>
+        <tbody id="lb-body"></tbody>
+      </table>
+    </div>
+    <p class="lb-note">Демо: рейтинг считается по локальным аккаунтам этого браузера.</p>
+  </section>
+
+  <footer class="footer">
+    <span>ChessDep · шаблоны фронтенда v0.3 · демо, без реальных ставок</span>
+  </footer>
+
+</main>
+
+<div class="toasts" id="toasts"></div>
+
+<script src="js/common.js"></script>
+<script src="js/leaderboard.js"></script>
+</body>
+</html>

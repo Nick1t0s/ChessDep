@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 23 — монетка 50/50</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:24px;width:min(460px,100%);text-align:center}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:18px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.picker{display:flex;gap:10px;justify-content:center;margin-bottom:18px}
+.side-btn{--c:#f4f6ff;width:120px;padding:16px 0;border-radius:14px;border:1px solid #242b3d;background:#12151f;font-weight:800;font-size:17px;color:var(--c)}
+.side-btn .sub{display:block;font-size:10.5px;color:#565f79;font-family:ui-monospace,monospace;font-weight:600;margin-top:3px}
+.side-btn.sel{border-color:var(--c);background:color-mix(in srgb,var(--c) 10%,#12151f);box-shadow:0 0 20px color-mix(in srgb,var(--c) 14%,transparent)}
+
+.coin-zone{height:170px;display:grid;place-items:center;perspective:700px;margin-bottom:14px}
+.coin{position:relative;width:120px;height:120px;transform-style:preserve-3d;transform:rotateY(-24deg)}
+.coin-face{position:absolute;inset:0;border-radius:50%;display:grid;place-items:center;font-size:52px;backface-visibility:hidden;border:6px solid}
+.coin-head{transform:rotateY(0deg);background:linear-gradient(135deg,#ffd76a,#eaa11c);border-color:#b9860f;color:#231703}
+.coin-tail{transform:rotateY(180deg);background:linear-gradient(135deg,#8b5cf6,#6d3df0);border-color:#4d2ba8;color:#fff}
+.coin-spin{animation:flip 2.1s cubic-bezier(.16,.9,.28,1.02) forwards}
+@keyframes flip{
+  0%{transform:rotateY(-24deg) scale(1)}
+  60%{transform:rotateY(calc(-24deg + var(--turns) * 180deg)) scale(1.18)}
+  100%{transform:rotateY(calc(-24deg + var(--turns) * 180deg)) scale(1)}
+}
+.hist{display:flex;gap:6px;justify-content:center;margin:4px 0 14px;flex-wrap:wrap}
+.hcell{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:16px;border:1px solid #242b3d;background:#12151f}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:13px 30px;border-radius:12px}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+#result{font-family:ui-monospace,monospace;font-size:15px;min-height:24px;color:#ffc93c}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 23 — монетка</h1>
+  <p class="sub">Честный 50/50 с CSS 3D-флипом. Выплата ×1.92 (edge 4%). Лейблы сторон сидят в конфиге.</p>
+
+  <div class="picker">
+    <button class="side-btn sel" data-side="head" style="--c:#f4f6ff">Пешка<small>выплата ×1.92</small></button>
+    <button class="side-btn" data-side="tail" style="--c:#ff5470">Конь<small>×1.92</small></button>
+  </div>
+
+  <div class="coin-zone">
+    <div class="coin" id="coin">
+      <div class="coin-face coin-head">♟&#xFE0E;</div>
+      <div class="coin-face coin-tail">♞&#xFE0E;</div>
+    </div>
+  </div>
+
+  <div class="hist" id="hist"></div>
+  <button class="btn" id="flip">Ставка 25 ◈</button>
+  <div id="result"></div>
+</div>
+
+<script>
+const ServerAPI = {
+  async flip(pickedSide) {
+    const out = Math.random() < .5 ? 'head' : 'tail';
+    const win = pickedSide === out;
+    return { out, win, text: win ? '+23 ◈' : null };
+  }
+};
+const HEAD_LABEL = 'Пешка', TAIL_LABEL = 'Конь';
+
+const coin = document.getElementById('coin');
+const btn = document.getElementById('flip');
+const result = document.getElementById('result');
+const hist = document.getElementById('hist');
+let side = 'head', spinning = false, turns = 0;
+const onResult = out => console.log('coin result:', out);
+
+document.querySelectorAll('.side-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    if (spinning) return;
+    side = b.dataset.side;
+    document.querySelectorAll('.side-btn').forEach(x => x.classList.toggle('sel', x === b));
+  });
+});
+
+btn.addEventListener('click', async () => {
+  if (spinning) return;
+  spinning = true;
+  btn.disabled = true;
+  result.textContent = '';
+
+  const r = await ServerAPI.flip(side);
+  const out = r.out;
+
+  turns += Math.round(Math.random() * 4 + 4);
+  if ((turns % 2) !== (out === 'head' ? 0 : 1)) turns += 1;
+  coin.style.setProperty('--turns', turns);
+  coin.classList.remove('coin-spin');
+  void coin.offsetWidth;
+  coin.classList.add('coin-spin');
+
+  setTimeout(() => {
+    const d = document.createElement('span');
+    d.className = 'hcell';
+    d.innerHTML = out === 'head'
+      ? '<span style="color:#ffd76a">&#9823;&#xFE0E;</span>'
+      : '<span style="color:#ff5470">&#9822;&#xFE0E;</span>';
+    hist.prepend(d);
+    while (hist.children.length > 10) hist.lastElementChild.remove();
+
+    result.textContent = r.win
+      ? `${out === 'head' ? HEAD_LABEL : TAIL_LABEL}! ${r.text}`
+      : `Выпал(а) ${out === 'head' ? HEAD_LABEL : TAIL_LABEL}. Ставка сгорела`;
+    onResult(r);
+    spinning = false;
+    btn.disabled = false;
+  }, 2150);
+});
+</script>
+</body>
+</html>

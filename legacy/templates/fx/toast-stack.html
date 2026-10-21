@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 14 — стек тостов</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:24px;width:min(560px,100%);text-align:center}
+h1{font-size:20px;margin-bottom:6px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:20px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.trigger{padding:11px 18px;border-radius:12px;border:1px solid #242b3d;font-size:13px;font-weight:700;margin:0 4px 8px}
+
+.toasts{position:fixed;top:18px;right:18px;z-index:80;display:flex;flex-direction:column;gap:10px;width:min(350px,calc(100vw - 36px))}
+.toast{
+  --c:#8a93ab;position:relative;display:flex;align-items:center;gap:12px;
+  padding:13px 14px;border-radius:13px;font-size:13.5px;font-weight:600;
+  background:#161b29;border:1px solid color-mix(in srgb,var(--c) 42%,#242b3d);
+  box-shadow:0 14px 34px rgba(0,0,0,.55),0 0 22px color-mix(in srgb,var(--c) 12%,transparent);
+  animation:tin .32s cubic-bezier(.2,1.2,.4,1);
+}
+.toast.out{animation:tout .3s ease-in forwards}
+@keyframes tin{from{opacity:0;transform:translateX(40px) scale(.92)}to{opacity:1;transform:none}}
+@keyframes tout{to{opacity:0;transform:translateX(50px) scale(.94)}}
+.toast::before{content:"";width:4px;align-self:stretch;border-radius:4px;background:var(--c);box-shadow:0 0 10px var(--c)}
+.toast .t-ic{font-size:22px;color:var(--c);flex:0 0 auto}
+.toast .t-body{flex:1;text-align:left}
+.toast .t-body small{display:block;color:#8a93ab;font-size:11.5px;font-weight:500;margin-top:2px}
+.toast .t-x{flex:0 0 auto;width:26px;height:26px;border-radius:8px;display:grid;place-items:center;color:#565f79;cursor:pointer;font-size:15px}
+.toast .t-x:hover{color:#e8ecf4;background:rgba(255,255,255,.05)}
+.toast.gold{--c:#ffc93c}.toast.win{--c:#7dffb0}.toast.err{--c:#ff5470}.toast.info{--c:#38e8ff}
+
+.progress{position:absolute;left:14px;right:14px;bottom:5px;height:2px;border-radius:2px;background:rgba(255,255,255,.07);overflow:hidden}
+.progress i{position:absolute;left:0;top:0;bottom:0;background:var(--c);border-radius:2px;animation:shrink linear forwards}
+@keyframes shrink{from{width:100%}to{width:0%}}
+
+.stress{margin-top:14px;color:#565f79;font-size:11.5px;font-family:ui-monospace,monospace}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 14 — стек тостов</h1>
+  <p class="sub">CD-like API: toast(text, opts). Типы success/gold/error/info, прогресс-бар, авто-лерп, лимит 5, клик закрывает.</p>
+
+  <button class="trigger gold" data-t="gold">Депозит зашёл (+500 ◈)</button>
+  <button class="trigger" data-t="win">Ферзь добавлен</button>
+  <button class="trigger" data-t="err">Недостаточно ◈</button>
+  <button class="trigger" data-t="info">Батч открытий начат</button>
+  <div class="stress">жмякай быстрее — стек сам чистит старые (LIMIT)</div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+const TYPES = {
+  gold: { ic: '\u25C6\uFE0E', ttl: 4200 },
+  win:  { ic: '\u265B\uFE0E', ttl: 3800 },
+  err:  { ic: '\u2620\uFE0E', ttl: 3000 },
+  info: { ic: '\u24D8\uFE0E', ttl: 3400 }
+};
+const DEFAULT_TYPE = 'info';
+const LIMIT = 5;
+const EXIT_MS = 300;
+
+const box = document.getElementById('toasts');
+
+function toast(text, opts = {}) {
+  const type = opts.type || DEFAULT_TYPE;
+  const ttl = opts.ttl || TYPES[type].ttl;
+  const sub = opts.sub || '';
+
+  while (box.children.length >= LIMIT) dismiss(box.firstElementChild);
+
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.innerHTML =
+    `<span class="t-ic">&#${TYPES[type].ic.codePointAt(0).toString(10)};&#xFE0E;</span>` +
+    `<span class="t-body">${text}${sub ? '<small>' + sub + '</small>' : ''}</span>` +
+    `<span class="t-x">✕</span>` +
+    `<span class="progress"><i style="animation-duration:${ttl}ms"></i></span>`;
+
+  el.querySelector('.t-x').addEventListener('click', () => dismiss(el));
+  box.appendChild(el);
+
+  const timer = setTimeout(() => dismiss(el), ttl);
+  el._timer = timer;
+  return el;
+}
+
+function dismiss(el) {
+  if (!el || el.classList.contains('out')) return;
+  clearTimeout(el._timer);
+  el.classList.add('out');
+  setTimeout(() => el.remove(), EXIT_MS);
+}
+
+document.querySelectorAll('[data-t]').forEach(b => {
+  b.addEventListener('click', () => {
+    const t = b.dataset.t;
+    if (t === 'gold') toast('Депозит зачислен', { type: 'gold', sub: '+500 ◈ · промокод применён' });
+    if (t === 'win') toast('«Ферзь» добавлен на склад', { type: 'win', sub: 'Кейс: Золотой' });
+    if (t === 'err') toast('Недостаточно ◈ на балансе', { type: 'err', sub: 'Пополни во вкладке Касса' });
+    if (t === 'info') toast('Батч из 4 кейсов крутится', { type: 'info', sub: 'Итог придёт без звона' });
+  });
+});
+</script>
+</body>
+</html>

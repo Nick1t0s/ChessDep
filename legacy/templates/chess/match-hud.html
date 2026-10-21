@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 29 — HUD матча (рука + шансы + лог)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;background:radial-gradient(1100px 500px at 15% -10%,rgba(139,92,246,.16),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:20px}
+.wrap{max-width:1120px;margin:0 auto}
+.topbar{display:flex;align-items:center;gap:16px;background:#131725;border:1px solid #242b3d;border-radius:14px;padding:12px 18px;margin-bottom:14px}
+.topbar h2{font-size:15px}
+.topbar .pill{padding:7px 12px;border-radius:10px;border:1px solid #242b3d;font-family:ui-monospace,monospace;font-size:12px;color:#8a93ab}
+.topbar .pill b{color:#ffc93c}
+.topbar .right{margin-left:auto;display:flex;gap:10px}
+
+.match-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px}
+.left{display:flex;flex-direction:column;gap:12px}
+.boardcard{background:#131725;border:1px solid #242b3d;border-radius:14px;padding:16px}
+.board{display:grid;grid-template-columns:repeat(8,1fr);aspect-ratio:1;border:2px solid #323a55;border-radius:10px;overflow:hidden}
+.sq{position:relative;display:grid;place-items:center;font-size:min(5.4vw,30px);cursor:pointer}
+.sq.light{background:#454f77}
+.sq.dark{background:#262e4d}
+.sq .glyph{color:#f4f6ff;filter:drop-shadow(0 2px 5px rgba(0,0,0,.5))}
+.sq .glyph.enemy{color:#ff5470}
+.sq.hint{box-shadow:inset 0 0 0 3px #ffc93c}
+.sq.last{box-shadow:inset 0 0 0 3px rgba(255,201,60,.3)}
+
+.dock{background:#131725;border:1px solid #242b3d;border-radius:14px;padding:12px}
+.dock-head{display:flex;justify-content:space-between;margin-bottom:10px;color:#8a93ab;font-size:12px}
+.tray-row{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
+.tray-row::-webkit-scrollbar{display:none}
+.pc{--c:#9aa4b2;flex:0 0 auto;min-width:66px;text-align:center;padding:9px 6px;border-radius:12px;border:1px solid #242b3d;background:#161b29;cursor:pointer;transition:.15s}
+.pc .glyph{font-size:30px;color:var(--c)}
+.pc b{display:block;font-family:ui-monospace,monospace;font-size:11.5px;color:#ffc93c}
+.pc.sel{border-color:var(--c);background:color-mix(in srgb,var(--c) 10%,#161b29)}
+.pc.cool{opacity:.4}
+.pc .cnt{position:absolute;margin:-46px 0 0 20px;font-family:ui-monospace,monospace;font-size:9.5px;color:#e8ecf4;background:rgba(255,255,255,.08);padding:0 5px;border-radius:999px}
+
+.side{display:flex;flex-direction:column;gap:12px}
+.card{background:#131725;border:1px solid #242b3d;border-radius:14px;padding:14px}
+.card h4{font-size:12px;color:#8a93ab;letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px}
+
+.up-card{position:relative}
+.up-sel{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.up-sel .glyph{font-size:38px;color:#38e8ff}
+.up-sel .meta{font-size:12px;color:#8a93ab}
+.up-sel .meta b{color:#e8ecf4}
+.up-target{text-align:center;border:1px dashed rgba(139,92,246,.4);border-radius:12px;padding:10px;background:rgba(139,92,246,.06)}
+.up-target .glyph{font-size:44px;color:#ffc93c}
+.up-target small{color:#8a93ab;font-size:11px}
+.up-bar{position:relative;height:14px;border-radius:8px;background:#1d2334;border:1px solid #242b3d;margin-top:12px;overflow:hidden}
+.up-fill{position:absolute;left:0;top:0;bottom:0;width:27.6%;background:linear-gradient(90deg,#8b5cf6,#c04cff);box-shadow:0 0 12px rgba(139,92,246,.7)}
+.up-num{display:flex;justify-content:space-between;font-family:ui-monospace,monospace;font-size:11px;color:#8a93ab;margin-top:6px}
+.up-num b{color:#ffc93c}
+.up-btns{display:flex;gap:8px;margin-top:12px}
+.gbtn{flex:1;padding:11px;border-radius:11px;font-weight:800;font-size:13px}
+.gbtn.go{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;min-height:44px}
+.gbtn.ghost{border:1px solid #2a3145;color:#8a93ab}
+
+.feed{display:flex;flex-direction:column;gap:8px;font-family:ui-monospace,monospace;font-size:11.5px;color:#8a93ab;max-height:220px;overflow:hidden auto}
+.feed .f-row{display:flex;gap:8px;align-items:baseline}
+.feed .f-row .mv{color:#ffc93c}
+.feed .f-row .who{color:#565f79}
+.feed .f-row.win{color:#7dffb0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <h2>Матч #42 · Никитос vs Гроссмейстер228</h2>
+    <span class="pill">ход: <b>твой</b></span>
+    <span class="pill">таймер: <b>02:41</b></span>
+    <div class="right">
+      <span class="pill">◈ баланс: <b>1 250</b></span>
+    </div>
+  </div>
+
+  <div class="match-grid">
+    <div class="left">
+      <div class="boardcard">
+        <div class="board" id="board"></div>
+      </div>
+      <div class="dock">
+        <div class="dock-head"><span>мой док · доступно для ставки</span><span id="dock-sum">в доке: —</span></div>
+        <div class="tray-row" id="tray"></div>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="card up-card">
+        <h4>Ставка с шансом</h4>
+        <div class="up-sel">
+          <span class="glyph">&#9822;&#xFE0E;</span>
+          <span class="meta"><b>Конь</b><br>выбран из дока · 3 ◈</span>
+        </div>
+        <div class="up-target">
+          <span class="glyph">&#9819;&#xFE0E;</span><br>
+          <small>Ферзь · 9 ◈</small>
+        </div>
+        <div class="up-bar"><div class="up-fill" id="up-fill"></div></div>
+        <div class="up-num"><span>шанс</span><b id="chance">—</b></div>
+        <div class="up-btns">
+          <button class="gbtn ghost">Сменить цель</button>
+          <button class="gbtn go">Ставка</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h4>Лента матча</h4>
+        <div class="feed" id="feed"></div>
+      </div>
+
+      <div class="card">
+        <h4>Статистика сессии</h4>
+        <div class="feed" id="stats"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getMatchState() {
+    return {
+      dock: [{ key: 'pawn', glyph: 'P', val: 1, cnt: 1 }, { key: 'knight', glyph: 'N', val: 3, cnt: 2 }, { key: 'bishop', glyph: 'B', val: 3, cnt: 1 }],
+      stake: { pickKey: 'knight', targetName: 'Ферзь', targetVal: 9, chanceText: '30.7%', fill: 30.7 },
+      feed: [
+        { who: 'Никитос', mv: 'c2-c4', note: '' },
+        { who: 'Гроссмейстер228', mv: 'e7-e5', note: '' },
+        { who: 'дом', mv: 'фокус: конь→ферзь 30.7%', win: true },
+        { who: 'Никитос', mv: 'b1-c3', note: 'ставка принята' },
+        { who: 'дом', mv: 'апгрейд: 55.2%', win: true }
+      ],
+      stats: { labels: ['апгрейдов сегодня', 'успешных', 'сожжено ◈'], values: ['4', '1', '-312'] }
+    };
+  }
+};
+const PIECE = {
+  r: '\u2656\uFE0E', n: '\u2658\uFE0E', b: '\u2657\uFE0E', q: '\u2655\uFE0E', k: '\u2654\uFE0E', p: '\u2659\uFE0E',
+  R: '\u265C\uFE0E', N: '\u265E\uFE0E', B: '\u265D\uFE0E', Q: '\u265B\uFE0E', K: '\u265A\uFE0E', P: '\u265F\uFE0E'
+};
+
+(async () => {
+  const M = await ServerAPI.getMatchState();
+
+  const boardEl = document.getElementById('board');
+  const trayEl = document.getElementById('tray');
+  const feedEl = document.getElementById('feed');
+  const dockSum = document.getElementById('dock-sum');
+  const statsEl = document.getElementById('stats');
+
+  const FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
+  const boat = [];
+  FEN.split('/').forEach(row => {
+    for (const ch of row) {
+      if (/[1-8]/.test(ch)) { for (let n = 0; n < +ch; n++) boat.push('.'); }
+      else boat.push(ch);
+    }
+  });
+  boardEl.innerHTML = boat.map((code, i) => {
+    const r = Math.floor(i / 8), c = i % 8;
+    const light = (r + c) % 2 === 0;
+    const enemy = code !== '.' && code === code.toLowerCase();
+    const hl = i === 12 || i === 20 ? ' hint' : '';
+    return `<div class="sq ${(light ? 'light' : 'dark')}${hl}">${code === '.' ? '' : `<span class="glyph${enemy ? ' enemy' : ''}">${PIECE[code]}</span>`}</div>`;
+  }).join('');
+
+  trayEl.innerHTML = M.dock.map((p, i) =>
+    `<div class="pc${p.key === M.stake.pickKey ? ' sel' : ''}${p.cnt === 0 ? ' cool' : ''}" style="--c:${{pawn:'#9aa4b2',knight:'#38e8ff',bishop:'#8b5cf6',rook:'#8b5cf6'}[p.key]}">
+      <span class="glyph">${PIECE[p.glyph]}</span><b>${p.val} ◈</b><span class="cnt">×${p.cnt}</span>
+    </div>`
+  ).join('');
+
+  dockSum.textContent = 'в доке: ' + M.dock.reduce((a, p) => a + p.val * p.cnt, 0) + ' ◈';
+
+  document.querySelector('.up-fill').style.width = M.stake.fill + '%';
+  document.getElementById('chance').textContent = M.stake.chanceText;
+  document.querySelector('.up-target small').textContent = `${M.stake.targetName} · ${M.stake.targetVal} ◈`;
+
+  feedEl.innerHTML = M.feed.map(f =>
+    `<div class="f-row${f.win ? ' win' : ''}"><span class="who">${f.who}</span><span class="mv">${f.mv}</span>${f.note ? `<span>${f.note}</span>` : ''}</div>`
+  ).join('');
+
+  statsEl.innerHTML = M.stats.labels.map((l, i) =>
+    `<div class="f-row"><span>${l}:</span><span class="${['mv', 'win', 'mv'][i]}">${M.stats.values[i]}</span></div>`
+  ).join('');
+
+  const onHudAction = (kind, data) => console.log('hud:', kind, data);
+  document.querySelectorAll('.gbtn').forEach(b => {
+    b.addEventListener('click', () => onHudAction(b.textContent.trim()));
+  });
+  boardEl.addEventListener('click', e => {
+    const sq = e.target.closest('.sq');
+    if (!sq) return;
+    document.querySelectorAll('.sq').forEach(x => x.classList.toggle('hint', x === sq));
+    onHudAction('cell-pick', { idx: [...boardEl.children].indexOf(sq) });
+  });
+  trayEl.addEventListener('click', e => {
+    const pc = e.target.closest('.pc');
+    if (!pc) return;
+    document.querySelectorAll('.pc').forEach(x => x.classList.toggle('sel', x === pc));
+    onHudAction('dock-pick', M.dock[[...document.querySelectorAll('.pc')].indexOf(pc)]);
+  });
+})();
+</script>
+</body>
+</html>

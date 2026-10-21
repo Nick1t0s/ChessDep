@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 33 — live-дропы (поток падений)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:26px}
+.wrap{max-width:1080px;margin:0 auto}
+.head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
+.head h1{font-size:21px}
+.head .live{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#7dffb0;font-weight:700}
+.head .live i{width:8px;height:8px;border-radius:50%;background:#7dffb0;box-shadow:0 0 10px #7dffb0;animation:blink 1.2s infinite}
+@keyframes blink{50%{opacity:.25}}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.speed{margin-left:auto;display:flex;gap:6px}
+.fchip{padding:6px 12px;border-radius:999px;border:1px solid #242b3d;color:#8a93ab;font-size:11.5px;font-weight:700}
+.fchip.on{color:#fff;border-color:#38e8ff;background:rgba(56,232,255,.13)}
+
+.river{display:flex;flex-direction:column;gap:8px}
+.drop{
+  --c:#9aa4b2;position:relative;display:flex;align-items:center;gap:12px;
+  padding:11px 14px;border-radius:13px;
+  border:1px solid color-mix(in srgb,var(--c) 30%,#1d2334);
+  background:linear-gradient(90deg,color-mix(in srgb,var(--c) 9%,#161b29),#131725 70%);
+  animation:dropin .5s cubic-bezier(.2,1.2,.4,1);
+}
+@keyframes dropin{from{opacity:0;transform:translateX(-30px) scale(.94)}}
+.drop .glyph{font-size:30px;color:var(--c);filter:drop-shadow(0 0 10px color-mix(in srgb,var(--c) 50%,transparent))}
+.drop .who{font-weight:700;font-size:13px}
+.drop .who small{display:block;color:#565f79;font-family:ui-monospace,monospace;font-size:10px;font-weight:500}
+.drop .sk{margin-left:auto;text-align:right}
+.drop .sk b{font-size:13px}
+.drop .sk small{display:block;font-family:ui-monospace,monospace;font-size:10.5px;color:var(--c)}
+.drop .case-tag{font-family:ui-monospace,monospace;font-size:10.5px;color:#565f79;border:1px dashed #2a3145;padding:2px 8px;border-radius:6px;align-self:center}
+
+.common{--c:#9aa4b2}.uncommon{--c:#38e8ff}.rare{--c:#8b5cf6}.epic{--c:#ffc93c}.legendary{--c:#ff7847}.mythic{--c:#ff5470}
+
+.pause-note{margin-top:14px;text-align:center;color:#565f79;font-size:11.5px}
+.pause-note b{color:#8a93ab;cursor:pointer;text-decoration:underline dotted}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>Шаблон 33 — live-дропы</h1>
+    <span class="live"><i></i>прямо сейчас</span>
+    <div class="speed" id="speed">
+      <button class="fchip on" data-ms="1200">норм</button>
+      <button class="fchip" data-ms="600">×2</button>
+      <button class="fchip" data-ms="0">пауза</button>
+    </div>
+  </div>
+
+  <div class="river" id="river"></div>
+  <div class="pause-note">старые дропы автоматически вычищаются (макс 12), скорость переключается сверху — источник: <b id="bougest">бэкенум</b></div>
+</div>
+
+<script>
+const ServerAPI = {
+  async pollDrop() {
+    const POOL = [
+      { name: 'Пешка-карбонка', glyph: '\u265F\uFE0E', rarity: 'common', from: 'Стартовый' },
+      { name: 'Мятно-стальной конь', glyph: '\u265E\uFE0E', rarity: 'uncommon', from: 'Стартовый' },
+      { name: 'Пурпурная рамка', glyph: '\u25C6\uFE0E', rarity: 'rare', from: 'Чёрный' },
+      { name: 'Синедь-ладья', glyph: '\u265C\uFE0E', rarity: 'rare', from: 'Золотой' },
+      { name: 'Золотоноша', glyph: '\u265B\uFE0E', rarity: 'epic', from: 'Золотой' },
+      { name: 'Обсидиановый король', glyph: '\u265A\uFE0E', rarity: 'mythic', from: 'Чёрный' }
+    ];
+    const NICKS = ['Никитос', 'Гроссмейстер228', 'МаминКрупье', 'Soket305', 'e4_white', 'Soket305'];
+    const w = { common: 30, uncommon: 26, rare: 18, epic: 9, legendary: 2, mythic: 1 };
+    const bag = POOL.flatMap(p => Array(w[p.rarity]).fill(p));
+    const item = bag[Math.floor(Math.random() * bag.length)];
+    const base = NICKS[Math.floor(Math.random() * NICKS.length)];
+    const nick = Math.random() < .4 ? base : base + Math.floor(Math.random() * 90);
+    return { nick, item };
+  }
+};
+const MAX_DROPS = 12;
+const DEFAULT_MS = 1200;
+const onDrop = out => console.log('live drop:', out);
+
+const river = document.getElementById('river');
+const bougest = document.getElementById('bougest');
+let timer = null, speed = DEFAULT_MS;
+
+async function push() {
+  const { nick, item } = await ServerAPI.pollDrop();
+  const d = document.createElement('div');
+  d.className = 'drop ' + item.rarity;
+  d.innerHTML =
+    `<span class="glyph">${item.glyph}</span>` +
+    `<span class="who">${nick}<small>${new Date().toLocaleTimeString('ru-RU')}</small></span>` +
+    `<span class="sk"><b>${item.name}</b><small>${item.rarity}</small></span>` +
+    `<span class="case-tag">кейс: ${item.from}</span>`;
+  river.prepend(d);
+  while (river.children.length > MAX_DROPS) river.lastElementChild.remove();
+  onDrop({ nick, item });
+}
+
+function loop() {
+  clearInterval(timer);
+  if (speed <= 0) return;
+  timer = setInterval(push, speed);
+  if (river.children.length < 4) for (let i = 0; i < 4; i++) push();
+}
+
+document.getElementById('speed').addEventListener('click', e => {
+  const b = e.target.closest('.fchip');
+  if (!b) return;
+  speed = parseInt(b.dataset.ms, 10);
+  document.querySelectorAll('.fchip').forEach(x => x.classList.toggle('on', x === b));
+  bougest.textContent = speed === 0 ? 'пауза' : `интервал ${speed}ms`;
+  loop();
+});
+
+bougest.textContent = 'источник: бэкенум';
+loop();
+</script>
+</body>
+</html>

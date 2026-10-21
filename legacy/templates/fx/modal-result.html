@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 13 — модалки победы / поражения / подтверждение</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:24px;width:min(560px,100%);text-align:center}
+h1{font-size:20px;margin-bottom:6px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:22px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.trigger{padding:12px 22px;border-radius:12px;border:1px solid #242b3d;font-weight:700;font-size:14px;margin:0 6px 10px}
+.trigger.gold{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;border:0}
+.trigger.green{color:#7dffb0;border-color:rgba(125,255,176,.4)}
+.trigger.red{color:#ff5470;border-color:rgba(255,84,112,.4)}
+
+.overlay{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(4,6,12,.72);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .25s}
+.overlay.open{opacity:1;pointer-events:auto}
+
+.modal{--accent:#ffc93c;width:min(430px,92vw);background:linear-gradient(180deg,#171c2e,#10141f);border:1px solid color-mix(in srgb,var(--accent) 45%,#242b3d);border-radius:18px;padding:26px 22px 22px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 40px color-mix(in srgb,var(--accent) 14%,transparent);transform:scale(.86) translateY(12px);transition:transform .28s cubic-bezier(.2,1.4,.4,1)}
+.overlay.open .modal{transform:scale(1) translateY(0)}
+.modal h2{font-size:22px;margin-bottom:4px}
+.modal .m-sub{color:#8a93ab;font-size:13px;margin-bottom:16px}
+.modal .m-glyph{font-size:64px;line-height:1;margin-bottom:8px;color:var(--accent);filter:drop-shadow(0 0 18px color-mix(in srgb,var(--accent) 60%,transparent));animation:pop .5s cubic-bezier(.2,1.6,.4,1)}
+@keyframes pop{0%{transform:scale(0) rotate(-25deg)}70%{transform:scale(1.25) rotate(6deg)}100%{transform:scale(1) rotate(0)}}
+.modal .m-glyph.lose{animation:shake .5s}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-9px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(4px)}}
+.m-card{--c:#ffc93c;display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;margin-bottom:16px;border:1px solid color-mix(in srgb,var(--c) 40%,transparent);background:color-mix(in srgb,var(--c) 10%,#161b29)}
+.m-card .glyph{font-size:26px;color:var(--c)}
+.m-card b{font-size:14px}
+.btnrow{display:flex;gap:10px}
+.mbtn{flex:1;padding:12px 18px;border-radius:12px;font-weight:800;font-size:14px}
+.mbtn.primary{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703}
+.mbtn.ghost{border:1px solid #2a3145;color:#8a93ab}
+.mbtn.danger{border:1px solid rgba(255,84,112,.5);color:#ff5470}
+.pulse-ring{position:absolute;inset:0;margin:auto;width:180px;height:180px;border-radius:50%;border:2px solid var(--accent);opacity:0;animation:ring 1.8s ease-out .2s 3;pointer-events:none}
+@keyframes ring{0%{opacity:.5;transform:scale(.4)}100%{opacity:0;transform:scale(1.5)}}
+.modal{position:relative;overflow:hidden}
+.common{--c:#9aa4b2}.uncommon{--c:#38e8ff}.rare{--c:#8b5cf6}.epic{--c:#ffc93c}.legendary{--c:#ff7847}.mythic{--c:#ff5470}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 13 — модалки результата</h1>
+  <p class="sub">Три модалки из одного .modal + .overlay: WIN, LOSE, CONFIRM. Управление через show()/hide() и data-атрибуты.</p>
+
+  <button class="trigger gold" data-modal="win">Победа (эпик)</button>
+  <button class="trigger red" data-modal="lose">Мимо</button>
+  <button class="trigger" data-modal="confirm">Подтверждение</button>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal"></div>
+</div>
+
+<script>
+const ICON = {
+  pawn: '\u265F\uFE0E', knight: '\u265E\uFE0E', bishop: '\u265D\uFE0E',
+  rook: '\u265C\uFE0E', queen: '\u265B\uFE0E', king: '\u265A\uFE0E',
+  gem: '\u25C6\uFE0E', skull: '\u2620\uFE0E'
+};
+const ESC = k => '&#' + (ICON[k] || k).codePointAt(0).toString(10) + ';&#xFE0E;';
+
+const overlay = document.getElementById('overlay');
+const modal = document.getElementById('modal');
+const onClose = () => console.log('modal closed');
+let open = false;
+
+const VIEWS = {
+  win: {
+    accent: '#8b5cf6',
+    html: `
+    <div class="pulse-ring"></div>
+    <div class="m-glyph">${ESC('queen')}</div>
+    <h2>ПОБЕДА!</h2>
+    <p class="m-sub">Кейс «Золотой» выдал джекпот</p>
+    <div class="m-card epic"><span class="glyph">&#9819;&#xFE0E;</span><b>Ферзь · 120 ◈</b></div>
+    <div class="btnrow">
+      <button class="mbtn ghost" data-close>Осталось в кейсе</button>
+      <button class="mbtn primary" data-close>Забрать</button>
+    </div>`
+  },
+  lose: {
+    accent: '#ff5470',
+    html: `
+    <div class="m-glyph lose" style="color:#ff5470">${ESC('skull')}</div>
+    <h2>Мимо</h2>
+    <p class="m-sub">Шанс 23% не зашёл. Ставка сгорела.</p>
+    <div class="btnrow">
+      <button class="mbtn ghost" data-close>Закрыть</button>
+      <button class="mbtn danger" data-close>Реванш (-30 ◈)</button>
+    </div>`
+  },
+  confirm: {
+    accent: '#7dffb0',
+    html: `
+    <div class="m-glyph" style="color:#7dffb0">${ESC('gem')}</div>
+    <h2>Забрать 250 ◈</h2>
+    <p class="m-sub">Обменять весь инвентарь (5 предметов) на баланс?</p>
+    <div class="btnrow">
+      <button class="mbtn ghost" data-close>Отмена</button>
+      <button class="mbtn primary" data-close data-action="sell-all">Обменять</button>
+    </div>`
+  }
+};
+
+function show(name) {
+  const v = VIEWS[name];
+  if (!v) return;
+  modal.innerHTML = v.html;
+  modal.style.setProperty('--accent', v.accent);
+  overlay.classList.add('open');
+  open = true;
+}
+function hide() {
+  overlay.classList.remove('open');
+  open = false;
+  onClose();
+}
+
+overlay.addEventListener('click', e => {
+  if (e.target === overlay || e.target.closest('[data-close]')) hide();
+  if (e.target.closest('[data-action="sell-all"]')) console.log('ACTION: sell-all');
+});
+document.addEventListener('keydown', e => { if (open && e.key === 'Escape') hide(); });
+document.querySelectorAll('[data-modal]').forEach(b => {
+  b.addEventListener('click', () => show(b.dataset.modal));
+});
+</script>
+</body>
+</html>

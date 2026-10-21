@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 35 — инвентарь скинов (мульти-выбор)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,sans-serif;padding:26px}
+.wrap{max-width:1100px;margin:0 auto}
+.head{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.head h1{font-size:21px}
+.head .cnt{color:#8a93ab;font-size:13px}
+.balance{margin-left:auto;font-family:ui-monospace,monospace;font-size:14px;color:#8a93ab}
+.balance b{color:#ffc93c}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+
+.filters{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.fchip{padding:8px 14px;border-radius:999px;border:1px solid #242b3d;color:#8a93ab;font-size:12.5px;font-weight:700}
+.fchip.on{color:#fff;border-color:#8b5cf6;background:rgba(139,92,246,.16)}
+.sort-row{display:flex;gap:8px;align-items:center;margin-left:auto}
+.sort-row select{padding:9px 12px;border-radius:10px;border:1px solid #242b3d;background:#0d1019;color:inherit;font-family:inherit;font-size:13px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.item{
+  --c:#9aa4b2;position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;
+  padding:18px 10px 12px;border-radius:14px;cursor:pointer;
+  border:1px solid color-mix(in srgb,var(--c) 30%,#1d2334);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--c) 7%,#161b29),#12151f);
+  transition:transform .16s,box-shadow .16s,outline-color .2s;
+}
+.item:hover{transform:translateY(-3px);box-shadow:0 10px 26px rgba(0,0,0,.45)}
+.item.sel{outline:2px solid #ffc93c;box-shadow:0 0 20px rgba(255,201,60,.16)}
+.item .glyph{font-size:42px;line-height:1;color:var(--c);filter:drop-shadow(0 0 11px color-mix(in srgb,var(--c) 55%,transparent))}
+.item .nm{font-size:12.5px;font-weight:700;text-align:center}
+.item .pr{font-family:ui-monospace,monospace;font-size:11.5px;color:#8a93ab}
+.item .eqtag{position:absolute;top:8px;left:8px;font-size:9.5px;font-weight:800;color:#7dffb0;border:1px solid rgba(125,255,176,.5);padding:2px 7px;border-radius:999px}
+.item .check{position:absolute;top:8px;right:8px;width:22px;height:22px;border-radius:7px;border:1.5px solid #3a4155;display:grid;place-items:center;font-size:12px;color:#231703}
+.item.sel .check{background:#ffc93c;border-color:#ffc93c}
+.rare{--c:#8b5cf6}.epic{--c:#ffc93c}.uncommon{--c:#38e8ff}.common{--c:#9aa4b2}.mythic{--c:#ff5470}.legendary{--c:#ff7847}
+
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;align-items:center;gap:10px;padding:12px max(16px,env(safe-area-inset-left)) calc(12px + env(safe-area-inset-bottom));background:rgba(19,23,37,.95);border-top:1px solid #242b3d;transform:translateY(110%);transition:transform .25s}
+.bar.on{transform:none}
+.bar .sel-cnt{font-family:ui-monospace,monospace;font-size:13px;color:#ffc93c}
+.bar .sum{color:#8a93ab;font-size:12.5px;margin-left:6px}
+.bar .actions{margin-left:auto;display:flex;gap:9px;flex-wrap:wrap}
+.bbtn{padding:11px 16px;border-radius:11px;font-size:12.5px;font-weight:800;min-height:44px}
+.bbtn.gold{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703}
+.bbtn.ghost{border:1px solid #2a3145;color:#8a93ab}
+.bbtn.danger{border:1px solid rgba(255,84,112,.5);color:#ff5470}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>Шаблон 35 — инвентарь скинов</h1>
+    <span class="cnt" id="cnt"></span>
+    <span class="balance">◈ <b id="balance">—</b></span>
+  </div>
+
+  <div class="filters">
+    <button class="fchip on" data-f="all">Всё (12)</button>
+    <button class="fchip" data-f="piece">Фигуры</button>
+    <button class="fchip" data-f="board">Доски</button>
+    <button class="fchip" data-f="sel">Выбранное</button>
+    <div class="sort-row">
+      <select id="sort">
+        <option>сначала редкие</option>
+        <option>сначала дорогие</option>
+        <option>по названию</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+</div>
+
+<div class="bar" id="bar">
+  <span class="sel-cnt" id="selcnt"></span>
+  <span class="sum" id="sum"></span>
+  <div class="actions">
+    <button class="bbtn ghost" id="a-tradeup">В trade-up</button>
+    <button class="bbtn ghost" id="a-gift">Дарить</button>
+    <button class="bbtn danger" id="a-sell">Продать</button>
+    <button class="bbtn gold" id="a-clear">Снять выбор</button>
+  </div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getInventory() {
+    return {
+      balance: 1250,
+      items: [
+        { id: 'i01', slot: 'piece', name: 'Пешка-карбонка', glyph: '\u265F\uFE0E', rarity: 'uncommon', price: 60,  equipped: true },
+        { id: 'i02', slot: 'piece', name: 'Мятно-стальной конь', glyph: '\u265E\uFE0E', rarity: 'rare', price: 130, equipped: false },
+        { id: 'i03', slot: 'piece', name: 'Синедь-ладья', glyph: '\u265C\uFE0E', rarity: 'rare', price: 125, equipped: false },
+        { id: 'i04', slot: 'piece', name: 'Золотоноша', glyph: '\u265B\uFE0E', rarity: 'epic', price: 240, equipped: false },
+        { id: 'i05', slot: 'board', name: 'Ретро-клетчатый', glyph: '\u25C6\uFE0E', rarity: 'common', price: 40, equipped: false },
+        { id: 'i06', slot: 'board', name: 'Мраморный каррьер', glyph: '\u2658\uFE0E', rarity: 'rare', price: 145, equipped: false },
+        { id: 'i07', slot: 'piece', name: 'Обсидиановый король', glyph: '\u265A\uFE0E', rarity: 'mythic', price: 900, equipped: false },
+        { id: 'i08', slot: 'piece', name: 'Стальной ферзь', glyph: '\u265B\uFE0E', rarity: 'uncommon', price: 80, equipped: false }
+      ]
+    };
+  }
+};
+
+const RORDER = { mythic: 0, legendary: 1, epic: 2, rare: 3, uncommon: 4, common: 5 };
+const onAction = (kind, items) => console.log('inv action:', kind, items);
+
+(async () => {
+  const M = await ServerAPI.getInventory();
+  const ITEMS = M.items;
+  document.getElementById('balance').textContent = M.balance.toLocaleString('ru-RU');
+
+const gridEl = document.getElementById('grid');
+const bar = document.getElementById('bar');
+const selcnt = document.getElementById('selcnt');
+const sumEl = document.getElementById('sum');
+const cntEl = document.getElementById('cnt');
+const sel = new Set();
+let filter = 'all';
+
+function render() {
+  const visible = ITEMS.filter(it => filter === 'all' ? true : filter === 'sel' ? sel.has(it.id) : it.slot === filter);
+  gridEl.innerHTML = visible.map(it =>
+    `<div class="item ${it.rarity}${sel.has(it.id) ? ' sel' : ''}" data-id="${it.id}">
+      ${it.equipped ? '<span class="eqtag">ЭКИП</span>' : ''}
+      <span class="check">${sel.has(it.id) ? '✓' : ''}</span>
+      <span class="glyph">${it.glyph}</span>
+      <span class="nm">${it.name}</span>
+      <span class="pr">${it.price} ◈</span>
+    </div>`
+  ).join('');
+  cntEl.textContent = `${ITEMS.length} скинов · фильтр: ${filter}`;
+
+  const n = sel.size;
+  bar.classList.toggle('on', n > 0);
+  selcnt.textContent = n ? `выбрано: ${n}` : '';
+  sumEl.textContent = n ? `≈ ${[...sel].reduce((acc, id) => acc + (ITEMS.find(x => x.id === id) || { price: 0 }).price, 0)} ◈` : '';
+}
+
+gridEl.addEventListener('click', e => {
+  const card = e.target.closest('.item');
+  if (!card) return;
+  const id = card.dataset.id;
+  sel.has(id) ? sel.delete(id) : sel.add(id);
+  render();
+});
+
+document.querySelectorAll('.fchip').forEach(b => {
+  b.addEventListener('click', () => {
+    filter = b.dataset.f;
+    document.querySelectorAll('.fchip').forEach(x => x.classList.toggle('on', x === b));
+    render();
+  });
+});
+
+document.getElementById('sort').addEventListener('change', e => {
+  const v = e.target.value;
+  const sorters = {
+    'сначала редкие': (a, b) => RORDER[a.rarity] - RORDER[b.rarity],
+    'сначала дорогие': (a, b) => b.price - a.price,
+    'по названию': (a, b) => a.name.localeCompare(b.name, 'ru')
+  };
+  ITEMS.sort(sorters[v] || (() => 0));
+  render();
+});
+
+document.getElementById('a-clear').addEventListener('click', () => { sel.clear(); render(); });
+document.getElementById('a-sell').addEventListener('click', () => onAction('sell', [...sel]));
+document.getElementById('a-gift').addEventListener('click', () => onAction('gift', [...sel]));
+document.getElementById('a-tradeup').addEventListener('click', () => onAction('tradeup', [...sel]));
+
+render();
+})();
+</script>
+</body>
+</html>

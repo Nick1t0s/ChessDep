@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 07 — слот-барабаны 3×1</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(620px,100%);text-align:center}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:20px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:13px 32px;border-radius:12px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.stage{display:flex;gap:var(--rgap,14px);justify-content:center;padding:var(--rpad,26px);background:#0a0d15;border:1px solid #242b3d;border-radius:14px;margin-bottom:18px;position:relative;overflow:hidden}
+.stage::after{content:"";position:absolute;left:0;right:0;top:50%;height:2px;transform:translateY(-50%);background:linear-gradient(90deg,transparent,rgba(255,201,60,.7),transparent);z-index:4;pointer-events:none}
+.reel{width:var(--rw,108px);height:var(--rh,130px);overflow:hidden;border-radius:12px;background:linear-gradient(180deg,#171c2c,#0d1019);border:1px solid #242b3d;box-shadow:inset 0 12px 26px rgba(0,0,0,.6),inset 0 -12px 26px rgba(0,0,0,.6)}
+.reel-strip{display:flex;flex-direction:column;will-change:transform}
+.reel-anim{transition:transform 3s cubic-bezier(.12,.72,.18,1.01)}
+.reel-cell{height:var(--rh,130px);flex:0 0 var(--rh,130px);display:grid;place-items:center}
+.reel-cell .glyph{--c:#9aa4b2;font-size:var(--rg,60px);line-height:1;color:var(--c);filter:drop-shadow(0 0 14px color-mix(in srgb,var(--c) 45%,transparent))}
+.reel-cell.hit .glyph{filter:drop-shadow(0 0 24px color-mix(in srgb,var(--c) 80%,transparent))}
+#result{font-family:ui-monospace,monospace;font-size:16px;min-height:24px;color:#ffc93c}
+.common{--c:#9aa4b2}.uncommon{--c:#38e8ff}.rare{--c:#8b5cf6}.epic{--c:#ffc93c}.legendary{--c:#ff7847}.mythic{--c:#ff5470}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 07 — слот-барабаны 3×1</h1>
+  <p class="sub">Три барабана со ступенчатой остановкой (0 / +350 / +700 мс). Комбинаторика в evaluate().</p>
+
+  <div class="stage">
+    <div class="reel"><div class="reel-strip" id="r0"></div></div>
+    <div class="reel"><div class="reel-strip" id="r1"></div></div>
+    <div class="reel"><div class="reel-strip" id="r2"></div></div>
+  </div>
+
+  <button class="btn" id="spin">Крутить барабаны</button>
+  <div id="result" style="margin-top:14px"></div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getSymbols() {
+    return [
+      { key: 'pawn',   glyph: '\u265F\uFE0E', name: 'Пешка',   rarity: 'common' },
+      { key: 'knight', glyph: '\u265E\uFE0E', name: 'Конь',    rarity: 'uncommon' },
+      { key: 'bishop', glyph: '\u265D\uFE0E', name: 'Слон',    rarity: 'uncommon' },
+      { key: 'rook',   glyph: '\u265C\uFE0E', name: 'Ладья',   rarity: 'rare' },
+      { key: 'queen',  glyph: '\u265B\uFE0E', name: 'Ферзь',   rarity: 'epic' },
+      { key: 'gem',    glyph: '\u25C6\uFE0E', name: 'Кристалл', rarity: 'mythic' }
+    ];
+  },
+  async spin() {
+    const SYMBOL_KEYS = ['pawn'];
+    const finals = Array.from({ length: 3 }, () => SYMBOL_KEYS[Math.floor(Math.random() * SYMBOL_KEYS.length)]);
+    const PRIZES = {
+      gem:    { text: '+1000 ◈ на баланс' },
+      queen:  { text: 'Ферзь на склад' },
+      rook:   { text: 'Ладья на склад' },
+      knight: { text: 'Конь на склад' },
+      bishop: { text: 'Слон на склад' },
+      pawn:   { text: 'Три пешки на склад' }
+    };
+    const [a, b, c] = finals;
+    let outcome;
+    if (a === b && b === c) {
+      outcome = { kind: 'triple', symbol: a, text: PRIZES[a].text };
+    } else if (a === b || b === c || a === c) {
+      outcome = { kind: 'pair', symbol: a === b ? a : c, text: '+60 ◈' };
+    } else {
+      outcome = { kind: 'none', text: 'Ставка сгорела' };
+    }
+    return { finals, outcome };
+  }
+};
+
+const MOBILE = matchMedia('(max-width:560px)').matches;
+
+const REEL = MOBILE
+  ? { w: 64, h: 82, g: 34, gap: 10, pad: 14 }
+  : { w: 108, h: 130, g: 60, gap: 14, pad: 26 };
+
+const bs = document.body.style;
+bs.setProperty('--rw', REEL.w + 'px');
+bs.setProperty('--rh', REEL.h + 'px');
+bs.setProperty('--rg', REEL.g + 'px');
+bs.setProperty('--rgap', REEL.gap + 'px');
+bs.setProperty('--rpad', REEL.pad + 'px');
+
+const ITEM_H = REEL.h;
+const STRIP_LEN = 30;
+const RESULT_IDX = 26;
+const DUR = 3000;
+const STEP_DELAY = 350;
+
+const reels = [0, 1, 2].map(i => document.getElementById('r' + i));
+const btn = document.getElementById('spin');
+const result = document.getElementById('result');
+let spinning = false, SYMBOLS = [], KEYMAP = {};
+const onResult = outcome => console.log('slot result:', outcome);
+
+(async () => {
+  SYMBOLS = await ServerAPI.getSymbols();
+  KEYMAP = Object.fromEntries(SYMBOLS.map(s => [s.key, s]));
+  const pickSymbol = () => SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+
+  function fillReel(strip, finalSym) {
+    strip.classList.remove('reel-anim');
+    strip.style.transform = 'translateY(0)';
+    strip.innerHTML = '';
+    for (let i = 0; i < STRIP_LEN; i++) {
+      const sym = i === RESULT_IDX ? finalSym : pickSymbol();
+      const c = document.createElement('div');
+      c.className = 'reel-cell';
+      c.innerHTML = `<span class="glyph r-${sym.rarity}">${sym.glyph}</span>`;
+      strip.appendChild(c);
+    }
+  }
+
+  function spinReel(strip, finalSym, delay) {
+    fillReel(strip, finalSym);
+    void strip.offsetHeight;
+    strip.classList.add('reel-anim');
+    strip.style.transform = `translateY(${-RESULT_IDX * ITEM_H}px)`;
+    return new Promise(res => setTimeout(res, delay + DUR + 60));
+  }
+
+  btn.addEventListener('click', async () => {
+    if (spinning) return;
+    spinning = true;
+    btn.disabled = true;
+    result.textContent = '';
+
+    const r = await ServerAPI.spin();
+    const finals = r.finals.map(k => KEYMAP[k]);
+
+    const stops = await Promise.all(reels.map((s, i) => spinReel(s, finals[i], i * STEP_DELAY)));
+
+    reels.forEach((_, i) => {
+      const cell = reels[i].children[RESULT_IDX];
+      if (cell) cell.classList.add('hit');
+    });
+
+    const outcome = r.outcome;
+    const a = finals[0];
+    result.textContent = outcome.kind === 'triple'
+      ? `ТРИ ${a.name.toUpperCase()}! ${outcome.text}`
+      : outcome.kind === 'pair' ? `Пара — ${outcome.text}` : `Мимо — ${outcome.text}`;
+    onResult(outcome);
+    spinning = false;
+    btn.disabled = false;
+  });
+})();
+</script>
+</body>
+</html>

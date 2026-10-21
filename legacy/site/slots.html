@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChessDep — Слоты</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/slots.css">
+</head>
+<body data-auth="required">
+
+<nav class="topbar">
+  <a class="logo" href="index.html"><span class="logo-glyph">&#9822;&#xFE0E;</span>Chess<span class="logo-dot">Dep</span></a>
+  <div class="nav-links">
+    <a href="index.html">Главная</a>
+    <a href="upgrade.html">Апгрейдер</a>
+    <a href="case.html">Кейсы</a>
+    <a href="skins.html">Скины</a>
+    <a href="skin-case.html">Скин-кейс</a>
+    <a href="slots.html" class="active">Слоты</a>
+    <a href="board.html">Доска</a>
+    <a href="inventory.html">Инвентарь</a>
+    <a href="leaderboard.html">Топ</a>
+    <a href="admin.html">Админка</a>
+  </div>
+  <div class="nav-right" id="nav-right"></div>
+</nav>
+
+<main class="container">
+
+  <div class="page-head">
+    <h1>Слоты <span>/ шахматный однорукий бандит</span></h1>
+    <p>Три барабана, шесть символов. Три кристалла — джекпот, три фигуры — фигура на склад, пара — немного ◈.</p>
+  </div>
+
+  <div class="slot-wrap">
+
+    <section class="panel">
+      <div class="slot-stage">
+        <div class="reel"><div class="reel-strip"></div></div>
+        <div class="reel"><div class="reel-strip"></div></div>
+        <div class="reel"><div class="reel-strip"></div></div>
+      </div>
+      <div class="slot-result" id="slot-result">
+        <span class="glyph r-common">&#9823;&#xFE0E;</span>
+        <div><b>Жми спин</b><p>Результат появится здесь.</p></div>
+      </div>
+      <div class="slot-actions">
+        <span class="slot-cost">Спин: <b><span id="slot-cost">50</span> ◈</b></span>
+        <button class="btn btn-gold slot-btn" id="btn-slot">Крутить барабаны</button>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="panel-title">Выплаты</div>
+      <div class="pt-row r-mythic">
+        <span class="glyphs"><span>&#9670;&#xFE0E;</span><span>&#9670;&#xFE0E;</span><span>&#9670;&#xFE0E;</span></span>
+        <span class="nm">Три кристалла</span><span class="pc">+1000 ◈</span>
+      </div>
+      <div class="pt-row r-epic">
+        <span class="glyphs"><span>&#9819;&#xFE0E;</span><span>&#9819;&#xFE0E;</span><span>&#9819;&#xFE0E;</span></span>
+        <span class="nm">Три ферзя</span><span class="pc">Ферзь</span>
+      </div>
+      <div class="pt-row" style="--c:#8b5cf6">
+        <span class="glyphs"><span>&#9820;&#xFE0E;</span><span>&#9820;&#xFE0E;</span><span>&#9820;&#xFE0E;</span></span>
+        <span class="nm">Три ладьи</span><span class="pc">Ладья</span>
+      </div>
+      <div class="pt-row" style="--c:#38e8ff">
+        <span class="glyphs"><span>&#9822;&#xFE0E;</span><span>&#9822;&#xFE0E;</span><span>&#9822;&#xFE0E;</span></span>
+        <span class="nm">Три коня</span><span class="pc">Конь</span>
+      </div>
+      <div class="pt-row" style="--c:#38e8ff">
+        <span class="glyphs"><span>&#9821;&#xFE0E;</span><span>&#9821;&#xFE0E;</span><span>&#9821;&#xFE0E;</span></span>
+        <span class="nm">Три слона</span><span class="pc">Слон</span>
+      </div>
+      <div class="pt-row" style="--c:#9aa4b2">
+        <span class="glyphs"><span>&#9823;&#xFE0E;</span><span>&#9823;&#xFE0E;</span><span>&#9823;&#xFE0E;</span></span>
+        <span class="nm">Три пешки</span><span class="pc">Пешка ×3</span>
+      </div>
+      <div class="pt-row" style="--c:#9aa4b2">
+        <span class="glyphs"><span>&#9823;&#xFE0E;</span><span>&#9823;&#xFE0E;</span><span style="color:var(--dim)">?</span></span>
+        <span class="nm">Любая пара</span><span class="pc">+60 ◈</span>
+      </div>
+      <div class="pt-row" style="--c:#565f75">
+        <span class="glyphs"><span>&#9823;&#xFE0E;</span><span>&#9821;&#xFE0E;</span><span>&#9822;&#xFE0E;</span></span>
+        <span class="nm">Ничего не совпало</span><span class="pc" style="color:var(--dim)">−стоимость</span>
+      </div>
+    </aside>
+
+  </div>
+
+  <footer class="footer">
+    <span>ChessDep · шаблоны фронтенда v0.3 · демо, без реальных ставок</span>
+  </footer>
+
+</main>
+
+<div class="toasts" id="toasts"></div>
+
+<script src="js/common.js"></script>
+<script src="js/slots.js"></script>
+</body>
+</html>

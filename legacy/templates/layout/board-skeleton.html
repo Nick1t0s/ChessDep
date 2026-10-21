@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 18 — скелет шахматной доски 8×8</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:24px;width:min(680px,100%)}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:18px}
+
+.board-zone{display:grid;grid-template-columns:26px minmax(0,1fr);grid-template-rows:minmax(0,1fr) 24px;gap:2px}
+.ranks8{display:flex;flex-direction:column}
+.ranks8 span{flex:1;display:grid;place-items:center;font-family:ui-monospace,monospace;font-size:11.5px;color:#565f79}
+.ranks8.r{right:10px;left:10px}
+.files{grid-column-start:2;display:grid;grid-template-columns:repeat(8,1fr)}
+.files span{display:grid;place-items:center;font-family:ui-monospace,monospace;font-size:11.5px;color:#565f79}
+
+.board{display:grid;grid-template-columns:repeat(8,1fr);aspect-ratio:1;border:2px solid #323a55;border-radius:8px;overflow:hidden}
+.sq{position:relative;display:grid;place-items:center;font-size:min(6.5vw,42px);line-height:1;transition:background .15s,box-shadow .15s;cursor:default}
+.sq.light{background:#454f77}
+.sq.dark{background:#262e4d}
+.sq .glyph{filter:drop-shadow(0 3px 7px rgba(0,0,0,.55))}
+.sq.white-p .glyph{color:#f4f6ff}
+.sq.black-p .glyph{color:#ff5470;filter:drop-shadow(0 0 9px rgba(255,84,112,.35))}
+.sq.sel{box-shadow:inset 0 0 0 3px #ffc93c}
+.sq.hint::after{content:"";width:22%;height:22%;border-radius:50%;background:rgba(255,201,60,.45);position:absolute}
+.sq.cap::after{content:"";position:absolute;inset:4%;border:3px solid rgba(255,201,60,.55);border-radius:8%}
+.sq.last{box-shadow:inset 0 0 0 3px rgba(255,201,60,.28)}
+.sq.check{background:radial-gradient(circle,rgba(255,84,112,.55),transparent 72%),#262e4d !important;background-blend-mode:normal}
+.eval{display:flex;justify-content:space-between;margin-top:16px;font-family:ui-monospace,monospace;font-size:12.5px;color:#8a93ab}
+.eval b{color:#ffc93c;font-weight:700}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 18 — скелет шахматной доски</h1>
+  <p class="sub">Статический рендер из START_FEN-подобного массива. Классы статусов: .sel/.hint/.cap/.last/.check — дергай из логики бэкенда.</p>
+
+  <div class="board-zone">
+    <div class="ranks8" id="ranks"></div>
+    <div class="board" id="board"></div>
+    <div class="files" id="files"></div>
+  </div>
+
+  <div class="eval">
+    <span>белые: <b id="stat-w">0 ✔</b></span>
+    <span id="move-log" style="flex:1;text-align:center">последний ход: e2-e4</span>
+    <span>чёрные: <b id="stat-b">0 ✔</b></span>
+  </div>
+</div>
+
+<script>
+const FILES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map(f => f.toLowerCase());
+const RANKS = [8, 7, 6, 5, 4, 3, 2, 1];
+
+const PIECE_GLYPHS = {
+  r: '\u2656\uFE0E', n: '\u2658\uFE0E', b: '\u2657\uFE0E', q: '\u2655\uFE0E',
+  k: '\u2654\uFE0E', p: '\u2659\uFE0E',
+  R: '\u265C\uFE0E', N: '\u265E\uFE0E', B: '\u265D\uFE0E', Q: '\u265B\uFE0E',
+  K: '\u265A\uFE0E', P: '\u265F\uFE0E',
+  u: '\u25C6\uFE0E'
+};
+
+const START_FEN_FIELD = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
+
+const board = document.getElementById('board');
+const ranksEl = document.getElementById('ranks');
+const filesEl = document.getElementById('files');
+
+function parseFEN(field) {
+  return field.split('/').flatMap(row => {
+    const out = [];
+    for (const ch of row) {
+      if (/[1-8]/.test(ch)) out.push(...Array.from({ length: +ch }, () => '.'));
+      else out.push(ch);
+    }
+    return out;
+  });
+}
+
+ranksEl.innerHTML = RANKS.map(r => `<span>${r}</span>`).join('');
+filesEl.innerHTML = FILES.map(f => `<span>${f}</span>`).join('');
+
+function renderBoard(cells, marks = {}) {
+  board.innerHTML = cells.map((code, idx) => {
+    const r = idx % 8, c = Math.floor(idx / 8);
+    const isLight = (r + c) % 2 === 0;
+    const extra = [];
+    const mark = marks[idx] || '';
+    if (mark.includes('s')) extra.push('sel');
+    if (mark.includes('h')) extra.push('hint');
+    if (mark.includes('c')) extra.push('cap');
+    if (mark.includes('l')) extra.push('last');
+    if (mark.includes('k')) extra.push('check');
+    if (code === '.') return `<div class="sq ${isLight ? 'light' : 'dark'} sq-${FILES[r]}${RANKS[7 - c]} ${extra.join(' ')}"></div>`;
+    const white = code === code.toUpperCase();
+    return `<div class="sq ${isLight ? 'light' : 'dark'} ${white ? 'white-p' : 'black-p'} sq-${FILES[r]}${RANKS[7 - c]} ${extra.join(' ')}"><span class="glyph">${PIECE_GLYPHS[code] || ''}</span></div>`;
+  }).join('');
+}
+
+const cells = parseFEN(START_FEN_FIELD);
+const demoMarks = {};
+demoMarks[52] = 's';
+[44, 35, 36].forEach(i => demoMarks[i] = 'h');
+demoMarks[3] = 'c';
+demoMarks[60] = 'l';
+demoMarks[4] = 'k';
+renderBoard(cells, demoMarks);
+
+document.getElementById('move-log').textContent = 'последний ход: e2-e4';
+</script>
+</body>
+</html>

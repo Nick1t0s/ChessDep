@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 34 — дарение скинов (две стороны)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(760px,100%)}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:16px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:11px 22px;border-radius:11px;font-size:13px;min-height:42px}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn.ghost{background:none;border:1px solid #2a3145;color:#8a93ab;font-weight:700}
+.switch{display:flex;gap:8px;margin-bottom:16px}
+.fchip{padding:9px 16px;border-radius:999px;border:1px solid #242b3d;color:#8a93ab;font-size:12.5px;font-weight:700}
+.fchip.on{color:#231703;background:linear-gradient(180deg,#ffd76a,#eaa11c);border-color:transparent}
+
+.send-flow{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:14px}
+.list{background:#0d1019;border:1px solid #242b3d;border-radius:14px;padding:12px;max-height:300px;overflow:auto}
+.fr{--c:#38e8ff;display:flex;align-items:center;gap:11px;padding:10px;border-radius:11px;cursor:pointer;transition:.14s}
+.fr .av{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;font-weight:800;background:linear-gradient(135deg,#6d3df0,#c04cff);color:#fff;font-size:14px}
+.fr b{font-size:13.5px}
+.fr small{display:block;color:#8a93ab;font-family:ui-monospace,monospace;font-size:10.5px}
+.fr.sel{background:color-mix(in srgb,var(--c) 9%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--c) 55%,transparent)}
+.search-row{display:flex;gap:8px;margin-bottom:10px}
+.search-row input{flex:1;padding:10px 13px;border-radius:10px;border:1px solid #242b3d;background:#161b29;color:inherit;font-family:inherit;font-size:13.5px}
+.search-row input:focus{outline:none;border-color:#38e8ff}
+
+.gift-card{--c:#ff7847;border:1px solid color-mix(in srgb,var(--c) 45%,transparent);border-radius:14px;padding:14px;background:linear-gradient(180deg,color-mix(in srgb,var(--c) 8%,#161b29),#12151f);text-align:center}
+.gift-card .glyph{font-size:52px;color:var(--c);filter:drop-shadow(0 0 16px color-mix(in srgb,var(--c) 55%,transparent))}
+.gift-card b{display:block;margin-top:6px}
+.gift-card small{color:#8a93ab;font-family:ui-monospace,monospace;font-size:11px}
+.note{margin-top:10px}
+.note textarea{width:100%;min-height:64px;padding:10px 12px;border-radius:10px;border:1px solid #242b3d;background:#0d1019;color:inherit;font-family:inherit;font-size:13px;resize:none}
+.note textarea:focus{outline:none;border-color:#ffc93c}
+.sendcol{display:flex;flex-direction:column;gap:10px}
+
+.recv{display:flex;flex-direction:column;align-items:center;gap:16px;padding:24px 0 10px}
+.parcel{--c:#ff7847;width:150px;height:150px;border-radius:18px;position:relative;display:grid;place-items:center;background:linear-gradient(180deg,color-mix(in srgb,var(--c) 16%,#161b29),#12151f);border:2px solid color-mix(in srgb,var(--c) 60%,transparent);font-size:56px;color:var(--c);cursor:pointer;transition:transform .3s cubic-bezier(.2,1.5,.4,1);filter:drop-shadow(0 14px 30px rgba(0,0,0,.5))}
+.parcel.shake:hover{animation:parshake .5s}
+@keyframes parshake{25%{transform:rotate(-6deg)}75%{transform:rotate(5deg)}}
+.parcel.open{animation:popopen .38s forwards}
+@keyframes popopen{40%{transform:scale(1.18)}100%{transform:scale(0)}}
+.recv .hint{color:#565f79;font-size:12px}
+.recv .who{font-size:13.5px;color:#8a93ab}
+.recv .who b{color:#e8ecf4}
+.unwrapped{display:none}
+.unwrapped.on{display:block;animation:up .5s cubic-bezier(.2,1.6,.4,1)}
+@keyframes up{from{transform:scale(.4);opacity:0}}
+.ribbon{position:absolute;top:0;left:50%;transform:translateX(-50%);width:16px;height:100%;background:rgba(255,255,255,.14)}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 34 — дарение скинов</h1>
+  <p class="sub">Одна вёрстка на оба сценария: отправка (друг + скин + записка) и получение (свёрток с распаковкой).</p>
+
+  <div class="switch">
+    <button class="fchip on" data-v="send">Отправить</button>
+    <button class="fchip" data-v="recv">Получить</button>
+  </div>
+
+  <div class="send-flow" id="vf-send">
+    <div>
+      <div class="search-row">
+        <input id="fq" placeholder="поиск друга по нику">
+      </div>
+      <div class="list" id="friends"></div>
+    </div>
+    <div class="sendcol">
+      <div class="gift-card" id="gcard"></div>
+      <div class="note"><textarea id="giftmsg" placeholder="«С днём свадьбы, лови ферзя»"></textarea></div>
+        <button class="btn" id="sendBtn" disabled>Отправить подарок</button>
+    </div>
+  </div>
+
+  <div class="recv" id="vf-recv" style="display:none">
+    <div class="who">от <b id="from-who">Soket305</b> · сегодня 14:37</div>
+    <div class="parcel" id="parcel"><span class="ribbon"></span>&#22275;&#xFE0E;</div>
+    <div class="hint" id="recv-hint">Вждми по свёртку — распаковка</div>
+    <div class="unwrapped" id="unwrapped">
+      <div class="gift-card">
+        <span class="glyph">&#9819;&#xFE0E;</span>
+        <b>Золотоноша</b>
+        <small>скин на ферзя · износ 0.03 (FN)</small>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="btn" id="acceptG">Принять на склад</button>
+        <button class="btn ghost" id="declineG">Отказник</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getGiftState() {
+    return {
+      friends: [
+        { nick: 'Soket305', seen: 'был 5 мин назад', glyph: '\u2658\uFE0E' },
+        { nick: 'Гроссмейстер228', seen: 'был час назад', glyph: '\u2658\uFE0E' },
+        { nick: 'МаминКрупье', seen: 'был вчера', glyph: '\u265F\uFE0E' },
+        { nick: 'e4_white', seen: 'в игре', glyph: '\u265A\uFE0E' },
+        { nick: 'Soket305', seen: 'задонатил 500 ◈', glyph: '\u265C\uFE0E' }
+      ],
+      skin: { name: 'Обсидиановый король', glyph: '\u265A\uFE0E', rarity: 'mythic', wear: 0.06 }
+    };
+  }
+};
+const onGift = out => console.log('gift:', out);
+
+(async () => {
+const M = await ServerAPI.getGiftState();
+const FRIENDS = M.friends;
+const GIFT_SKIN = M.skin;
+
+let picked = null;
+const view = v => {
+  document.getElementById('vf-send').style.display = (v === 'send' ? 'grid' : 'none');
+  document.getElementById('vf-recv').style.display = (v === 'recv' ? 'flex' : 'none');
+};
+document.querySelectorAll('.switch .fchip').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.switch .fchip').forEach(x => x.classList.toggle('on', x === b));
+    view(b.dataset.v);
+  });
+});
+
+const friendsEl = document.getElementById('friends');
+const fq = document.getElementById('fq');
+const sendBtn = document.getElementById('sendBtn');
+const gcard = document.getElementById('gcard');
+
+function renderFriends() {
+  const q = (fq.value || '').toLowerCase();
+  friendsEl.innerHTML = FRIENDS.filter(f => f.nick.toLowerCase().includes(q)).map((f, i) =>
+    `<div class="fr${picked == i ? ' sel' : ''}" data-i="${i}" style="--c:#38e8ff">
+      <span class="av">${f.nick[0].toUpperCase()}</span>
+      <span><b>${f.nick}</b><small>${f.seen}</small></span>
+    </div>`
+  ).join('');
+}
+
+gcard.innerHTML =
+  `<span class="glyph">${GIFT_SKIN.glyph}</span><b>${GIFT_SKIN.name}</b><small>${GIFT_SKIN.rarity} · износ ${GIFT_SKIN.wear.toFixed(2)}</small>`;
+
+renderFriends();
+
+fq.addEventListener('input', renderFriends);
+friendsEl.addEventListener('click', e => {
+  const fr = e.target.closest('.fr');
+  if (!fr) return;
+  picked = parseInt(fr.dataset.i, 10);
+  sendBtn.disabled = false;
+  renderFriends();
+});
+
+sendBtn.addEventListener('click', () => {
+  if (picked == null) return;
+  const msg = (document.getElementById('giftmsg') || {}).value || '';
+  onGift({ kind: 'sent', to: FRIENDS[picked].nick, skin: GIFT_SKIN, msg: msg.trim() });
+  document.getElementById('giftmsg').value = '';
+  picked = null;
+  sendBtn.disabled = true;
+  renderFriends();
+});
+
+const parcel = document.getElementById('parcel');
+parcel.addEventListener('click', () => {
+  parcel.classList.add('open');
+  document.getElementById('recv-hint').textContent = '';
+  setTimeout(() => {
+    parcel.style.opacity = '0';
+    document.getElementById('unwrapped').classList.add('on');
+    onGift({ kind: 'unwrapped', skin: GIFT_SKIN });
+  }, 400);
+});
+
+document.getElementById('acceptG').addEventListener('click', () => onGift({ kind: 'accepted', skin: GIFT_SKIN }));
+document.getElementById('declineG').addEventListener('click', () => onGift({ kind: 'declined', skin: GIFT_SKIN }));
+})();
+</script>
+</body>
+</html>

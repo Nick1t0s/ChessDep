@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChessDep — Кейсы</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/case.css">
+</head>
+<body data-auth="required">
+
+<nav class="topbar">
+  <a class="logo" href="index.html"><span class="logo-glyph">&#9822;&#xFE0E;</span>Chess<span class="logo-dot">Dep</span></a>
+  <div class="nav-links">
+    <a href="index.html">Главная</a>
+    <a href="upgrade.html">Апгрейдер</a>
+    <a href="case.html" class="active">Кейсы</a>
+    <a href="skins.html">Скины</a>
+    <a href="skin-case.html">Скин-кейс</a>
+    <a href="slots.html">Слоты</a>
+    <a href="board.html">Доска</a>
+    <a href="inventory.html">Инвентарь</a>
+    <a href="leaderboard.html">Топ</a>
+    <a href="admin.html">Админка</a>
+  </div>
+  <div class="nav-right" id="nav-right"></div>
+</nav>
+
+<main class="container">
+
+  <div class="page-head">
+    <h1>Кейсы <span>/ лента дропов</span></h1>
+    <p>Классическая лента в стиле открывания кейсов: крутится, тормозит и показывает дроп точно под маркером.</p>
+  </div>
+
+  <section class="panel case-open">
+    <div class="case-top">
+      <div class="case-art">&#9823;&#xFE0E;</div>
+      <div class="case-meta">
+        <h2>Стартовый кейс</h2>
+        <p>От пешки до короля. Все веса открыто лежат ниже — в таблице шансов. Скрытых условий нет.</p>
+        <span class="case-price">Цена: <span id="cost-label">200 ◈</span></span>
+      </div>
+      <div class="case-buy">
+        <button class="btn btn-gold" id="btn-open">Открыть · 200 ◈</button>
+      </div>
+    </div>
+
+    <div class="strip-wrap" id="strip-wrap">
+      <div class="marker"></div>
+      <div class="strip" id="strip"></div>
+    </div>
+
+    <div class="case-result" id="case-result"></div>
+  </section>
+
+  <div class="sec-title">Шансы кейса <span class="sub">веса взяты открыто</span></div>
+  <section class="panel">
+    <div class="chance-grid" id="chance-table"></div>
+  </section>
+
+  <div class="sec-title">Последние дропы</div>
+  <section class="panel">
+    <div class="recent" id="recent-list">
+      <div class="empty-note">Пока не открывал ни одного кейса в этой сессии.</div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <span>ChessDep · шаблоны фронтенда v0.2 · демо, без реальных ставок</span>
+  </footer>
+
+</main>
+
+<div class="toasts" id="toasts"></div>
+
+<script src="js/common.js"></script>
+<script src="js/case.js"></script>
+</body>
+</html>

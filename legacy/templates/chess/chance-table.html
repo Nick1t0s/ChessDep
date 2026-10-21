@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 26 — табличка ценностей и шансов апгрейда</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(760px,100%)}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:18px}
+
+.traffic{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.val-card{--c:#9aa4b2;flex:1;min-width:88px;padding:12px 6px;text-align:center;border:1px solid #242b3d;border-radius:12px;background:#161b29}
+.val-card .glyph{font-size:30px;color:var(--c);line-height:1}
+.val-card b{display:block;font-family:ui-monospace,monospace;color:#ffc93c;font-size:16px;margin-top:4px}
+.val-card small{color:#565f79;font-size:10.5px}
+
+.calc{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid #242b3d;border-radius:14px;background:#10141f;margin-bottom:18px;flex-wrap:wrap}
+.calc select{padding:10px 12px;border-radius:10px;border:1px solid #242b3d;background:#0d1019;color:inherit;font-family:inherit;font-size:14px}
+.calc .arrow{color:#565f79;font-size:18px;font-weight:800}
+.chance-out{margin-left:auto;text-align:right}
+.chance-out b{font-family:ui-monospace,monospace;font-size:30px;color:#ffc93c}
+.chance-out small{display:block;color:#8a93ab;font-size:11.5px}
+
+.matrix-wrap{overflow-x:auto;border:1px solid #242b3d;border-radius:14px;background:#0d1019}
+table{border-collapse:collapse;width:100%;min-width:560px}
+th,td{padding:10px 8px;text-align:center;font-family:ui-monospace,monospace;font-size:12.5px;border-bottom:1px solid #1d2334}
+th{color:#8a93ab;font-weight:700;background:rgba(255,255,255,.02)}
+td .g{font-size:20px;font-family:system-ui;color:#9aa4b2}
+td.c0{color:#565f79}
+td.hot{color:#7dffb0;font-weight:800}
+td.mid{color:#ffc93c}
+td.low{color:#ff5470}
+td:hover{background:rgba(139,92,246,.08);cursor:pointer}
+tr.sel-h td{background:rgba(139,92,246,.12)}
+
+.footer-note{color:#565f79;font-size:11.5px;margin-top:12px;line-height:1.6}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 26 — ценности и шансы</h1>
+  <p class="sub">База механики: ценности фигур и шансы всех переходов приходят с бэка одним payload'ом (getUpgradeMatrix). Фронт ничего не считает — только отрисовка и кликабельный справочник.</p>
+
+  <div class="traffic" id="vals"></div>
+
+  <div class="calc">
+    <span style="color:#8a93ab;font-size:12.5px">калькулятор:</span>
+    <select id="sel-in"></select>
+    <span class="arrow">→</span>
+    <select id="sel-out"></select>
+    <div class="chance-out"><b id="chance">—</b><small id="chance-sub">в → цель</small></div>
+  </div>
+
+  <div class="matrix-wrap">
+    <table>
+      <thead id="thead"></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="footer-note">
+    сервер отдаёт таблицу целиком: <b>ServerAPI.getUpgradeMatrix()</b> → { values, chances }.
+    На фронте ноль расчётов — шансы уже посчитаны бэком. Замена болванки: стаб → fetch.
+  </div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getUpgradeMatrix() {
+    return {
+      values: {
+        pawn:   { name: 'Пешка', glyph: '\u265F\uFE0E', val: 1 },
+        knight: { name: 'Конь',  glyph: '\u265E\uFE0E', val: 3 },
+        bishop: { name: 'Слон',  glyph: '\u265D\uFE0E', val: 3 },
+        rook:   { name: 'Ладья', glyph: '\u265C\uFE0E', val: 5 },
+        queen:  { name: 'Ферзь', glyph: '\u265B\uFE0E', val: 9 }
+      },
+      chances: {
+        'pawn:knight': '30.7%', 'pawn:bishop': '30.7%', 'pawn:rook': '18.4%', 'pawn:queen': '10.2%',
+        'knight:rook': '55.2%', 'knight:queen': '30.7%',
+        'bishop:rook': '55.2%', 'bishop:queen': '30.7%',
+        'rook:queen': '55.2%'
+      }
+    };
+  }
+};
+
+const onPick = (inKey, outKey, chanceText) => console.log('chance pick:', inKey, '->', outKey, chanceText);
+
+(async () => {
+  const M = await ServerAPI.getUpgradeMatrix();
+  const keys = Object.keys(M.values);
+  const valsBox = document.getElementById('vals');
+
+  valsBox.innerHTML = keys.map(k =>
+    `<div class="val-card" style="--c:${{pawn:'#9aa4b2',knight:'#38e8ff',bishop:'#38e8ff',rook:'#8b5cf6',queen:'#ffc93c'}[k]}">
+      <span class="glyph">${M.values[k].glyph}</span><b>${M.values[k].val}</b><small>${M.values[k].name}</small>
+    </div>`
+  ).join('');
+
+  const selIn = document.getElementById('sel-in');
+  const selOut = document.getElementById('sel-out');
+  const chanceEl = document.getElementById('chance');
+  const chanceSub = document.getElementById('chance-sub');
+
+  const chanceKey = (i, o) => M.chances[`${i}:${o}`];
+
+  selIn.innerHTML = keys.map(k => `<option value="${k}">${M.values[k].name} (${M.values[k].val})</option>`).join('');
+  selOut.innerHTML = keys.map(k => `<option value="${k}">${M.values[k].name} (${M.values[k].val})</option>`).join('');
+  selIn.value = 'knight';
+  selOut.value = 'queen';
+
+  function updCalc() {
+    const i = selIn.value, o = selOut.value;
+    const txt = chanceKey(i, o);
+    chanceEl.textContent = txt || '—';
+    chanceSub.textContent = `${M.values[i].val} → ${M.values[o].val}`;
+    onPick(i, o, txt || 'недоступно');
+  }
+
+  selIn.addEventListener('change', updCalc);
+  selOut.addEventListener('change', updCalc);
+
+  document.getElementById('thead').innerHTML =
+    '<tr><th>из ↓ в →</th>' + keys.map(k => `<th>${M.values[k].glyph}<br><small>${M.values[k].val}</small></th>`).join('') + '</tr>';
+
+  document.getElementById('tbody').innerHTML = keys.map(i => {
+    const cells = keys.map(o => {
+      const txt = chanceKey(i, o);
+      if (!txt) return `<td class="c0">—</td>`;
+      const p = parseFloat(txt);
+      const cls = p >= 25 ? 'hot' : p >= 10 ? 'mid' : 'low';
+      return `<td class="${cls}" data-i="${i}" data-o="${o}">${txt}</td>`;
+    }).join('');
+    return `<tr><td><span class="g">${M.values[i].glyph} ${M.values[i].name}</span></td>${cells}</tr>`;
+  }).join('');
+
+  document.querySelectorAll('td[data-i]').forEach(td => {
+    td.addEventListener('click', () => {
+      const i = td.dataset.i, o = td.dataset.o;
+      selIn.value = i;
+      selOut.value = o;
+      updCalc();
+      document.querySelectorAll('tbody tr').forEach((tr, r) => tr.classList.toggle('sel-h', keys[r] === i));
+    });
+  });
+
+  updCalc();
+})();
+</script>
+</body>
+</html>

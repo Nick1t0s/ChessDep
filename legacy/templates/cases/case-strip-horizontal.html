@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 01 — горизонтальная лента кейса</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(920px,100%)}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:18px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:12px 26px;border-radius:12px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;align-items:center;gap:16px;margin-top:18px}
+.strip-wrap{position:relative;overflow:hidden;border:1px solid #242b3d;border-radius:14px;background:#0a0d15;padding:24px 0}
+.strip-wrap::before,.strip-wrap::after{content:"";position:absolute;top:0;bottom:0;width:130px;z-index:5;pointer-events:none}
+.strip-wrap::before{left:0;background:linear-gradient(90deg,#0a0d15,transparent)}
+.strip-wrap::after{right:0;background:linear-gradient(270deg,#0a0d15,transparent)}
+.strip{display:flex;gap:12px;will-change:transform}
+.strip-anim{transition:transform 5.6s cubic-bezier(.08,.9,.16,1.01)}
+.case-item{--c:#9aa4b2;flex:0 0 130px;position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 8px;background:#161b29;border:1px solid #242b3d;border-radius:12px}
+.case-item .glyph{font-size:44px;line-height:1;color:var(--c);filter:drop-shadow(0 0 10px color-mix(in srgb,var(--c) 55%,transparent))}
+.case-item .nm{font-size:12.5px;font-weight:600}
+.case-item .vl{font-family:ui-monospace,monospace;font-size:11.5px;color:#8a93ab}
+.case-item.win-anim{animation:win-pop .5s ease}
+.case-item.win-anim{border-color:var(--c);box-shadow:0 0 22px color-mix(in srgb,var(--c) 45%,transparent)}
+@keyframes win-pop{0%{transform:scale(1)}40%{transform:scale(1.08)}100%{transform:scale(1)}}
+.marker{position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:#ffc93c;box-shadow:0 0 14px rgba(255,201,60,.9);z-index:6}
+.marker::before,.marker::after{content:"";position:absolute;left:50%;transform:translateX(-50%);border:8px solid transparent}
+.marker::before{top:12px;border-top:13px solid #ffc93c}
+.marker::after{bottom:12px;border-bottom:13px solid #ffc93c}
+#result{font-family:ui-monospace,monospace;font-size:15px;min-height:22px}
+.common{--c:#9aa4b2}.uncommon{--c:#38e8ff}.rare{--c:#8b5cf6}.epic{--c:#ffc93c}.legendary{--c:#ff7847}.mythic{--c:#ff5470}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 01 — горизонтальная лента</h1>
+  <p class="sub">Классика кейс-сайтов. Пул и победный предмет отдаёт бэк (getCaseContents / rollCase); фронт только строит ленту и крутит её. Геометрия (ITEM_W, GAP, DURATION, STRIP_LEN) — локальный конфиг анимации.</p>
+
+  <div class="strip-wrap" id="wrap">
+    <div class="marker"></div>
+    <div class="strip" id="strip"></div>
+  </div>
+
+  <div class="row">
+    <button class="btn" id="open">Крутить</button>
+    <div id="result"></div>
+  </div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getCaseContents() {
+    return [
+      { name: 'Пешка ×3',  glyph: '\u265F\uFE0E', rarity: 'common',    val: 10 },
+      { name: 'Конь',      glyph: '\u265E\uFE0E', rarity: 'uncommon',  val: 30 },
+      { name: 'Слон',      glyph: '\u265D\uFE0E', rarity: 'uncommon',  val: 30 },
+      { name: 'Ладья',     glyph: '\u265C\uFE0E', rarity: 'rare',      val: 60 },
+      { name: 'Ферзь',     glyph: '\u265B\uFE0E', rarity: 'epic',      val: 120 },
+      { name: 'Ферзь ×2',  glyph: '\u265B\uFE0E', rarity: 'mythic',    val: 240 },
+      { name: 'Король',    glyph: '\u265A\uFE0E', rarity: 'legendary', val: 400 }
+    ];
+  },
+  async rollCase() {
+    const w = { 0: 36, 1: 24, 2: 16, 3: 12, 4: 7, 5: 3, 6: 2 };
+    const bag = this.pool.flatMap((p, i) => Array(w[i]).fill(p));
+    return bag[Math.floor(Math.random() * bag.length)];
+  }
+};
+
+const ITEM_W = 130, GAP = 12;
+const STRIP_LEN = 60;
+const WIN_INDEX = Math.floor(STRIP_LEN * .88);
+const DURATION = 5600;
+const onResult = it => console.log('result:', it);
+
+const strip = document.getElementById('strip');
+const wrap = document.getElementById('wrap');
+const btn = document.getElementById('open');
+const result = document.getElementById('result');
+let spinning = false, winner = null, POOL = [];
+
+const RCLASS = { common: 'common', uncommon: 'uncommon', rare: 'rare', epic: 'epic', legendary: 'legendary', mythic: 'mythic' };
+
+(async () => {
+  POOL = await ServerAPI.getCaseContents();
+
+  function pick() { return POOL[Math.floor(Math.random() * POOL.length)]; }
+
+  function build() {
+    strip.classList.remove('strip-anim');
+    strip.style.transform = 'translateX(0)';
+    strip.innerHTML = '';
+    for (let i = 0; i < STRIP_LEN; i++) {
+      const it = i === WIN_INDEX ? winner : pick();
+      const d = document.createElement('div');
+      d.className = 'case-item ' + RCLASS[it.rarity];
+      d.innerHTML = `<span class="glyph">${it.glyph}</span><span class="nm">${it.name}</span><span class="vl">${it.val} ◈</span>`;
+      if (i === WIN_INDEX) d.dataset.win = '1';
+      strip.appendChild(d);
+    }
+  }
+
+  btn.addEventListener('click', async () => {
+    if (spinning) return;
+    spinning = true;
+    btn.disabled = true;
+    result.textContent = '';
+    winner = await ServerAPI.rollCase();
+
+    build();
+    void strip.offsetWidth;
+    strip.classList.add('strip-anim');
+
+    const offset = WIN_INDEX * (ITEM_W + GAP) + ITEM_W / 2 - wrap.clientWidth / 2;
+    strip.style.transform = `translateX(${-offset}px)`;
+
+    setTimeout(() => {
+      const card = strip.querySelector('[data-win]');
+      card.classList.add('win-anim');
+      result.textContent = `Выпало: ${winner.name} (${winner.val} ◈)`;
+      spinning = false;
+      btn.disabled = false;
+      onResult(winner);
+    }, DURATION + 100);
+  });
+
+  build();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 12 — шахматные глифы</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;background:#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:30px}
+.wrap{max-width:1000px;margin:0 auto}
+h1{font-size:22px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:20px}
+.group{background:#12151f;border:1px solid #242b3d;border-radius:14px;padding:18px;margin-bottom:16px}
+.group h3{font-size:14px;color:#8a93ab;margin-bottom:12px;letter-spacing:.4px}
+.row{display:flex;gap:26px;flex-wrap:wrap}
+.gcell{display:flex;flex-direction:column;align-items:center;gap:6px}
+.gcell .glyph{font-size:54px;line-height:1}
+.gcell small{font-family:ui-monospace,monospace;font-size:11px;color:#565f79}
+.white{color:#f4f6ff;filter:drop-shadow(0 3px 6px rgba(0,0,0,.55))}
+.black{color:#20263c;filter:drop-shadow(0 3px 2px rgba(255,255,255,.08))}
+.enemy{color:#ff5470;filter:drop-shadow(0 0 10px rgba(255,84,112,.45))}
+#you{color:#f6f8ff;text-shadow:0 0 16px rgba(255,255,255,.25)}
+
+.sizes{display:flex;align-items:baseline;gap:14px}
+.sizes span{color:#f4f6ff}
+.cell-demo{width:66px;height:66px;display:grid;place-items:center}
+.cell-demo.light{background:#454f77}
+.cell-demo.dark{background:#262e4d}
+.cell-demo .glyph{font-size:38px;color:#f4f6ff;filter:drop-shadow(0 3px 7px rgba(0,0,0,.55))}
+.demo-board{display:grid;grid-template-columns:repeat(8,52px);border:2px solid #323a55;border-radius:8px;overflow:hidden}
+.demo-board span{display:grid;place-items:center;height:52px;font-size:30px}
+.demo-board span b{font-size:26px;font-weight:400}
+.board-white{color:#f4f6ff}
+.board-black{color:#ff5470}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Шаблон 12 — шахматные глифы</h1>
+  <p class="sub">Все 12 фигур + цветовые роли + размеры + мини-доска. Черные глифы с U+FE0E (не эмодзи).</p>
+
+  <div class="group">
+    <h3>Белый набор (для своих фигур)</h3>
+    <div class="row">
+      <div class="gcell"><span class="glyph white">&#9816;&#xFE0E;</span><small>♔ король</small></div>
+      <div class="gcell"><span class="glyph white">&#9815;&#xFE0E;</span><small>♕ ферзь</small></div>
+      <div class="gcell"><span class="glyph white">&#9820;&#xFE0E;</span><small>♖ ладья</small></div>
+      <div class="gcell"><span class="glyph white">&#9821;&#xFE0E;</span><small>♗ слон</small></div>
+      <div class="gcell"><span class="glyph white">&#9822;&#xFE0E;</span><small>♘ конь</small></div>
+      <div class="gcell"><span class="glyph white">&#9823;&#xFE0E;</span><small>♙ пешка</small></div>
+    </div>
+  </div>
+
+  <div class="group">
+    <h3>Чёрный набор (универсальные, красятся через color)</h3>
+    <div class="row">
+      <div class="gcell"><span class="glyph enemy">&#9818;&#xFE0E;</span><small>♚ враг</small></div>
+      <div class="gcell"><span class="glyph" id="you">&#9819;&#xFE0E;</span><small>♚ свой</small></div>
+      <div class="gcell"><span class="glyph white">&#9820;&#xFE0E;</span><small>♜ крышка</small></div>
+      <div class="gcell"><span class="glyph black">&#9821;&#xFE0E;</span><small>♝ контур</small></div>
+    </div>
+  </div>
+
+  <div class="group">
+    <h3>Размеры</h3>
+    <div class="sizes">
+      <span style="font-size:24px;color:#f4f6ff">♞&#xFE0E;</span>
+      <span style="font-size:32px;color:#f4f6ff">♞&#xFE0E;</span>
+      <span style="font-size:44px;color:#f4f6ff">♞&#xFE0E;</span>
+      <span style="font-size:56px;color:#f4f6ff">♞&#xFE0E;</span>
+      <span style="font-size:68px;color:#f4f6ff">♞&#xFE0E;</span>
+    </div>
+  </div>
+
+  <div class="group">
+    <h3>Клетки и мини-доска 4×2</h3>
+    <div style="display:flex;gap:16px;align-items:flex-start">
+      <div class="cell-demo light"><span class="glyph">&#9822;&#xFE0E;</span></div>
+      <div class="cell-demo dark"><span class="glyph board-black">&#9823;&#xFE0E;</span></div>
+      <div class="demo-board">
+        <span class="cell-demo light"><b class="board-white">&#9820;&#xFE0E;</b></span>
+        <span style="background:#262e4d"><b class="board-black">&#9823;&#xFE0E;</b></span>
+        <span class="cell-demo light"></span>
+        <span style="background:#262e4d"><b class="board-black">&#9822;&#xFE0E;</b></span>
+        <span style="background:#262e4d"></span>
+        <span class="cell-demo light"><b class="board-white">&#9821;&#xFE0E;</b></span>
+        <span style="background:#262e4d"></span>
+        <span class="cell-demo light"><b class="board-white">&#9823;&#xFE0E;</b></span>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

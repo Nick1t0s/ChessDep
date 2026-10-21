@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 09 — мульти-открытие кейсов (N лент одновременно)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(1000px,100%)}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:18px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:12px 26px;border-radius:12px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;align-items:center;gap:16px;margin-bottom:16px}
+.controls{display:flex;gap:8px;margin-bottom:14px;align-items:center}
+.gbtn{padding:8px 14px;border-radius:999px;border:1px solid #242b3d;color:#8a93ab;font-size:12.5px;font-weight:700}
+.gbtn.on{color:#fff;border-color:#ffc93c;background:rgba(255,201,60,.12)}
+
+.multi{display:flex;flex-direction:column;gap:12px}
+.case-line{display:grid;grid-template-columns:110px minmax(0,1fr);gap:10px;align-items:center}
+.case-tag{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px;border:1px solid #242b3d;border-radius:12px;background:#161b29}
+.case-tag .glyph{font-size:30px;color:#ffc93c}
+.case-tag small{color:#565f79;font-size:10.5px;font-family:ui-monospace,monospace}
+.strip-wrap{position:relative;overflow:hidden;border:1px solid #242b3d;border-radius:12px;background:#0a0d15;padding:16px 0}
+.strip-wrap::before,.strip-wrap::after{content:"";position:absolute;top:0;bottom:0;width:80px;z-index:5;pointer-events:none}
+.strip-wrap::before{left:0;background:linear-gradient(90deg,#0a0d15,transparent)}
+.strip-wrap::after{right:0;background:linear-gradient(270deg,#0a0d15,transparent)}
+.strip{display:flex;gap:10px;will-change:transform}
+.strip-anim{transition:transform 5.6s cubic-bezier(.08,.9,.16,1.01)}
+.case-item{--c:#9aa4b2;flex:0 0 110px;position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 6px;background:#161b29;border:1px solid #242b3d;border-radius:10px}
+.case-item .glyph{font-size:34px;line-height:1;color:var(--c)}
+.case-item .nm{font-size:11.5px;font-weight:600}
+.case-item .vl{font-family:ui-monospace,monospace;font-size:10.5px;color:#8a93ab}
+.marker{position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:#ffc93c;box-shadow:0 0 12px rgba(255,201,60,.9);z-index:6}
+.case-line.done .strip-wrap{border-color:color-mix(in srgb,var(--c,#9aa4b2) 55%,#242b3d)}
+.common{--c:#9aa4b2}.uncommon{--c:#38e8ff}.rare{--c:#8b5cf6}.epic{--c:#ffc93c}.legendary{--c:#ff7847}.mythic{--c:#ff5470}
+
+@media (max-width:560px){
+  .case-line{grid-template-columns:64px minmax(0,1fr)}
+  .case-tag{padding:8px}
+  .case-tag .glyph{font-size:24px}
+  .case-tag small{display:none}
+  .strip-wrap::before,.strip-wrap::after{width:44px}
+  .summary{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:480px){
+  .summary{grid-template-columns:1fr 1fr}
+}
+
+.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:16px}
+.su{border:1px solid #242b3d;border-radius:10px;padding:10px;text-align:center;font-size:12px}
+.su b{display:block;font-size:15px;font-family:ui-monospace,monospace;color:#ffc93c}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 09 — мульти-открытие кейсов</h1>
+  <p class="sub">Одна кнопка — N одновременных лент со своими победителями. Пул и пакет победителей (rollBatch) — от бэка; ленты пересоздаются на лету.</p>
+
+  <div class="row">
+    <div class="controls">
+      <span style="color:#565f79;font-size:12.5px;font-family:ui-monospace,monospace">кейсов:</span>
+      <button class="gbtn on" data-x="1">1</button>
+      <button class="gbtn" data-x="2">2</button>
+      <button class="gbtn" data-x="3">3</button>
+      <button class="gbtn" data-x="4">4</button>
+    </div>
+    <button class="btn" id="open">Открыть</button>
+  </div>
+
+  <div class="multi" id="multi"></div>
+  <div class="summary" id="summary"></div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getCaseContents() {
+    return [
+      { name: 'Пешка ×3',  glyph: '\u265F\uFE0E', rarity: 'common',    val: 10 },
+      { name: 'Конь',      glyph: '\u265E\uFE0E', rarity: 'uncommon',  val: 30 },
+      { name: 'Слон',      glyph: '\u265D\uFE0E', rarity: 'uncommon',  val: 30 },
+      { name: 'Ладья',     glyph: '\u265C\uFE0E', rarity: 'rare',      val: 60 },
+      { name: 'Ферзь',     glyph: '\u265B\uFE0E', rarity: 'epic',      val: 120 },
+      { name: 'Ферзь ×2',  glyph: '\u265B\uFE0E', rarity: 'mythic',    val: 240 },
+      { name: 'Король',    glyph: '\u265A\uFE0E', rarity: 'legendary', val: 400 }
+    ];
+  },
+  async rollBatch(n) {
+    const w = { 0: 36, 1: 24, 2: 16, 3: 12, 4: 7, 5: 3, 6: 2 };
+    const bag = this.pool.flatMap((p, i) => Array(w[i]).fill(p));
+    return Array.from({ length: n }, () => bag[Math.floor(Math.random() * bag.length)]);
+  }
+};
+
+const ITEM_W = 110, GAP = 10;
+const STRIP_LEN = 55;
+const WIN_INDEX = Math.floor(STRIP_LEN * .9);
+const DURATION = 5600;
+const caseNames = ['Стартовый', 'Золотой', 'Чёрный', 'Турбо'];
+
+const multi = document.getElementById('multi');
+const summary = document.getElementById('summary');
+const btn = document.getElementById('open');
+let count = 1, spinning = false, POOL = [];
+const onBatch = results => console.log('batch:', results);
+
+const RCOLOR = { common: '9aa4b2', uncommon: '38e8ff', rare: '8b5cf6', epic: 'ffc93c', legendary: 'ff7847', mythic: 'ff5470' };
+
+(async () => {
+  POOL = await ServerAPI.getCaseContents();
+
+  const pick = () => POOL[Math.floor(Math.random() * POOL.length)];
+
+  function buildLine(n) {
+    const line = document.createElement('div');
+    line.className = 'case-line';
+    line.innerHTML =
+      `<div class="case-tag"><span class="glyph">&#9823;&#xFE0E;</span><small>${caseNames[n % 4]}</small></div>` +
+      `<div class="strip-wrap"><div class="marker"></div><div class="strip"></div></div>`;
+    return line;
+  }
+
+  function rebuild() {
+    multi.innerHTML = '';
+    for (let n = 0; n < count; n++) multi.appendChild(buildLine(n));
+    summary.innerHTML = '';
+  }
+
+  document.querySelectorAll('.gbtn').forEach(b => {
+    b.addEventListener('click', () => {
+      if (spinning) return;
+      count = parseInt(b.dataset.x, 10);
+      document.querySelectorAll('.gbtn').forEach(x => x.classList.toggle('on', x === b));
+      rebuild();
+    });
+  });
+
+  btn.addEventListener('click', async () => {
+    if (spinning) return;
+    spinning = true;
+    btn.disabled = true;
+    summary.innerHTML = '';
+
+    const winners = await ServerAPI.rollBatch(count);
+    const lines = [...multi.children];
+    const results = [];
+
+    lines.forEach((line, i) => {
+      const strip = line.querySelector('.strip');
+      const wrap = line.querySelector('.strip-wrap');
+      const win = winners[i];
+      strip.classList.remove('strip-anim');
+      strip.style.transform = 'translateX(0)';
+      strip.innerHTML = '';
+      for (let n = 0; n < STRIP_LEN; n++) {
+        const it = n === WIN_INDEX ? win : pick();
+        const d = document.createElement('div');
+        d.className = 'case-item ' + it.rarity;
+        d.innerHTML = `<span class="glyph">${it.glyph}</span><span class="nm">${it.name}</span><span class="vl">${it.val} ◈</span>`;
+        strip.appendChild(d);
+      }
+    });
+
+    void document.body.offsetWidth;
+
+    lines.forEach((line, i) => {
+      const strip = line.querySelector('.strip');
+      const wrap = line.querySelector('.strip-wrap');
+      strip.style.transition = `transform ${DURATION + i * 400}ms cubic-bezier(.08,.9,.16,1.01)`;
+      const offset = WIN_INDEX * (ITEM_W + GAP) + ITEM_W / 2 - wrap.clientWidth / 2;
+      strip.style.transform = `translateX(${-offset}px)`;
+    });
+
+    setTimeout(() => {
+      lines.forEach((line, i) => {
+        results.push(winners[i]);
+        line.classList.add('done');
+        line.style.setProperty('--c', '#' + RCOLOR[winners[i].rarity]);
+      });
+      summary.innerHTML = results.map((w, i) =>
+        `<div class="su"><b>${w.val} ◈</b>${caseNames[i % 4]}: ${w.name}</div>`
+      ).join('');
+      onBatch(results);
+      spinning = false;
+      btn.disabled = false;
+    }, DURATION + count * 400 + 100);
+  });
+
+  rebuild();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 04 — колесо на conic-gradient</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(560px,100%);text-align:center}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:20px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:13px 30px;border-radius:12px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+.wheel-zone{display:flex;flex-direction:column;align-items:center;gap:22px}
+.wheel-wrap{position:relative;width:min(320px,82vw);height:min(320px,82vw);display:grid;place-items:center}
+.disc{position:absolute;width:min(300px,calc(82vw - 20px));height:min(300px,calc(82vw - 20px));border-radius:50%;transition:transform 4.6s cubic-bezier(.09,.72,.12,1.01);box-shadow:0 0 0 7px #10131c,0 0 0 8px #242b3d,0 0 60px rgba(139,92,246,.28),inset 0 0 40px rgba(0,0,0,.55);will-change:transform}
+.disc::after{content:"";position:absolute;inset:0;border-radius:50%;background:repeating-conic-gradient(from 0deg,rgba(255,255,255,.05) 0deg 5deg,transparent 5deg 15deg)}
+.pointer{position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:4;width:0;height:0;border:13px solid transparent;border-top:24px solid #ffc93c;filter:drop-shadow(0 0 8px rgba(255,201,60,.75))}
+.center{position:relative;z-index:3;width:120px;height:120px;border-radius:50%;background:radial-gradient(120% 120% at 30% 20%,#252b44,#0d101c 72%);border:1px solid #242b3d;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 8px 26px rgba(0,0,0,.55)}
+.center b{font-size:30px;font-family:ui-monospace,monospace;color:#ffc93c}
+.center span{font-size:10.5px;color:#8a93ab;text-transform:uppercase;letter-spacing:1.6px}
+#result{margin-top:6px;font-family:ui-monospace,monospace;font-size:15px;min-height:22px;color:#ffc93c}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 04 — колесо на conic-gradient</h1>
+  <p class="sub">Сектор победы строится из шанса. Конфиг: SECTORS, CHANCE (0–100), DURATION.</p>
+
+  <div class="wheel-zone">
+    <div class="wheel-wrap">
+      <div class="disc" id="disc"></div>
+      <div class="pointer"></div>
+      <div class="center"><b id="chance-label">33.3%</b><span>шанс</span></div>
+    </div>
+    <button class="btn" id="spin">Крутить колесо</button>
+    <div id="result"></div>
+  </div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getWheelConfig() {
+    return {
+      chance: 33.3,
+      prize: { label: 'Ферзь', glyph: '\u265B\uFE0E', val: 120, rarity: 'epic' }
+    };
+  },
+  async spin(chance) {
+    const win = Math.random() * 100 < chance;
+    const gdeg = chance / 100 * 360;
+    const a = win ? Math.random() * gdeg : gdeg + Math.random() * (360 - gdeg);
+    return { win, angle: a };
+  }
+};
+
+const RCOL = { common: '#9aa4b2', uncommon: '#38e8ff', rare: '#8b5cf6', epic: '#ffc93c', legendary: '#ff7847', mythic: '#ff5470' };
+
+const DURATION = 4600;
+const onResult = out => console.log('wheel result:', out);
+
+const disc = document.getElementById('disc');
+const btn = document.getElementById('spin');
+const result = document.getElementById('result');
+const chanceLabel = document.getElementById('chance-label');
+let rot = 0, spinning = false, CFG = null, SECTORS = [];
+
+(async () => {
+  CFG = await ServerAPI.getWheelConfig();
+  const gdeg = CFG.chance / 100 * 360;
+
+  chanceLabel.textContent = CFG.chance + '%';
+  disc.style.background = `conic-gradient(from 0deg, #ffc93c 0deg ${gdeg}deg, rgba(255,255,255,.07) ${gdeg}deg 360deg)`;
+
+  btn.addEventListener('click', async () => {
+    if (spinning) return;
+    spinning = true;
+    btn.disabled = true;
+    result.textContent = '';
+
+    const r = await ServerAPI.spin(CFG.chance);
+
+    const delta = 360 * 5 + ((((-(r.angle) - rot) % 360) + 360) % 360);
+    rot += delta;
+    disc.style.transform = `rotate(${rot}deg)`;
+
+    setTimeout(() => {
+      result.textContent = r.win ? `ПОБЕДА: ${CFG.prize.label} (${CFG.prize.val} ◈)` : 'Мимо. Ставка сгорела';
+      spinning = false;
+      btn.disabled = false;
+      onResult(r);
+    }, DURATION + 100);
+  });
+})();
+</script>
+</body>
+</html>

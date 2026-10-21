@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 06 — линейный апгрейд-бар</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(860px,100%)}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:20px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:13px 30px;border-radius:12px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+.match{display:flex;align-items:center;gap:18px}
+.mg{--c:#f6f8ff;font-size:44px;line-height:1;color:var(--c);text-align:center;width:74px}
+.mg small{display:block;font-size:11px;color:#565f79;font-weight:600}
+.marrow{color:#565f79;font-size:22px;font-weight:800}
+
+.bar-zone{flex:1;position:relative}
+.bar{position:relative;height:18px;border-radius:10px;background:#1d2334;border:1px solid #242b3d;overflow:visible}
+.zone-win{position:absolute;right:0;top:0;bottom:0;border-radius:0 9px 9px 0;background:linear-gradient(90deg,rgba(255,201,60,.25),#d99b14);box-shadow:0 0 16px rgba(255,201,60,.35)}
+.bar-label{position:absolute;top:26px;font-family:ui-monospace,monospace;font-size:11px;color:#8a93ab}
+
+.cursor{position:absolute;top:-9px;height:36px;width:6px;margin-left:-3px;border-radius:3px;background:#f6f8ff;box-shadow:0 0 14px rgba(255,255,255,.6);left:0%;transition:left 4.2s cubic-bezier(.12,.74,.14,1.02)}
+
+.mult{display:flex;align-items:baseline;gap:8px;justify-content:center;margin-top:34px}
+.mult b{font-family:ui-monospace,monospace;font-size:40px;color:#ffc93c}
+.mult span{color:#8a93ab;font-size:13px}
+
+.percents{display:flex;justify-content:space-between;font-family:ui-monospace,monospace;font-size:11px;color:#565f79;padding:0 4px;margin-bottom:6px}
+
+#result{margin-top:16px;text-align:center;font-family:ui-monospace,monospace;font-size:16px;min-height:24px}
+#result.win{color:#ffc93c}
+#result.lose{color:#ff5470}
+
+.grade{display:flex;justify-content:center;gap:14px;margin:18px 0 10px;flex-wrap:wrap}
+.gbtn{padding:8px 14px;border-radius:999px;border:1px solid #242b3d;color:#8a93ab;font-size:12.5px;font-weight:700}
+.gbtn.on{color:#fff;border-color:#8b5cf6;background:rgba(139,92,246,.18)}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 06 — линейный апгрейд-бар</h1>
+  <p class="sub">Курсор едет слева направо: правая золотая зона = победа, её ширина = шанс. Шансы/цели/вер­дикт — payload от бэка (getRaceConfig / spin), фронт рисует анимацию.</p>
+
+  <div class="match">
+    <div class="mg" id="mg-you">♞<small>ставка · 30 ◈</small></div>
+    <div class="marrow">→</div>
+    <div class="bar-zone">
+      <div id="bar" class="bar">
+        <div class="zone-win" id="zone-win" style="width:23.1%"></div>
+        <div class="cursor" id="cursor"></div>
+      </div>
+      <div class="percents"><span>0%</span><span>100%</span></div>
+      <div class="bar-label" id="win-label" style="right:4px;color:#ffb340">победа 23.1%</div>
+    </div>
+    <div class="mg" id="mg-goal" style="--c:#ffc93c">♛<small>цель · 130 ◈</small></div>
+  </div>
+
+  <div class="mult"><b id="mult">×0.0</b><span>множитель ставки</span></div>
+
+  <div class="grade" id="grades"></div>
+  <div style="text-align:center"><button class="btn" id="spin">Проверить шанс</button></div>
+  <div id="result"></div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getRaceConfig() {
+    return {
+      inItem: { name: 'Конь', glyph: '\u265E\uFE0E', val: 30 },
+      targets: [
+        { name: 'Ладья',    glyph: '\u265C\uFE0E', val: 60,  chance: 50,   mult: 2.0 },
+        { name: 'Ферзь',    glyph: '\u265B\uFE0E', val: 120, chance: 23.1, mult: 4.0 },
+        { name: 'Ферзь ×2', glyph: '\u265B\uFE0E', val: 240, chance: 11.5, mult: 8.0 },
+        { name: 'Король',   glyph: '\u265A\uFE0E', val: 400, chance: 6.9,  mult: 13.3 }
+      ]
+    };
+  },
+  async spin(chance, mult) {
+    const win = Math.random() * 100 < chance;
+    const finalX = win ? (100 - chance) + Math.random() * (chance - 4) + 2 : Math.random() * Math.max(2, 100 - chance) * .8;
+    return { win, finalX, mult };
+  }
+};
+
+const DURATION = 4200;
+const onResult = win => console.log('upgrade result:', win);
+
+(async () => {
+  const M = await ServerAPI.getRaceConfig();
+  const IN_ITEM = M.inItem;
+  const TARGETS = M.targets;
+
+  const mgYou = document.getElementById('mg-you');
+  const mgGoal = document.getElementById('mg-goal');
+  const zoneWin = document.getElementById('zone-win');
+  const winLabel = document.getElementById('win-label');
+  const cursor = document.getElementById('cursor');
+  const multEl = document.getElementById('mult');
+  const result = document.getElementById('result');
+  const grades = document.getElementById('grades');
+  const btn = document.getElementById('spin');
+  let targetIdx = 1, spinning = false;
+
+  function initTarget() {
+    mgYou.innerHTML = IN_ITEM.glyph + `<small>ставка · ${IN_ITEM.val} ◈</small>`;
+    const t = TARGETS[targetIdx];
+    mgGoal.style.setProperty('--c', '#ffc93c');
+    mgGoal.innerHTML = t.glyph + `<small>цель · ${t.val} ◈</small>`;
+    zoneWin.style.width = t.chance + '%';
+    winLabel.textContent = `победа ${t.chance}%`;
+  }
+
+  grades.innerHTML = TARGETS.map((t, i) =>
+    `<button class="gbtn${i === targetIdx ? ' on' : ''}" data-i="${i}">${t.glyph} ×${t.mult.toFixed(1)}</button>`
+  ).join('');
+
+  grades.querySelectorAll('.gbtn').forEach(b => {
+    b.addEventListener('click', () => {
+      if (spinning) return;
+      targetIdx = parseInt(b.dataset.i, 10);
+      grades.querySelectorAll('.gbtn').forEach(x => x.classList.toggle('on', x === b));
+      initTarget();
+    });
+  });
+
+  initTarget();
+
+  const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+
+  btn.addEventListener('click', async () => {
+    if (spinning) return;
+    spinning = true;
+    btn.disabled = true;
+    result.textContent = '';
+    result.className = '';
+
+    const t = TARGETS[targetIdx];
+    const r = await ServerAPI.spin(t.chance, t.mult);
+
+    cursor.style.transition = 'none';
+    cursor.style.left = '0%';
+    void cursor.offsetWidth;
+    cursor.style.transition = `left ${DURATION}ms cubic-bezier(.12,.74,.14,1.02)`;
+    cursor.style.left = r.finalX + '%';
+
+    const t0 = performance.now();
+    const tick = now => {
+      const q = Math.min(1, (now - t0) / DURATION);
+      multEl.textContent = '×' + (1 + (r.mult - 1) * easeOutCubic(q)).toFixed(1);
+      if (q < 1) requestAnimationFrame(tick);
+      else {
+        result.className = r.win ? 'win' : 'lose';
+        result.textContent = r.win ? `ПОБЕДА: ${t.name} на склад` : 'Мимо. Ставка сгорела';
+        onResult(r.win);
+        spinning = false;
+        btn.disabled = false;
+      }
+    };
+    requestAnimationFrame(tick);
+  });
+})();
+</script>
+</body>
+</html>

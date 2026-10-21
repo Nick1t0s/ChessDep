@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChessDep — библиотека фронт-шаблонов</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,sans-serif;padding:30px}
+.wrap{max-width:1200px;margin:0 auto}
+h1{font-size:24px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:24px}
+.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px}
+.tcard{border:1px solid #242b3d;border-radius:14px;background:#131725;overflow:hidden;display:flex;flex-direction:column}
+.tcard .prev{height:190px;background:#fff;overflow:hidden;position:relative}
+.tcard iframe{width:330%;height:330%;border:0;transform:scale(.303);transform-origin:0 0;pointer-events:none}
+.tcard .meta{padding:12px 14px}
+.tcard h3{font-size:14px}
+.tcard h3 a{color:#e8ecf4;text-decoration:none}
+.tcard h3 a:hover{color:#ffc93c}
+.tcard p{color:#8a93ab;font-size:11.5px;margin-top:3px;line-height:1.45}
+.tcard .tag{display:inline-block;margin-top:8px;font-family:ui-monospace,monospace;font-size:10px;color:#ffc93c;border:1px dashed rgba(255,201,60,.4);padding:2px 8px;border-radius:6px}
+h2.grp{margin:30px 0 12px;font-size:15px;color:#8a93ab;letter-spacing:.5px;text-transform:uppercase}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ChessDep — библиотека фронт-шаблонов</h1>
+  <p class="sub">36 самостоятельных HTML/CSS/JS болванок: открываются по клику, конфиг в начале &lt;script&gt;, готовые к интеграции с бэком через хуки. Превью — сжатые iframe'ы (loading=lazy).</p>
+
+  <h2 class="grp">Крутка кейсов</h2>
+  <div class="tgrid">
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="cases/case-strip-horizontal.html"></iframe></div><div class="meta"><h3><a href="cases/case-strip-horizontal.html">01 · case-strip-horizontal.html</a></h3><p>Классический CS-strip: POOL с весами, WIN_INDEX ≈ 0.9 длины, cubic-bezier-затухание, gold-маркер, onResult-хук.</p><span class="tag">item_w:130 · strip:60 · 5.6s</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="cases/case-strip-vertical.html"></iframe></div><div class="meta"><h3><a href="cases/case-strip-vertical.html">02 · case-strip-vertical.html</a></h3><p>Вертикальная лента вниз, ITEM_H=130, WIN_INDEX=30, затухающий экран. Базовая CSS-transition версия.</p><span class="tag">item_h:130 · strip:40 · 5.2s</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="cases/case-strip-vertical-raf.html"></iframe></div><div class="meta"><h3><a href="cases/case-strip-vertical-raf.html">03 · case-strip-vertical-raf.html</a></h3><p>Вертикальный RAF-run: easeOutQuint, tick-подсветка items проходящих mark, marker scaleX pulse, winner stop-glow.</p><span class="tag">raf · ease^5.5 · tick fx</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="cases/multi-open-cases.html"></iframe></div><div class="meta"><h3><a href="cases/multi-open-cases.html">09 · multi-open-cases.html</a></h3><p>1..4 ленты на одну кнопку, каждая со своим DURATION+400ms, batch-сводка внизу.</p><span class="tag">x1..x4 · staggered</span></div></div>
+  </div>
+
+  <h2 class="grp">Колёса фортуны</h2>
+  <div class="tgrid">
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="wheels/wheel-conic-gradient.html"></iframe></div><div class="meta"><h3><a href="wheels/wheel-conic-gradient.html">04 · wheel-conic-gradient.html</a></h3><p>Честный wheel: зона победы = CHANCE% золота conic-gradient, приземление в [0, gdeg) через угол r, 5 оборотов.</p><span class="tag">chance:33.3% · 5 turns</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="wheels/wheel-svg-sectors.html"></iframe></div><div class="meta"><h3><a href="wheels/wheel-svg-sectors.html">05 · wheel-svg-sectors.html</a></h3><p>SVG-колесо: секторы по полярной math (sectorPath), подписи прямо в SVG, равномерный выбор сектора, disc rotate 5×.</p><span class="tag">r:160 · svg text · 4.8s</span></div></div>
+  </div>
+
+  <h2 class="grp">Апгрейды и слоты</h2>
+  <div class="tgrid">
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="chess/upgrade-linear-race.html"></iframe></div><div class="meta"><h3><a href="chess/upgrade-linear-race.html">06 · upgrade-linear-race.html</a></h3><p>Линейный апгрейд-бар: курсор тормозит у left%, win-зона = шанс %, мультицели, RAF-счётчик множителя → ×N.</p><span class="tag">race · mult counter</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="slots/slot-3reel.html"></iframe></div><div class="meta"><h3><a href="slots/slot-3reel.html">07 · slot-3reel.html</a></h3><p>3-барабанный слот: weighted AFFINE-выбор, staggered stop (0/+350/+700ms), triple/pair/none evaluate, PRIZES map.</p><span class="tag">3×1 reel</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="slots/slot-5reel.html"></iframe></div><div class="meta"><h3><a href="slots/slot-5reel.html">08 · slot-5reel.html</a></h3><p>5-барабанный: центр payline, PAYTABLE rules (5×gem=5000...), подсветка выигрышных ячеек .pay, table расширяемая.</p><span class="tag">5-reel · payline</span></div></div>
+  </div>
+
+  <h2 class="grp">UI-компоненты</h2>
+  <div class="tgrid">
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="skins/item-cards.html"></iframe></div><div class="meta"><h3><a href="skins/item-cards.html">10 · item-cards.html</a></h3><p>Карточки предметов: классы r-*, hover-lift + rare-glow, badges count/×2, inline sell-кнопка.</p><span class="tag">6 rarity classes</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="sheets/rarity-sheet.html"></iframe></div><div class="meta"><h3><a href="sheets/rarity-sheet.html">11 · rarity-sheet.html</a></h3><p>Реестр редкостей: палитра (--c), pill/tag-btn/chip — копируй классы в любой шаблон для той же шкалы.</p><span class="tag">common→mythic</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="sheets/chess-glyphs-sheet.html"></iframe></div><div class="meta"><h3><a href="sheets/chess-glyphs-sheet.html">12 · chess-glyphs-sheet.html</a></h3><p>Шахматные глифы: white/black sets, sizes, ячейки board 4×2, U+2654..265F + U+FE0E (не эмодзи).</p><span class="tag">white set · black set</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="fx/modal-result.html"></iframe></div><div class="meta"><h3><a href="fx/modal-result.html">13 · modal-result.html</a></h3><p>Модалки: WIN с pop-гемом, LOSE-тряска, CONFIRM-обмен, pulse-ring, закрытие по Esc, карта VIEWS по типам.</p><span class="tag">win · lose · confirm</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="fx/toast-stack.html"></iframe></div><div class="meta"><h3><a href="fx/toast-stack.html">14 · toast-stack.html</a></h3><p>Стек тостов gold/win/err/info с прогресс-баром, лимит 5, авто-тайминг, крестик — аналог CD.toast.</p><span class="tag">4 type · limit:5</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="fx/count-balance.html"></iframe></div><div class="meta"><h3><a href="fx/count-balance.html">15 · count-balance.html</a></h3><p>Счётчик баланса: RAF count-up easeOutCubic, формат ru-RU, flash-win/flash-lose, джет-дельта +/-.</p><span class="tag">count-up · 1.1s</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="fx/confetti-burst.html"></iframe></div><div class="meta"><h3><a href="fx/confetti-burst.html">16 · confetti-burst.html</a></h3><p>Конфетти: canvas-частицы (rect + dot, гравитация, drag, fade), burst(x,y,opts) с count/power/palette — чек мифик джекпота.</p><span class="tag">canvas · max:350</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="layout/lobby-case-grid.html"></iframe></div><div class="meta"><h3><a href="layout/lobby-case-grid.html">17 · lobby-case-grid.html</a></h3><p>Сетка лобби кейсов: --top-цвет карточек, HOT-плашка, lock-overlay по уровню, фазный индикатор setPhase(1|2|3).</p><span class="tag">CASES map · lock</span></div></div>
+  </div>
+
+  <h2 class="grp">Шахматы: ставка-апгрейд (механика 1)</h2>
+  <div class="tgrid">
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="chess/chance-table.html"></iframe></div><div class="meta"><h3><a href="chess/chance-table.html">26 · chance-table.html</a></h3><p>База механики: ценности 1/3/3/5/9, шанс = EDGE × vIn/vOut, калькулятор пары «ставлю → хочу» + кликабельная матрица всех переходов.</p><span class="tag">values · matrix</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="chess/piece-tray.html"></iframe></div><div class="meta"><h3><a href="chess/piece-tray.html">27 · piece-tray.html</a></h3><p>Док фигур в матче: доска 8×8 с фигурами, выбор фигуры по ценности, расстановка кликом, панель шанса и кнопка «Ставка сделана».</p><span class="tag">dock · place piece</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="chess/board-upgrade-fx.html"></iframe></div><div class="meta"><h3><a href="chess/board-upgrade-fx.html">28 · board-upgrade-fx.html</a></h3><p>FX апгрейда на доске: морфинг глифа (lift → смена → burst-ring + искры и летящий «+N ◈»), при провале — тряска; каскад ферзь→ферзь×2.</p><span class="tag">morph fx · cascade</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="chess/match-hud.html"></iframe></div><div class="meta"><h3><a href="chess/match-hud.html">29 · match-hud.html</a></h3><p>HUD матча: доска + док фигур, панель ставки (шанс-бар, цель), лента ходов, статистика сессии. Живой каркас под бэк.</p><span class="tag">match layout</span></div></div>
+  </div>
+
+  <h2 class="grp">Скины: CS-система (механика 2)</h2>
+  <div class="tgrid">
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="skins/skin-gallery.html"></iframe></div><div class="meta"><h3><a href="skins/skin-gallery.html">30 · skin-gallery.html</a></h3><p>Магазин скинов: слот-фильтры (фигуры/доски/рамки), поиск, износ wear-бар (CS-стиль), купить/экипировать, баланс.</p><span class="tag">shop · wear</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="skins/skin-detail.html"></iframe></div><div class="meta"><h3><a href="skins/skin-detail.html">31 · skin-detail.html</a></h3><p>Карточка скина: большой превью, износ-пинанка (FN→Потрёпаный), ценовой спарклайн на canvas, чипы (шанс, оборот), actions.</p><span class="tag">detail · spark</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="skins/skin-tradeup.html"></iframe></div><div class="meta"><h3><a href="skins/skin-tradeup.html">32 · skin-tradeup.html</a></h3><p>Trade-up контракт: 10 слотов одной редкости, пул выбора, прогресс-бар, крутка-диск → скин следующей редкости.</p><span class="tag">10 slots · roll</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="skins/live-drops.html"></iframe></div><div class="meta"><h3><a href="skins/live-drops.html">33 · live-drops.html</a></h3><p>Live-дропы: непрерывный поток дропов других игроков с ником/временем/кейсом, регулировка скорости и пауза.</p><span class="tag">feed · speeds</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="skins/gift-flow.html"></iframe></div><div class="meta"><h3><a href="skins/gift-flow.html">34 · gift-flow.html</a></h3><p>Дарение, обе стороны: отправка (поиск друга + скин + записка) и получение (свёрток с распаковкой, принять/отказник).</p><span class="tag">two-way · unwrap</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="skins/skin-inventory.html"></iframe></div><div class="meta"><h3><a href="skins/skin-inventory.html">35 · skin-inventory.html</a></h3><p>Инвентарь скинов: мульти-выбор чекбоксами, bottom action bar (продать/дарить/в trade-up), сортировка и rarity-фильтры.</p><span class="tag">multiselect · bar</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="skins/board-skins.html"></iframe></div><div class="meta"><h3><a href="skins/board-skins.html">36 · board-skins.html</a></h3><p>Скины досок: 6 тем (--l / --d / --acc), мини-превью 4×4, большое превью с фигурами и экип-плашкой, карточка меты.</p><span class="tag">themes · equip</span></div></div>
+  </div>
+
+  <h2 class="grp">Casino-механики (для дома)</h2>
+  <div class="tgrid">
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="misc/crash-game.html"></iframe></div><div class="meta"><h3><a href="misc/crash-game.html">20 · crash-game.html</a></h3><p>Краш: график экспоненты на canvas, «Забрать», случайный краш по HOUSE_EDGE (0.97/(1-u)), история чеков цветная.</p><span class="tag">canvas · edge:0.97</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="misc/mines-grid.html"></iframe></div><div class="meta"><h3><a href="misc/mines-grid.html">21 · mines-grid.html</a></h3><p>Мины 5×5: MINE_COUNT, честная формула лестницы 0.97×∏(25-k)/(25-M-k), показ всех бомб после проигрыша, «Забрать».</p><span class="tag">5×5 · ladder math</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="misc/plinko-drop.html"></iframe></div><div class="meta"><h3><a href="misc/plinko-drop.html">22 · plinko-drop.html</a></h3><p>Плинко: шарик идёт ромб-рядами (L/R), canvas-пирамида колков, бакеты-множители [12…0.35…12], подсветка попадания.</p><span class="tag">rows:10 · 11 buckets</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="misc/coinflip.html"></iframe></div><div class="meta"><h3><a href="misc/coinflip.html">23 · coinflip.html</a></h3><p>Монетка 50/50: CSS 3D-flip с parity-подстройкой половин поворота, выплата ×1.92, история последних бросков.</p><span class="tag">3d flip · ×1.92</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="misc/daily-wheel.html"></iframe></div><div class="meta"><h3><a href="misc/daily-wheel.html">24 · daily-wheel.html</a></h3><p>Колесо дня: 10 весовых секторов, таймер 24ч, стрик 7 дней — на 7-й джекпот гарантированно.</p><span class="tag">free · streak 7</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="misc/quest-board.html"></iframe></div><div class="meta"><h3><a href="misc/quest-board.html">25 · quest-board.html</a></h3><p>Квесты дня: прогресс-бары, «Забрать», XP-бар с уровнями (need ×1.25), демо-кнопка продвижения для проверки состояний.</p><span class="tag">xp · claim states</span></div></div>
+  </div>
+
+  <h2 class="grp">Шахматы</h2>
+  <div class="tgrid">
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="layout/board-skeleton.html"></iframe></div><div class="meta"><h3><a href="layout/board-skeleton.html">18 · board-skeleton.html</a></h3><p>Скелет доски: рендер из FEN-поля, координаты, классы статусов .sel/.hint/.cap/.last/.check — хуки для бэка.</p><span class="tag">fen parse · status classes</span></div></div>
+
+    <div class="tcard"><div class="prev"><iframe loading="lazy" src="layout/mobile-layout.html"></iframe></div><div class="meta"><h3><a href="layout/mobile-layout.html">19 · mobile-layout.html</a></h3><p>Мобильный шелл: таб-бар с safe-area, мини-кейсы с горизонтальной прокруткой, тап-кнопки 50px, рамка-эмулятор телефона (на узких экранах — на весь экран).</p><span class="tag">tabbar · safe-area</span></div></div>
+  </div>
+</div>
+</body>
+</html>

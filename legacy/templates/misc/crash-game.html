@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 20 — краш-игра (график множителя)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(640px,100%);text-align:center}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:16px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:13px 26px;border-radius:12px}
+.btn.cash{background:linear-gradient(180deg,#7dffb0,#2fb76f);color:#04170c;min-width:220px}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+
+.chart-wrap{position:relative;height:260px;border:1px solid #242b3d;border-radius:14px;background:#0a0d15;overflow:hidden;margin-bottom:14px}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+.crash-mult{position:absolute;top:14px;left:0;right:0;font-family:ui-monospace,monospace;font-size:44px;font-weight:800;color:#ffc93c;text-shadow:0 0 26px rgba(255,201,60,.4);pointer-events:none}
+.crash-mult.dead{color:#ff5470;text-shadow:0 0 26px rgba(255,84,112,.5)}
+.boom{position:absolute;inset:0;display:none;place-items:center;font-size:64px;pointer-events:none}
+.boom.show{display:grid;animation:boompop .45s cubic-bezier(.2,1.6,.4,1)}
+@keyframes boompop{0%{transform:scale(0)}70%{transform:scale(1.3)}100%{transform:scale(1)}}
+
+.hist{display:flex;gap:6px;justify-content:center;margin-bottom:14px;flex-wrap:wrap}
+.hcell{font-family:ui-monospace,monospace;font-size:11.5px;font-weight:700;padding:5px 10px;border-radius:8px;border:1px solid #242b3d;color:#8a93ab}
+.hcell.g{color:#ffc93c;border-color:rgba(255,201,60,.4)}
+.hcell.r{color:#ff5470;border-color:rgba(255,84,112,.4)}
+
+.row{display:flex;align-items:center;gap:10px;justify-content:center}
+#result{font-family:ui-monospace,monospace;font-size:15px;min-height:24px;margin-top:12px}
+#result.win{color:#7dffb0}
+#result.lose{color:#ff5470}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 20 — краш</h1>
+  <p class="sub">Множитель растёт экспоненциально до случайного краша. Успей «Забрать» до схлопывания. График на canvas.</p>
+
+  <div class="chart-wrap">
+    <canvas id="cv"></canvas>
+    <div class="crash-mult" id="mult">×1.00</div>
+    <div class="boom" id="boom">&#9760;&#xFE0E;</div>
+  </div>
+
+  <div class="hist" id="hist"></div>
+
+  <div class="row">
+    <button class="btn" id="bet">Ставка 50 ◈</button>
+    <button class="btn cash" id="cash" disabled>Забрать —</button>
+  </div>
+  <div id="result"></div>
+</div>
+
+<script>
+const ServerAPI = {
+  async rollCrash() {
+    const u = Math.random();
+    return Math.min(60, Math.max(1, 0.97 / (1 - u)));
+  },
+  async cashOut(m) {
+    return { m, text: `+${Math.round(BET * (m - 1))} ◈` };
+  }
+};
+
+const GROWTH = 0.34;
+const BET = 50;
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const multEl = document.getElementById('mult');
+const boom = document.getElementById('boom');
+const hist = document.getElementById('hist');
+const betBtn = document.getElementById('bet');
+const cashBtn = document.getElementById('cash');
+const result = document.getElementById('result');
+let state = 'idle', m0 = 1, points = [], cashedAt = 0, cashText = '', raf = null;
+const onResult = out => console.log('crash result:', out);
+
+function draw(points, dt) {
+  const w = cv.width, h = cv.height;
+  const t0y = h - 26, yMax = h - 46;
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = 'rgba(255,255,255,.06)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i <= 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(0, t0y - yMax * i / 4);
+    ctx.lineTo(w, t0y - yMax * i / 4);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#565f79';
+  ctx.font = "11px ui-monospace,monospace";
+  ctx.fillText('×1', 8, t0y);
+  if (points.length < 2) return;
+  const tEnd = points[points.length - 1][0], mEnd = points[points.length - 1][1];
+  const t0 = points[0][0];
+  const spanT = Math.max(4, tEnd - t0 + 1.2);
+  const yOf = mv => t0y - Math.min(1, (mv - 1) / (mEnd - 1 + .2)) * yMax * .96;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = state === 'crashed' ? '#ff5470' : '#ffc93c';
+  ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 14;
+  ctx.beginPath();
+  for (const [t, mv] of points) {
+    const x = 14 + (t - t0) / spanT * (w - 28);
+    const y = yOf(mv);
+    t === t0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+function fit() {
+  const r = cv.parentElement.getBoundingClientRect();
+  cv.width = r.width; cv.height = r.height;
+}
+addEventListener('resize', fit);
+fit();
+
+let t0 = 0, crashAt = 0;
+
+function frame(now) {
+  const sec = (now - t0) / 1000;
+  const m = Math.exp(GROWTH * sec) * m0;
+  if (m >= crashAt) {
+    state = 'crashed';
+    multEl.textContent = '×' + crashAt.toFixed(2);
+    multEl.classList.add('dead');
+    boom.classList.add('show');
+    draw([...points, [sec, crashAt], [sec + .3, 1]], sec);
+    pushHistory(crashAt);
+    if (cashedAt > 0) {
+      result.className = 'win';
+      result.textContent = `Забрал на ×${cashedAt.toFixed(2)} → ${cashText}`;
+      onResult({ kind: 'cash', m: cashedAt, text: cashText });
+    } else {
+      result.className = 'lose';
+      result.textContent = `Краш на ×${crashAt.toFixed(2)}. Ставка ${BET} ◈ сгорела`;
+      onResult({ kind: 'boom', m: crashAt });
+    }
+    resetButtons();
+    return;
+  }
+  points.push([sec, m]);
+  multEl.textContent = '×' + m.toFixed(2);
+  draw(points, sec);
+  raf = requestAnimationFrame(frame);
+}
+
+function pushHistory(v) {
+  const d = document.createElement('span');
+  d.className = 'hcell ' + (v >= 2 ? 'g' : 'r');
+  d.textContent = '×' + v.toFixed(2);
+  hist.prepend(d);
+  while (hist.children.length > 9) hist.lastElementChild.remove();
+}
+
+function resetButtons() {
+  betBtn.disabled = false;
+  cashBtn.disabled = true;
+  cashBtn.textContent = 'Забрать —';
+}
+
+betBtn.addEventListener('click', async () => {
+  if (state === 'idle' || state === 'crashed') {
+    state = 'flying';
+    betBtn.disabled = true;
+    cashBtn.disabled = false;
+    result.textContent = '';
+    result.className = '';
+    boom.classList.remove('show');
+    multEl.classList.remove('dead');
+    multEl.textContent = '×1.00';
+    points = [[0, 1]];
+    cashedAt = 0;
+    m0 = 1;
+    crashAt = await ServerAPI.rollCrash();
+    t0 = performance.now();
+    raf = requestAnimationFrame(frame);
+  }
+});
+
+cashBtn.addEventListener('click', async () => {
+  if (state !== 'flying') return;
+  const m = Math.exp(GROWTH * (performance.now() - t0) / 1000);
+  const r = await ServerAPI.cashOut(m);
+  cashedAt = r.m;
+  cashText = r.text;
+  cashBtn.disabled = true;
+  cashBtn.textContent = `Забрано ×${cashedAt.toFixed(2)}`;
+  onResult({ kind: 'preCash', m: cashedAt });
+});
+</script>
+</body>
+</html>

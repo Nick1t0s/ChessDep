@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 22 — плинко (шарики по пирамиде)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(480px,100%);text-align:center}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:14px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:12px 26px;border-radius:12px}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.board-wrap{position:relative;height:330px;border:1px solid #242b3d;border-radius:14px;background:#0a0d15;overflow:hidden;margin-bottom:10px}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+.buckets{display:grid;grid-gap:4px;padding:0 10px}
+.bkt{font-family:ui-monospace,monospace;font-size:11px;font-weight:800;padding:7px 2px;border-radius:7px;background:#1a2033;border:1px solid #242b3d;color:#8a93ab;transition:.2s}
+.bkt.hit{background:rgba(255,201,60,.16);border-color:rgba(255,201,60,.6);color:#ffc93c;transform:translateY(-3px)}
+#result{font-family:ui-monospace,monospace;font-size:14.5px;min-height:22px;color:#ffc93c}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 22 — плинко</h1>
+  <p class="sub">Шарик прыгает по колкам и падает в ведро. Трасса и множители — отдает бэк (getPlinkoBoard / rollBall); фронт рисует.</p>
+
+  <div class="board-wrap"><canvas id="cv"></canvas></div>
+  <div class="buckets" id="buckets"></div>
+
+  <button class="btn" id="drop" style="margin-top:12px">Бросить шарик · 20 ◈</button>
+  <div id="result"></div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getPlinkoBoard() {
+    const ROWS = 10;
+    const BUCKETS = [12, 4.4, 1.8, 1.05, 0.65, 0.35, 0.65, 1.05, 1.8, 4.4, 12];
+    return { rows: ROWS, buckets: BUCKETS };
+  },
+  async rollBall() {
+    const ROWS = 10;
+    const path = [];
+    let col = 0;
+    for (let r = 0; r < ROWS; r++) {
+      const dir = Math.random() < .5 ? 0 : 1;
+      col += dir;
+      path.push(dir);
+    }
+    const bucket = Math.min(col, 10);
+    const ALL = [12, 4.4, 1.8, 1.05, 0.65, 0.35, 0.65, 1.05, 1.8, 4.4, 12];
+    const m = ALL[bucket];
+    return { path, bucket, text: `Кивнуло в ${m}× → ${Math.round(20 * m)} ◈` };
+  }
+};
+
+const ROWS = 10;
+const PALETTE = ['#ff5470', '#ffc93c', '#8b5cf6', '#38e8ff', '#7dffb0', '#f4f6ff', '#7dffb0', '#38e8ff', '#8b5cf6', '#ffc93c', '#ff5470'];
+
+const bucketsEl = document.getElementById('buckets');
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const btn = document.getElementById('drop');
+const result = document.getElementById('result');
+const onResult = out => console.log('plinko result:', out);
+let MULT = [];
+
+let bw = 0, bh = 0;
+function fit() {
+  const r = cv.parentElement.getBoundingClientRect();
+  bw = r.width; cv.width = bw; bh = r.height; cv.height = bh;
+}
+fit();
+addEventListener('resize', fit);
+
+function pegPositions() {
+  const arr = [];
+  for (let r = 0; r < ROWS; r++) {
+    const row = [];
+    const cnt = r + 3;
+    const step = bw / (cnt + 1);
+    for (let p = 0; p < cnt; p++) row.push({ x: step * (p + 1), y: 26 + r * ((bh - 60) / (ROWS - 1)) });
+    arr.push(row);
+  }
+  return arr;
+}
+
+let pegs = pegPositions();
+
+function drawStatic(ball, bkt) {
+  ctx.clearRect(0, 0, bw, bh);
+  ctx.fillStyle = '#454f77';
+  for (const row of pegs) for (const p of row) {
+    ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill();
+  }
+  if (bkt != null) {
+    const k = pegs[ROWS - 1].length - 1;
+    ctx.fillStyle = PALETTE[bkt];
+    ctx.globalAlpha = .16;
+    const step = bw / (MULT.length + 1);
+    ctx.fillRect(bkt * step + 16, 0, step - 4, bh);
+    ctx.globalAlpha = 1;
+  }
+  if (ball) {
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffc93c';
+    ctx.shadowColor = '#ffc93c';
+    ctx.shadowBlur = 16;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+function fall(r) {
+  const path = [{ row: -1, pIdx: 0, t: -1 }];
+  let col = 0;
+  for (let i = 0; i < ROWS; i++) {
+    col += r.path[i];
+    path.push({ row: i, pIdx: Math.min(col, pegs[i].length - 1), t: i });
+  }
+  const dest = Math.min(col, MULT.length - 1);
+  const segMs = 105;
+
+  return new Promise(res => {
+    const start = performance.now();
+    const tick = now => {
+      const seg = Math.floor((now - start) / segMs) - 1;
+      let x, y;
+      if (seg < 0) { x = bw / 2; y = 10; drawStatic({ x, y }, null); requestAnimationFrame(tick); return; }
+      if (seg >= ROWS) {
+        const bkt = bucketsEl.children[dest];
+        bkt.classList.add('hit');
+        setTimeout(() => bkt.classList.remove('hit'), 900);
+        result.textContent = r.text;
+        onResult({ kind: 'land', col: dest, m: MULT[dest] });
+        drawStatic(null, dest);
+        btn.disabled = false;
+        res();
+        return;
+      }
+      const t = (now - start - seg * segMs) / segMs;
+      const prev = path[seg - 1], cur = path[seg];
+      const A = pegs[seg - 1][prev.pIdx], B = pegs[seg][cur.pIdx];
+      x = A.x + (B.x - A.x) * t;
+      y = A.y + (B.y - A.y) * t + Math.sin(t * Math.PI) * 7;
+      drawStatic({ x, y }, null);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+(async () => {
+  const board = await ServerAPI.getPlinkoBoard();
+  MULT = board.buckets;
+  bucketsEl.innerHTML = MULT.map((m, i) =>
+    `<div class="bkt" data-i="${i}" style="background:${PALETTE[i]}33;color:${PALETTE[i]}">${m}×</div>`
+  ).join('');
+
+  drawStatic(null, null);
+
+  btn.addEventListener('click', async () => {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    result.textContent = '';
+    const r = await ServerAPI.rollBall();
+    fall(r);
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 08 — слот 5 барабанов с пейлайн</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px;overflow-x:hidden}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(760px,100%);text-align:center}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:20px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:13px 32px;border-radius:12px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.stage{position:relative;display:flex;gap:var(--rgap,8px);justify-content:center;padding:var(--rpad,22px);background:#0a0d15;border:1px solid #242b3d;border-radius:14px;margin-bottom:18px;overflow:hidden}
+.stage::after{content:"";position:absolute;left:0;right:0;top:50%;height:2px;transform:translateY(-50%);background:linear-gradient(90deg,transparent,rgba(255,201,60,.8),transparent);z-index:4;pointer-events:none}
+.reel{width:var(--rw,96px);height:var(--rh,110px);overflow:hidden;border-radius:10px;background:linear-gradient(180deg,#171c2c,#0d1019);border:1px solid #242b3d;box-shadow:inset 0 10px 22px rgba(0,0,0,.6)}
+.reel-strip{display:flex;flex-direction:column;will-change:transform}
+.reel-anim{transition:transform 2.8s cubic-bezier(.12,.72,.18,1.01)}
+.reel-cell{height:var(--rh,110px);flex:0 0 var(--rh,110px);display:grid;place-items:center;transition:background .3s}
+.reel-cell .glyph{--c:#9aa4b2;font-size:var(--rg,46px);line-height:1;color:var(--c);filter:drop-shadow(0 0 12px color-mix(in srgb,var(--c) 45%,transparent))}
+.reel-cell.pay{background:rgba(255,201,60,.14);box-shadow:inset 0 0 0 2px rgba(255,201,60,.5)}
+#result{font-family:ui-monospace,monospace;font-size:15px;min-height:24px;color:#ffc93c}
+.paytable{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:14px}
+.pt{font-family:ui-monospace,monospace;font-size:11.5px;color:#8a93ab;border:1px solid #242b3d;border-radius:8px;padding:6px 10px}
+.pt b{color:#ffc93c}
+.common{--c:#9aa4b2}.uncommon{--c:#38e8ff}.rare{--c:#8b5cf6}.epic{--c:#ffc93c}.legendary{--c:#ff7847}.mythic{--c:#ff5470}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 08 — слот 5 барабанов</h1>
+  <p class="sub">Пять барабанов, общий пейлайн по центру, ступенчатый старт, подсветка выигрышных ячеек. Таблица выплат в PAYTABLE.</p>
+
+  <div class="stage">
+    <div class="reel"><div class="reel-strip" id="r0"></div></div>
+    <div class="reel"><div class="reel-strip" id="r1"></div></div>
+    <div class="reel"><div class="reel-strip" id="r2"></div></div>
+    <div class="reel"><div class="reel-strip" id="r3"></div></div>
+    <div class="reel"><div class="reel-strip" id="r4"></div></div>
+  </div>
+
+  <button class="btn" id="spin">Крутить</button>
+  <div id="result" style="margin-top:14px"></div>
+
+  <div class="paytable" id="paytable"></div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getSlotConfig() {
+    return {
+      symbols: [
+        { key: 'pawn',   glyph: '\u265F\uFE0E', name: 'Пешка',  rarity: 'common' },
+        { key: 'knight', glyph: '\u265E\uFE0E', name: 'Конь',   rarity: 'uncommon' },
+        { key: 'bishop', glyph: '\u265D\uFE0E', name: 'Слон',   rarity: 'uncommon' },
+        { key: 'rook',   glyph: '\u265C\uFE0E', name: 'Ладья',  rarity: 'rare' },
+        { key: 'queen',  glyph: '\u265B\uFE0E', name: 'Ферзь',  rarity: 'epic' },
+        { key: 'gem',    glyph: '\u25C6\uFE0E', name: 'Кристалл', rarity: 'mythic' }
+      ],
+      paytable: [
+        { label: '5× Кристалл = +5000 ◈' },
+        { label: '5× Фигура = +1000 ◈' },
+        { label: '4× Фигура = +200 ◈' },
+        { label: '3× Фигура = +80 ◈' },
+        { label: '1 пара = +30 ◈' }
+      ]
+    };
+  },
+  async spin() {
+    const KEYS = ['pawn', 'knight', 'bishop', 'rook', 'queen', 'gem'];
+    const NAMES = { pawn: 'Пешка', knight: 'Конь', bishop: 'Слон', rook: 'Ладья', queen: 'Ферзь', gem: 'Кристалл' };
+    const finals = Array.from({ length: 5 }, () => KEYS[Math.floor(Math.random() * KEYS.length)]);
+    const RULES = [
+      { match: 5, only: 'gem',  payout: 5000 },
+      { match: 5, only: null,   payout: 1000 },
+      { match: 4, only: null,   payout: 200 },
+      { match: 3, only: null,   payout: 80 },
+      { match: 2, only: null,   payout: 30 }
+    ];
+    const counts = {};
+    finals.forEach(k => { counts[k] = (counts[k] || 0) + 1; });
+    let outcome = { rule: null, text: 'Пусто. Ставка сгорела' };
+    for (const rule of RULES) {
+      const hitKey = Object.keys(counts).find(k => counts[k] >= rule.match && (!rule.only || k === rule.only));
+      if (hitKey) {
+        outcome = { rule: { match: rule.match, only: rule.only }, hitKey, text: `${counts[hitKey]}× ${NAMES[hitKey] || hitKey} = +${rule.payout} ◈` };
+        break;
+      }
+    }
+    return { finals, outcome };
+  }
+};
+
+const MOBILE = matchMedia('(max-width:560px)').matches;
+
+const REEL = MOBILE
+  ? { w: 54, h: 70, g: 26, gap: 5, pad: 12 }
+  : { w: 96, h: 110, g: 46, gap: 8, pad: 22 };
+
+const bs = document.body.style;
+bs.setProperty('--rw', REEL.w + 'px');
+bs.setProperty('--rh', REEL.h + 'px');
+bs.setProperty('--rg', REEL.g + 'px');
+bs.setProperty('--rgap', REEL.gap + 'px');
+bs.setProperty('--rpad', REEL.pad + 'px');
+
+const ITEM_H = REEL.h;
+const STRIP_LEN = 30;
+const RESULT_IDX = 26;
+const DUR = 2800;
+const STEP_DELAY = 260;
+
+const reels = [0, 1, 2, 3, 4].map(i => document.getElementById('r' + i));
+const btn = document.getElementById('spin');
+const result = document.getElementById('result');
+let spinning = false, SYMBOLS = [], KEYMAP = {};
+const onResult = outcome => console.log('slot5 result:', outcome);
+
+(async () => {
+  const M = await ServerAPI.getSlotConfig();
+  SYMBOLS = M.symbols;
+  KEYMAP = Object.fromEntries(SYMBOLS.map(s => [s.key, s]));
+  document.getElementById('paytable').innerHTML = M.paytable.map(r =>
+    `<span class="pt">${r.label.replace(/=\s*(\+\d+ ◈)/, '= <b>$1</b>')}</span>`
+  ).join('');
+  const pickSymbol = () => SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+
+  function fillReel(strip, finalSym) {
+    strip.classList.remove('reel-anim');
+    strip.style.transform = 'translateY(0)';
+    strip.innerHTML = '';
+    for (let i = 0; i < STRIP_LEN; i++) {
+      const sym = i === RESULT_IDX ? finalSym : pickSymbol();
+      const c = document.createElement('div');
+      c.className = 'reel-cell';
+      c.innerHTML = `<span class="glyph r-${sym.rarity}">${sym.glyph}</span>`;
+      strip.appendChild(c);
+    }
+  }
+
+  function spinReel(strip, finalSym, delay) {
+    fillReel(strip, finalSym);
+    void strip.offsetHeight;
+    strip.classList.add('reel-anim');
+    strip.style.transform = `translateY(${-RESULT_IDX * ITEM_H}px)`;
+    return new Promise(res => setTimeout(res, delay + DUR + 60));
+  }
+
+  btn.addEventListener('click', async () => {
+    if (spinning) return;
+    spinning = true;
+    btn.disabled = true;
+    result.textContent = '';
+
+    const r = await ServerAPI.spin();
+    const finals = r.finals.map(k => KEYMAP[k]);
+
+    await Promise.all(reels.map((s, i) => spinReel(s, finals[i], i * STEP_DELAY)));
+
+    const out = r.outcome;
+    if (out.rule) {
+      const counts = {};
+      finals.forEach(s => { counts[s.key] = (counts[s.key] || 0) + 1; });
+      reels.forEach((rr, i) => {
+        if (counts[finals[i].key] >= out.rule.match) {
+          rr.children[RESULT_IDX].classList.add('pay');
+        }
+      });
+      result.textContent = `ПОБЕДА: ${out.text}`;
+    } else {
+      result.textContent = out.text;
+    }
+    onResult(out);
+    spinning = false;
+    btn.disabled = false;
+  });
+})();
+</script>
+</body>
+</html>

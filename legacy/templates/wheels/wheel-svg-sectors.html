@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 05 — SVG-колесо с подписанными секторами</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(560px,100%);text-align:center}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:20px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:13px 30px;border-radius:12px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.wheel-wrap{position:relative;width:min(340px,84vw);height:min(340px,84vw);margin:0 auto 20px}
+svg{width:100%;height:100%}
+g#disc{transition:transform 4.8s cubic-bezier(.09,.68,.14,1.01);will-change:transform}
+.pointer{position:absolute;top:-4px;left:50%;transform:translateX(-50%);z-index:4;width:0;height:0;border:13px solid transparent;border-top:26px solid #ffc93c;filter:drop-shadow(0 0 8px rgba(255,201,60,.75))}
+#result{font-family:ui-monospace,monospace;font-size:15px;min-height:22px;color:#ffc93c;text-align:center}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 05 — SVG-колесо с секторами</h1>
+  <p class="sub">Секторы и надписи строятся из массива SECTORS. Крутится группа g#disc. Конфиг в начале скрипта.</p>
+
+  <div class="wheel-wrap">
+    <div class="pointer"></div>
+    <svg viewBox="0 0 340 340" id="svg"><g id="disc"></g></svg>
+  </div>
+
+  <button class="btn" id="spin">Крутить колесо</button>
+  <div id="result" style="margin-top:16px"></div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getWheelConfig() {
+    return {
+      sectors: [
+        { label: 'Пешка',      glyph: '\u265F\uFE0E', color: '#9aa4b2' },
+        { label: 'Конь',       glyph: '\u265E\uFE0E', color: '#38e8ff' },
+        { label: 'Слон',       glyph: '\u265D\uFE0E', color: '#38e8ff' },
+        { label: 'Ладья',      glyph: '\u265C\uFE0E', color: '#8b5cf6' },
+        { label: 'Ферзь',      glyph: '\u265B\uFE0E', color: '#ffc93c' },
+        { label: 'Ферзь ×2',   glyph: '\u265B\uFE0E', color: '#ff5470' },
+        { label: 'ДЖЕКПОТ',    glyph: '\u25C6\uFE0E', color: '#ffc93c' },
+        { label: 'Пусто',      glyph: '',             color: '#222a3f' }
+      ]
+    };
+  },
+  async spin() {
+    const i = Math.floor(Math.random() * 8);
+    return { sector: i, empty: i === 7 };
+  }
+};
+
+const SIZE = 340, CX = 170, CY = 170, R = 160, TEXT_R = 122;
+const DURATION = 4800;
+const onResult = out => console.log('wheel result:', out);
+
+const svg = document.getElementById('svg');
+const btn = document.getElementById('spin');
+const result = document.getElementById('result');
+const disc = document.getElementById('disc');
+let rot = 0, spinning = false, SECTORS = [];
+
+disc.setAttribute('id', 'disc');
+
+(async () => {
+  SECTORS = (await ServerAPI.getWheelConfig()).sectors;
+
+  const seg = 360 / SECTORS.length;
+
+  function polar(cx, cy, r, deg) {
+    const a = (deg - 90) * Math.PI / 180;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  }
+
+  function sectorPath(a0, a1) {
+    const [x0, y0] = polar(CX, CY, R, a0);
+    const [x1, y1] = polar(CX, CY, R, a1);
+    const large = a1 - a0 > 180 ? 1 : 0;
+    return `M ${CX} ${CY} L ${x0} ${y0} A ${R} ${R} 0 ${large} 1 ${x1} ${y1} Z`;
+  }
+
+  function labelPos(i) {
+    const mid = seg / 2 + i * seg;
+    const [x, y] = polar(CX, CY, TEXT_R, mid);
+    return [x, y, mid];
+  }
+
+  function build() {
+    svg.setAttribute('viewBox', `0 0 ${SIZE} ${SIZE}`);
+    for (let i = 0; i < SECTORS.length; i++) {
+      const s = SECTORS[i];
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      p.setAttribute('d', sectorPath(i * seg, (i + 1) * seg));
+      p.setAttribute('fill', s.color);
+      p.setAttribute('stroke', '#0b0e16');
+      p.setAttribute('stroke-width', '2');
+      disc.appendChild(p);
+
+      const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      const [x, y, mid] = labelPos(i);
+      t.setAttribute('x', x); t.setAttribute('y', y);
+      t.setAttribute('text-anchor', 'middle');
+      t.setAttribute('dominant-baseline', 'middle');
+      t.setAttribute('fill', i === SECTORS.length - 1 ? '#565f79' : '#0b0e16');
+      t.setAttribute('font-size', '11');
+      t.setAttribute('font-weight', '800');
+      t.setAttribute('font-family', 'system-ui');
+      disc.appendChild(t);
+
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      g.setAttribute('x', x); g.setAttribute('y', y - 16);
+      g.setAttribute('text-anchor', 'middle');
+      g.setAttribute('dominant-baseline', 'middle');
+      g.setAttribute('fill', '#0b0e16');
+      g.setAttribute('font-size', s.glyph.length > 1 ? '26' : '18');
+      disc.appendChild(g);
+      g.textContent = s.glyph;
+      t.textContent = s.label;
+    }
+  }
+
+  build();
+  disc.style.transformOrigin = '170px 170px';
+
+  function bestAngleFor(i) {
+    const mid = seg / 2 + i * seg;
+    const jitter = (Math.random() - .5) * seg * .6;
+    const a = mid + jitter;
+    const delta = 360 * 5 + ((((-(a) - rot) % 360) + 360) % 360);
+    return delta;
+  }
+
+  btn.addEventListener('click', async () => {
+    if (spinning) return;
+    spinning = true;
+    btn.disabled = true;
+    result.textContent = '';
+
+    const r = await ServerAPI.spin();
+    rot += bestAngleFor(r.sector);
+    disc.style.transform = `rotate(${rot}deg)`;
+    disc.style.transformOrigin = '170px 170px';
+
+    setTimeout(() => {
+      result.textContent = `Сектор ${r.sector + 1}: ${SECTORS[r.sector].label}`;
+      spinning = false;
+      btn.disabled = false;
+      onResult(r);
+    }, DURATION + 100);
+  });
+})();
+</script>
+</body>
+</html>

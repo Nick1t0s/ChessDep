@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 15 — анимация счётчика баланса</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:26px;width:min(560px,100%);text-align:center}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:22px}
+.balance-label{color:#8a93ab;font-size:12px;letter-spacing:1px;text-transform:uppercase;font-weight:700}
+.balance{font-family:ui-monospace,monospace;font-size:46px;font-weight:800;color:#fff;display:inline-flex;align-items:baseline;gap:6px;margin:6px 0 4px}
+.balance i{font-style:normal;color:#ffc93c;font-size:30px}
+.balance.pumping i{animation:pump .5s}
+@keyframes pump{40%{transform:scale(1.28)}}
+.balance.flash-win{animation:flash-win .9s}
+@keyframes flash-win{30%{text-shadow:0 0 26px rgba(255,201,60,.75)}}
+.balance.flash-lose{animation:flash-lose .9s}
+@keyframes flash-lose{30%{color:#ff5470;text-shadow:0 0 22px rgba(255,84,112,.6)}}
+.delta{font-family:ui-monospace,monospace;font-size:20px;font-weight:800;min-height:30px}
+.delta.win{color:#7dffb0;animation:jet .9s cubic-bezier(.2,.9,.3,1)}
+.delta.lose{color:#ff5470;animation:jet .9s cubic-bezier(.2,.9,.3,1)}
+@keyframes jet{0%{opacity:0;transform:translateY(14px) scale(.8)}25%{opacity:1;transform:none}70%{opacity:1}100%{opacity:0;transform:translateY(-22px)}}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.btnrow{display:flex;gap:10px;justify-content:center;margin-top:12px}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:12px 24px;border-radius:12px}
+.btn.ghost{background:none;border:1px solid rgba(255,84,112,.45);color:#ff5470}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 15 — счётчик баланса count-up</h1>
+  <p class="sub">CD.islandTween аналог: setBalance(to) едет от текущего к новому, Wongfmt-форматы, пульс и джет-дельта.</p>
+
+  <div class="balance-label">◈ баланс</div>
+  <div class="balance" id="bal">1,250 <i>◈</i></div>
+  <div class="delta" id="delta"></div>
+
+  <div class="btnrow">
+    <button class="btn" id="plus">+ Выигрыш 320</button>
+    <button class="btn ghost" id="minus">— Сгорело 80</button>
+  </div>
+</div>
+
+<script>
+const fmt = n => Math.round(n).toLocaleString('ru-RU');
+const DURATION = 1100;
+
+const balEl = document.getElementById('bal');
+const deltaEl = document.getElementById('delta');
+let value = 1250;
+let shown = value;
+let raf = null;
+
+function setBalance(to, kind) {
+  const from = shown;
+  value = to;
+  if (raf) cancelAnimationFrame(raf);
+
+  deltaEl.textContent = '';
+  deltaEl.className = 'delta';
+  if (kind) {
+    deltaEl.textContent = (kind === 'win' ? '+' : '−') + fmt(Math.abs(to - from)) + ' ◈';
+    deltaEl.classList.add(kind);
+    clearTimeout(deltaEl._reset);
+    deltaEl._reset = setTimeout(() => { deltaEl.textContent = ''; deltaEl.className = 'delta'; }, 950);
+  }
+
+  balEl.classList.remove('flash-win', 'flash-lose');
+  void balEl.offsetWidth;
+  balEl.classList.add(kind === 'win' ? 'flash-win' : 'flash-lose');
+
+  const t0 = performance.now();
+  const tick = now => {
+    const t = Math.min(1, (now - t0) / DURATION);
+    const e = 1 - Math.pow(1 - t, 3);
+    const curVal = from + (to - from) * e;
+    shown = curVal;
+    balEl.innerHTML = fmt(curVal) + '<i>&#9670;&#xFE0E;</i>';
+    if (t < 1) raf = requestAnimationFrame(tick);
+    else { raf = null; shown = to; balEl.classList.remove('pumping'); balEl.innerHTML = fmt(to) + '<i>&#9670;&#xFE0E;</i>'; }
+  };
+  raf = requestAnimationFrame(tick);
+
+  balEl.classList.remove('pumping');
+  void balEl.offsetWidth;
+  balEl.classList.add('pumping');
+}
+
+document.getElementById('plus').addEventListener('click', () => setBalance(value + 320, 'win'));
+document.getElementById('minus').addEventListener('click', () => setBalance(Math.max(0, value - 80), 'lose'));
+</script>
+</body>
+</html>

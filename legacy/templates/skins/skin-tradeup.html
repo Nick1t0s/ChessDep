@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 32 — trade-up контракт скинов</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(680px,100%);text-align:center}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:16px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:12px 26px;border-radius:12px;min-height:46px}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn.ghost{background:none;border:1px solid #2a3145;color:#8a93ab;font-weight:700}
+
+.slots{display:grid;grid-template-columns:repeat(5,92px);gap:8px;justify-content:center;margin-bottom:14px}
+.slot{--c:#9aa4b2;width:92px;height:100px;border-radius:12px;border:1px solid #242b3d;background:#161b29;display:grid;place-items:center;cursor:pointer;transition:.15s}
+.slot .glyph{font-size:38px;color:var(--c);filter:drop-shadow(0 0 10px color-mix(in srgb,var(--c) 45%,transparent))}
+.slot .plus{color:#3a4155;font-size:26px}
+.slot.fill:hover{border-color:var(--c)}
+.slot .rm{position:absolute;display:none}
+.slot:hover .rm{display:block}
+
+.progress{max-width:380px;margin:0 auto 14px}
+.pr-top{display:flex;justify-content:space-between;font-family:ui-monospace,monospace;font-size:11.5px;color:#8a93ab;margin-bottom:5px}
+.pr-bar{height:14px;border-radius:8px;background:#1d2334;border:1px solid #242b3d;overflow:hidden}
+.pr-fill{height:100%;width:40%;background:linear-gradient(90deg,#8b5cf6,#c04cff);box-shadow:0 0 12px rgba(139,92,246,.7);transition:width .4s}
+
+.roll-zone{position:relative;margin:14px 0;height:120px;display:none}
+.roll-zone.on{display:block}
+.rdisc{width:120px;height:120px;margin:0 auto;border-radius:50%;position:relative;transition:transform 3.6s cubic-bezier(.09,.68,.14,1.01);transform:rotate(0deg)}
+.roll-result{display:none;margin-top:10px}
+.roll-result.on{display:block;animation:rp .5s cubic-bezier(.2,1.6,.4,1)}
+@keyframes rp{0%{transform:scale(.5);opacity:0}100%{transform:scale(1)}}
+.rr-card{--c:#ff7847;display:inline-flex;flex-direction:column;align-items:center;padding:14px 26px;border-radius:14px;border:1px solid color-mix(in srgb,var(--c) 55%,transparent);background:color-mix(in srgb,var(--c) 10%,#161b29)}
+.rr-card .glyph{font-size:44px;color:var(--c);filter:drop-shadow(0 0 14px color-mix(in srgb,var(--c) 60%,transparent))}
+.rr-card b{margin-top:4px}
+.rr-card small{color:#8a93ab;font-family:ui-monospace,monospace;font-size:11px}
+
+.filters{display:flex;gap:8px;justify-content:center;margin-bottom:12px;flex-wrap:wrap}
+.fchip{padding:7px 13px;border-radius:999px;border:1px solid #242b3d;color:#8a93ab;font-size:12px;font-weight:700}
+.fchip.on{color:#fff;border-color:#8b5cf6;background:rgba(139,92,246,.16)}
+
+.pool{display:none;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin:0 0 14px}
+.pool.on{display:grid}
+.pk{--c:#8b5cf6;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;border:1px solid #242b3d;background:#161b29;cursor:pointer;text-align:left}
+.pk .glyph{font-size:22px;color:var(--c)}
+.pk small{color:#565f79;font-family:ui-monospace,monospace;font-size:10px}
+.pk b{font-size:11px;font-weight:700}
+input.mono{font-family:ui-monospace,monospace}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 32 — trade-up контракт</h1>
+  <p class="sub">CS-контракт: 10 скинов одной редкости → крутка на 1 скин следующей редкости. Результат определяет бэк, тут — демо-ролл.</p>
+
+  <div class="filters" id="rfilters"></div>
+  <div class="pool" id="pool"></div>
+
+  <div class="slots" id="slots"></div>
+
+  <div class="progress">
+    <div class="pr-top"><span id="pr-txt">4/10 слотов</span><span>редкость выхода: <b id="pr-out">legendary</b></span></div>
+    <div class="pr-bar"><div class="pr-fill" id="pr-fill"></div></div>
+  </div>
+
+  <div class="roll-zone" id="rollzone">
+    <div class="rdisc" id="rdisc"></div>
+  </div>
+  <div class="roll-result" id="rr"><div class="rr-card" id="rrcard"></div></div>
+
+  <div style="display:flex;gap:10px;margin-top:16px">
+    <button class="btn ghost" id="demo">Заполнить демо</button>
+    <button class="btn" id="go">Принять контракт</button>
+  </div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getTradeupConfig() {
+    return {
+      size: 10,
+      items: [
+        { name: 'Синедь-ладья', glyph: '\u265C\uFE0E', rarity: 'rare' },
+        { name: 'Пурпурная рамка', glyph: '\u25C6\uFE0E', rarity: 'rare' },
+        { name: 'Мраморный каррьер', glyph: '\u2658\uFE0E', rarity: 'rare' },
+        { name: 'Стальной конь', glyph: '\u265E\uFE0E', rarity: 'rare' }
+      ],
+      outs: {
+        common:    { name: 'Пешка-карбонка', glyph: '\u265F\uFE0E' },
+        uncommon:  { name: 'Мятно-стальной конь', glyph: '\u265E\uFE0E' },
+        rare:      { name: 'Синедь-ладья', glyph: '\u265C\uFE0E' },
+        epic:      { name: 'Золотоноша', glyph: '\u265B\uFE0E' },
+        legendary: { name: 'Обсидиановый король', glyph: '\u265A\uFE0E' },
+        mythic:    { name: 'Кристалл', glyph: '\u25C6\uFE0E' }
+      }
+    };
+  },
+  async executeContract(outR) {
+    const win = Math.random() < 0.108;
+    return { kind: win ? 'up' : 'flat', outR };
+  }
+};
+const RARITY = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
+const RCOLOR = { common: '#9aa4b2', uncommon: '#38e8ff', rare: '#8b5cf6', epic: '#ffc93c', legendary: '#ff7847', mythic: '#ff5470' };
+const onContract = out => console.log('tradeup result:', out);
+
+const rfilters = document.getElementById('rfilters');
+const prFill = document.getElementById('pr-fill');
+const prTxt = document.getElementById('pr-txt');
+const prOut = document.getElementById('pr-out');
+const rollZone = document.getElementById('rollzone');
+const rdisc = document.getElementById('rdisc');
+const rr = document.getElementById('rr');
+const rrcard = document.getElementById('rrcard');
+const demoBtn = document.getElementById('demo');
+const goBtn = document.getElementById('go');
+
+let TRADEUP_SIZE = 10, OUTS = {}, POOL_ITEMS = [];
+let inRarity = 'rare';
+let activeSlot = -1;
+let slots = [];
+
+(async () => {
+  const M = await ServerAPI.getTradeupConfig();
+  const slotsEl = document.getElementById('slots');
+  const poolEl = document.getElementById('pool');
+  TRADEUP_SIZE = M.size;
+  OUTS = M.outs;
+  POOL_ITEMS = M.items;
+  slots = new Array(TRADEUP_SIZE).fill(null);
+
+  rfilters.innerHTML = RARITY.slice(0, 4).map(r =>
+    `<button class="fchip${r === inRarity ? ' on' : ''}" data-r="${r}">${r}</button>`
+  ).join('');
+
+  rfilters.addEventListener('click', e => {
+    const c = e.target.closest('.fchip');
+    if (!c) return;
+    inRarity = c.dataset.r;
+    document.querySelectorAll('.fchip').forEach(x => x.classList.toggle('on', x === c));
+    renderPool();
+  });
+
+  function renderPool() {
+    poolEl.classList.toggle('on', activeSlot >= 0);
+    poolEl.innerHTML = POOL_ITEMS.map(it =>
+      `<button class="pk" style="--c:${RCOLOR[it.rarity]}"><span class="glyph">${it.glyph}</span><span><b>${it.name}</b><br><small>${it.rarity}</small></span></button>`
+    ).join('');
+  }
+
+  function render() {
+    const filled = slots.filter(Boolean).length;
+    slotsEl.innerHTML = slots.map((it, i) =>
+      `<div class="slot${it ? ' fill' : ''}${activeSlot === i ? ' pick' : ''}" data-i="${i}" style="--c:${it ? RCOLOR[it.rarity] : '#3a4155'}">
+        ${it ? `<span class="glyph">${it.glyph}</span>` : '<span class="plus">+</span>'}
+      </div>`
+    ).join('');
+    prFill.style.width = (filled / TRADEUP_SIZE * 100) + '%';
+    prTxt.textContent = `${filled}/${TRADEUP_SIZE} слотов`;
+    prOut.textContent = RARITY[RARITY.indexOf(inRarity) + 1] || '—';
+    goBtn.disabled = filled < TRADEUP_SIZE;
+  }
+
+  slotsEl.addEventListener('click', e => {
+    const s = e.target.closest('.slot');
+    if (!s) return;
+    const i = parseInt(s.dataset.i, 10);
+    if (slots[i]) { slots[i] = null; activeSlot = -1; poolEl.classList.remove('on'); }
+    else { activeSlot = i; renderPool(); }
+    render();
+  });
+
+  poolEl.addEventListener('click', e => {
+    const p = e.target.closest('.pk');
+    if (!p || activeSlot < 0) return;
+    slots[activeSlot] = POOL_ITEMS[[...poolEl.children].indexOf(p)];
+    activeSlot = -1;
+    poolEl.classList.remove('on');
+    render();
+  });
+
+  demoBtn.addEventListener('click', () => {
+    slots.fill(POOL_ITEMS[Math.floor(Math.random() * POOL_ITEMS.length)]);
+    activeSlot = -1;
+    poolEl.classList.remove('on');
+    render();
+  });
+
+  function paintDisc() {
+    const outR = RARITY[RARITY.indexOf(inRarity) + 1];
+    rdisc.style.background = `conic-gradient(${RCOLOR[outR]} 0deg 108deg, rgba(255,255,255,.07) 108deg 360deg)`;
+  }
+  paintDisc();
+
+  goBtn.addEventListener('click', async () => {
+    if (goBtn.disabled) return;
+    goBtn.disabled = true;
+    demoBtn.disabled = true;
+    rollZone.classList.add('on');
+    rr.classList.remove('on');
+
+    const outR = RARITY[RARITY.indexOf(inRarity) + 1];
+    const r = await ServerAPI.executeContract(outR);
+    const jitter = r.kind === 'up' ? 60 : 240;
+    const spins = 5 * 360;
+    rdisc.style.transform = `rotate(${spins + jitter}deg)`;
+
+    setTimeout(() => {
+      rollZone.classList.remove('on');
+      rdisc.style.transition = 'none';
+      rdisc.style.transform = 'rotate(0deg)';
+      void rdisc.offsetWidth;
+      rdisc.style.transition = '';
+
+      const out = OUTS[outR];
+      rrcard.style.setProperty('--c', RCOLOR[outR]);
+      rrcard.innerHTML = `<span class="glyph">${out.glyph}</span><b>${out.name}</b><small>${outR}</small>`;
+      rr.classList.add('on');
+      onContract(r);
+      slots.fill(null);
+      render();
+      goBtn.disabled = false;
+      demoBtn.disabled = false;
+    }, 3720);
+  });
+
+  renderPool();
+  render();
+})();
+</script>
+</body>
+</html>

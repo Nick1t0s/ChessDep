@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 36 — скины досок (темы)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(780px,100%)}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:16px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+
+.stage{display:grid;grid-template-columns:minmax(0,1fr) 210px;gap:14px;align-items:start;margin-bottom:16px}
+.big{position:relative;border:2px solid #323a55;border-radius:12px;overflow:hidden;display:grid;grid-template-columns:repeat(8,1fr);aspect-ratio:1}
+.big .sq{display:grid;place-items:center;font-size:min(4vw,26px)}
+.big .glyph{color:#f4f6ff;filter:drop-shadow(0 2px 5px rgba(0,0,0,.5))}
+.big-name{position:absolute;left:0;right:0;bottom:-1px;padding:8px 12px;background:linear-gradient(0deg,rgba(7,9,16,.85),transparent);font-size:13px;font-weight:800;display:flex;justify-content:space-between}
+.big-name small{color:#8a93ab;font-family:ui-monospace,monospace;font-weight:500}
+
+.sidecard{background:#0d1019;border:1px solid #242b3d;border-radius:14px;padding:14px}
+.sidecard h4{color:#8a93ab;font-size:11px;letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px}
+.sidecard .row{display:flex;justify-content:space-between;font-family:ui-monospace,monospace;font-size:12px;color:#8a93ab;padding:5px 0;border-bottom:1px solid #1d2334}
+.sidecard .row:last-child{border:0}
+.sidecard .row b{color:#e8ecf4}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.theme{--c:#9aa4b2;--l:#454f77;--d:#262e4d;--acc:#ffc93c;position:relative;border:1px solid #242b3d;border-radius:14px;overflow:hidden;cursor:pointer;background:#12151f;transition:transform .15s,border-color .15s}
+.theme:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--acc) 60%,transparent)}
+.theme .preview{display:grid;grid-template-columns:repeat(4,1fr);aspect-ratio:1}
+.theme .preview span{aspect-ratio:1}
+.theme .preview .a{background:var(--l)}
+.theme .preview .b{background:var(--d)}
+.theme .nm{padding:9px 10px 4px;font-size:12.5px;font-weight:800}
+.theme .info{padding:0 10px 10px;font-family:ui-monospace,monospace;font-size:10px;color:#565f79}
+.theme.active{border-color:#7dffb0}
+.theme .eq{position:absolute;top:6px;right:6px;font-size:9px;font-weight:800;color:#7dffb0;border:1px solid rgba(125,255,176,.5);background:rgba(6,10,14,.7);padding:2px 6px;border-radius:999px}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 36 — скины досок</h1>
+  <p class="sub">Темы: цвета клеток `--l/--d`, акцент ховера `--acc`, превью 4×4. Клик по теме → превью сверху + экип.</p>
+
+  <div class="stage">
+    <div class="big" id="big"></div>
+    <div class="sidecard">
+      <h4>Активная тема</h4>
+      <div id="meta"></div>
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getBoardThemes() {
+    return {
+      activeId: 't4',
+      themes: [
+        { id: 't1', name: 'Классика крем', l: '#e8d3b3', d: '#b58762', acc: '#ffc93c', rarity: 'common' },
+        { id: 't2', name: 'Клубный синий', l: '#454f77', d: '#262e4d', acc: '#38e8ff', rarity: 'common' },
+        { id: 't3', name: 'Мраморный каррьер', l: '#f2f2f4', d: '#8b8f9a', acc: '#8b5cf6', rarity: 'rare' },
+        { id: 't4', name: 'Неон-полька', l: '#1d2334', d: '#0e1220', acc: '#ff5470', rarity: 'epic' },
+        { id: 't5', name: 'Золотоноша-стиль', l: '#e5c76b', d: '#c4a032', acc: '#ffc93c', rarity: 'legendary' },
+        { id: 't6', name: 'Обсидиан', l: '#2c3148', d: '#141824', acc: '#ff7847', rarity: 'mythic' }
+      ]
+    };
+  }
+};
+const PIECE_SET = ['\u265C\uFE0E', '\u265E\uFE0E', '\u265B\uFE0E', '\u265A\uFE0E'];
+
+const onEquip = theme => console.log('board skin:', theme);
+const grid = document.getElementById('grid');
+const big = document.getElementById('big');
+const meta = document.getElementById('meta');
+let THEMES = [], active = null;
+
+(async () => {
+  const M = await ServerAPI.getBoardThemes();
+  THEMES = M.themes;
+  active = M.activeId;
+
+  function previewCells(theme) {
+    let out = '';
+    for (let i = 0; i < 16; i++) {
+      const lightSq = (Math.floor(i / 4) + i) % 2 === 0;
+      out += `<span class="${lightSq ? 'a' : 'b'}"></span>`;
+    }
+    return out;
+  }
+
+  function renderBig(theme) {
+    let cells = '';
+    for (let i = 0; i < 64; i++) {
+      const r = Math.floor(i / 8), c = i % 8;
+      const lightSq = (r + c) % 2 === 0;
+      const style = lightSq ? theme.l : theme.d;
+      const glyphs = { '1': PIECE_SET[0], '3': PIECE_SET[1], '4': PIECE_SET[2], '5': PIECE_SET[3] };
+      const glyph = glyphs[String(c)] && r === 1 ? `<span class="glyph" style="color:#20263c;font-size:min(3.4vw,22px)">${glyphs[String(c)]}</span>` : (r === 6 && c === 4 ? `<span class="glyph" style="color:#f4f6ff;font-size:min(3.4vw,22px)">&#9819;&#xFE0E;</span>` : '');
+      cells += `<span class="sq" style="background:${style}">${glyph}</span>`;
+    }
+    big.innerHTML = cells + `<div class="big-name" style="color:${theme.acc}">${theme.name}<small>${theme.rarity}</small></div>`;
+    meta.innerHTML =
+      `<div class="row"><span>клетки</span><b style="color:${theme.l}">свет / <span style="color:${theme.d}">${theme.d}</span></b></div>` +
+      `<div class="row"><span>акцент</span><b style="color:${theme.acc}">${theme.acc}</b></div>` +
+      `<div class="row"><span>редкость</span><b>${theme.rarity}</b></div>`;
+  }
+
+  grid.innerHTML = THEMES.map(t =>
+    `<div class="theme${t.id === active ? ' active' : ''}" data-id="${t.id}" style="--l:${t.l};--d:${t.d};--acc:${t.acc}">
+      ${t.id === active ? '<span class="eq">ЭКИП</span>' : ''}
+      <div class="preview">${previewCells(t)}</div>
+      <div class="nm">${t.name}</div>
+      <div class="info">${t.rarity}</div>
+    </div>`
+  ).join('');
+
+  grid.addEventListener('click', e => {
+    const card = e.target.closest('.theme');
+    if (!card) return;
+    active = card.dataset.id;
+    const theme = THEMES.find(t => t.id === active);
+    document.querySelectorAll('.theme').forEach(x => x.classList.toggle('active', x === card));
+    document.querySelectorAll('.theme .eq').forEach(x => x.remove());
+    const eq = document.createElement('span');
+    eq.className = 'eq';
+    eq.textContent = 'ЭКИП';
+    card.appendChild(eq);
+    renderBig(theme);
+    onEquip(theme);
+  });
+
+  renderBig(THEMES.find(t => t.id === active));
+})();
+</script>
+</body>
+</html>

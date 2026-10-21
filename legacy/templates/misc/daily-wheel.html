@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шаблон 24 — колесо дня (бесплатный бонус по кулдауну)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 400px at 50% -10%,rgba(139,92,246,.15),transparent 60%),#0b0e16;color:#e8ecf4;font-family:system-ui,-apple-system,sans-serif;padding:24px}
+.panel{background:#131725;border:1px solid #242b3d;border-radius:16px;padding:22px;width:min(480px,100%);text-align:center}
+h1{font-size:20px;margin-bottom:4px}
+p.sub{color:#8a93ab;font-size:13px;margin-bottom:18px}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.wheel-wrap{position:relative;width:min(300px,80vw);height:min(300px,80vw);margin:0 auto 18px}
+.disc{position:absolute;inset:0;border-radius:50%;transition:transform 4.4s cubic-bezier(.09,.72,.12,1.01);box-shadow:0 0 0 7px #10131c,0 0 0 8px #242b3d,0 0 46px rgba(255,201,60,.2);will-change:transform}
+.pointer{position:absolute;top:-12px;left:50%;transform:translateX(-50%);z-index:3;font-size:30px;color:#ffc93c;filter:drop-shadow(0 0 8px rgba(255,201,60,.8))}
+.center{position:absolute;inset:0;margin:auto;width:92px;height:92px;border-radius:50%;background:#10131c;border:1px solid #242b3d;display:grid;place-items:center;z-index:2}
+.center .c-glyph{font-size:34px;color:#ffc93c}
+.center small{color:#8a93ab;font-size:9.5px;letter-spacing:.6px;text-transform:uppercase}
+.btn{background:linear-gradient(180deg,#ffd76a,#eaa11c);color:#231703;font-weight:800;padding:13px 32px;border-radius:12px}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+#timer{font-family:ui-monospace,monospace;color:#8a93ab;font-size:13.5px;margin-top:12px;min-height:20px}
+.streak{display:flex;gap:5px;justify-content:center;margin-top:14px}
+.st-cell{width:22px;height:22px;border-radius:7px;background:#12151f;border:1px solid #242b3d;display:grid;place-items:center;font-size:11px;color:#565f79}
+.st-cell.on{background:rgba(255,201,60,.14);border-color:rgba(255,201,60,.5);color:#ffc93c}
+.strikememo{color:#565f79;font-size:11.5px;margin-top:6px}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>Шаблон 24 — колесо дня</h1>
+  <p class="sub">10 весовых секторов, крутилка дня бесплатная. Стрик 7 дней в конфиге: на 7-й — джекпот. Кулдаун 24ч (demo — в памяти).</p>
+
+  <div class="wheel-wrap">
+    <div class="disc" id="disc"></div>
+    <div class="pointer">▾</div>
+    <div class="center"><span class="c-glyph">&#9670;&#xFE0E;</span><small>бесплатно</small></div>
+  </div>
+
+  <button class="btn" id="spin">Крутить</button>
+  <div id="timer"></div>
+  <div class="streak" id="streak"></div>
+  <div class="strikememo">страйк: <b id="st-txt">0/7</b> — на 7-й день выпадает джекпот</div>
+</div>
+
+<script>
+const ServerAPI = {
+  async getDailyWheel() {
+    return {
+      streak: 3,
+      goal: 7,
+      cooldownSec: 24 * 3600,
+      sectors: [
+        { label: '10 ◈',  val: 10,  weight: 26, color: '#9aa4b2' },
+        { label: '25 ◈',  val: 25,  weight: 20, color: '#38e8ff' },
+        { label: 'Пусто', val: 0,   weight: 16, color: '#222a3f' },
+        { label: '50 ◈',  val: 50,  weight: 14, color: '#8b5cf6' },
+        { label: 'Конь',  val: 30,  weight: 10, color: '#38e8ff', glyph: '\u265E\uFE0E' },
+        { label: '100 ◈', val: 100, weight: 6,  color: '#ffc93c' },
+        { label: 'Пусто', val: 0,   weight: 6,  color: '#222a3f' },
+        { label: '+5% шанс', val: 0, weight: 8, color: '#7dffb0', tag: 'chance' },
+        { label: 'Ферзь', val: 120, weight: 4,  color: '#ffc93c', glyph: '\u265B\uFE0E', tag: 'stock' },
+        { label: '1080',  val: 1080, weight: 1, color: '#ff5470', glyph: '\u25C6\uFE0E', tag: 'jackpot' }
+      ]
+    };
+  },
+  async spinDaily(streak, goal) {
+    const idx = Math.floor(Math.random() * 10);
+    const jackpot = streak + 1 >= goal;
+    const sector = jackpot ? 9 : idx;
+    return { sector, jackpot, streakAfter: jackpot ? 0 : streak + 1 };
+  }
+};
+
+const DURATION = 4400;
+const onResult = out => console.log('daily result:', out);
+
+const disc = document.getElementById('disc');
+const btn = document.getElementById('spin');
+const timerEl = document.getElementById('timer');
+const streakEl = document.getElementById('streak');
+const stTxt = document.getElementById('st-txt');
+let rot = 0, streak = 0, spinning = false;
+let STREAK_GOAL = 7, total = 1, bounds = [], SECTORS = [];
+
+(async () => {
+  const M = await ServerAPI.getDailyWheel();
+  SECTORS = M.sectors;
+  STREAK_GOAL = M.goal;
+  streak = M.streak;
+
+  total = SECTORS.reduce((a, s) => a + s.weight, 0);
+  bounds = [];
+  let acc = 0;
+  SECTORS.forEach(s => { bounds.push([acc, acc + s.weight]); acc += s.weight; });
+
+  function paint() {
+    const g = [];
+    let a = 0;
+    SECTORS.forEach(s => {
+      const deg = s.weight / total * 360;
+      g.push(`${s.color} ${a}deg ${a + deg}deg`);
+      a += deg;
+    });
+    disc.style.background = `conic-gradient(from 0deg, ${g.join(',')})`;
+  }
+
+  function sectorAngle(i) {
+    const [a, b] = bounds[i];
+    const jitter = (Math.random() * .8 - .4);
+    return (a + b) / 2 / total * 360 + jitter * (b - a) / total * 360;
+  }
+
+  function renderStreak() {
+    streakEl.innerHTML = Array.from({ length: STREAK_GOAL }, (_, i) =>
+      `<span class="st-cell${i < streak ? ' on' : ''}">${i + 1}</span>`
+    ).join('');
+    stTxt.textContent = `${streak}/${STREAK_GOAL}`;
+  }
+
+  function setCooldown() {
+    let left = M.cooldownSec;
+    const tick = () => {
+      const h = String(Math.floor(left / 3600)).padStart(2, '0');
+      const m = String(Math.floor(left % 3600 / 60)).padStart(2, '0');
+      const s = String(left % 60).padStart(2, '0');
+      timerEl.textContent = `бесплатно снова через ${h}:${m}:${s}`;
+      if (left-- > 0) setTimeout(tick, 1000);
+    };
+    tick();
+  }
+
+  paint();
+  renderStreak();
+
+  btn.addEventListener('click', async () => {
+    if (spinning) return;
+    spinning = true;
+    btn.disabled = true;
+
+    const r = await ServerAPI.spinDaily(streak, STREAK_GOAL);
+    streak = r.streakAfter;
+
+    const jitterA = sectorAngle(r.sector);
+    const delta = 360 * 5 + (((-jitterA - rot) % 360) + 360) % 360;
+    rot += delta;
+    disc.style.transform = `rotate(${rot}deg)`;
+    renderStreak();
+
+    setTimeout(() => {
+      onResult(r);
+      timerEl.textContent = `Выпало: ${SECTORS[r.sector].label}${r.jackpot ? ' · СТРЕЙК 7! ДЖЕКПОТ' : ''}`;
+      setCooldown();
+    }, DURATION + 80);
+  });
+})();
+</script>
+</body>
+</html>

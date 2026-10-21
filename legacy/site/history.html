@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChessDep — История операций</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-auth="required">
+
+<nav class="topbar">
+  <a class="logo" href="index.html"><span class="logo-glyph">&#9822;&#xFE0E;</span>Chess<span class="logo-dot">Dep</span></a>
+  <div class="nav-links">
+    <a href="index.html">Главная</a>
+    <a href="upgrade.html">Апгрейдер</a>
+    <a href="case.html">Кейсы</a>
+    <a href="skins.html">Скины</a>
+    <a href="skin-case.html">Скин-кейс</a>
+    <a href="slots.html">Слоты</a>
+    <a href="board.html">Доска</a>
+    <a href="inventory.html">Инвентарь</a>
+    <a href="leaderboard.html">Топ</a>
+    <a href="admin.html">Админка</a>
+  </div>
+  <div class="nav-right" id="nav-right"></div>
+</nav>
+
+<main class="container">
+
+  <div class="page-head">
+    <h1>История операций <span>/ лента аккаунта</span></h1>
+    <p>Все действия: апгрейды, кейсы, постановки на доску, скины, слоты, депозиты и промокоды.</p>
+  </div>
+
+  <section class="panel">
+    <div class="filters" id="hist-filters">
+      <button class="fbtn on" data-filter="all">Все</button>
+      <button class="fbtn" data-filter="upgrade">Апгрейды</button>
+      <button class="fbtn" data-filter="case">Кейсы</button>
+      <button class="fbtn" data-filter="board">Доска</button>
+      <button class="fbtn" data-filter="skin">Скины</button>
+      <button class="fbtn" data-filter="slot">Слоты</button>
+      <button class="fbtn" data-filter="deposit">Депозиты</button>
+    </div>
+    <div id="hist-list" style="max-height:600px;overflow-y:auto"></div>
+  </section>
+
+  <footer class="footer">
+    <span>ChessDep · шаблоны фронтенда v0.3 · демо, без реальных ставок</span>
+  </footer>
+
+</main>
+
+<div class="toasts" id="toasts"></div>
+
+<script src="js/common.js"></script>
+<script src="js/history.js"></script>
+</body>
+</html>
