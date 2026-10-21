@@ -382,7 +382,7 @@ def ws_messages(message: dict, state: dict) -> list[dict]:
 ### `tests/test_clock_worker.py`
 - `test_clock_starts_after_black_first_move` — после e4 `clock_running=False`; после e5 `True`, `abort_deadline is None`; `frozen.advance(10)`, alice ходит → `white_ms == 180000 - 10000 + 2000`.
 - `test_flag_by_worker` — после двух ходов `frozen.advance(181)`, `tick_clocks(clock.now())` → партия finished, ход был белых → `black`, `timeout`; `white_ms == 0`.
-- `test_flag_vs_insufficient` — `set_fen("4k3/8/8/8/8/8/r7/N3K3 b - - 0 1", ply=20, clock_running=True)` (ход чёрных, у чёрных ладья, у белых только конь), `frozen.advance(181)`, tick → `draw`, `timeout_vs_insufficient`.
+- `test_flag_vs_insufficient` — `set_fen("4k3/8/8/8/8/8/r7/4K3 b - - 0 1", ply=20, clock_running=True)` (ход чёрных, у чёрных ладья, у белых одинокий король — выиграть по времени не могут), `frozen.advance(181)`, tick → `draw`, `timeout_vs_insufficient`.
 - `test_move_after_expiry_rejected` — после истечения, но до tick: ход → 400 `TIME_EXPIRED`.
 - `test_abort_no_first_move` — сразу после создания `frozen.advance(31)`, tick → `aborted`, `abort_no_first_move`; Elo не изменился.
 - `test_rebuild_deadlines` — создать партию, `redis_client.delete("clock:deadlines")`, `rebuild_deadlines()` → в ZSET есть id партии со score = `to_ms(abort_deadline)`.
