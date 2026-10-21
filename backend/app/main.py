@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.exceptions import RequestValidationError
 
-from app.api import auth, health, internal, me
+from app.api import auth, games, health, internal, invites, matchmaking, me, ws
 from app.core.errors import (
     AppError,
     app_error_handler,
@@ -38,3 +38,7 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(me.router)
 app.include_router(internal.router)
+app.include_router(games.router)
+app.include_router(matchmaking.router)
+app.include_router(invites.router)
+app.include_router(ws.router)

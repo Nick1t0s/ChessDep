@@ -1,20 +1,28 @@
+import uuid
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import chess
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, insert, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.chess_engine import position_key
 from app.config import settings
 from app.db import SessionLocal
 from app.main import app
-from app.models import Setting
-from app.redis import redis_client
-from app.services import settings as settings_service
+from app.models import Game, Setting
+from app.redis import redis_client as redis
+from app.services import rolls
 from app.services.settings import DEFAULTS
 
-_TRUNCATE_SQL = text("TRUNCATE users, sessions, ledger, admin_audit RESTART IDENTITY CASCADE")
+_TRUNCATE_SQL = text(
+    "TRUNCATE users, sessions, ledger, admin_audit, games, game_events, "
+    "active_players, invites, rolls RESTART IDENTITY CASCADE"
+)
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -27,10 +35,12 @@ async def clean_db() -> AsyncIterator[None]:
                 {"key": key, "value": value} for key, value in DEFAULTS.items()
             ]
             await db.execute(insert(Setting).values(rows))
+    from app.services import settings as settings_service
+
     settings_service.clear_cache()
-    await redis_client.flushdb()
+    await redis.flushdb()
     yield
-    await redis_client.aclose()
+    await redis.aclose()
 
 
 @pytest_asyncio.fixture
@@ -48,6 +58,81 @@ async def db() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+@pytest_asyncio.fixture
+async def redis_client() -> AsyncIterator[Any]:
+    yield redis
+
+
+class FixedRng:
+    def __init__(self, values: list[float] | None = None) -> None:
+        self.values: list[float] = list(values) if values is not None else []
+        self._index = 0
+
+    def random(self) -> float:
+        if not self.values:
+            return 0.0
+        value = self.values[self._index % len(self.values)]
+        self._index += 1
+        return value
+
+
+@pytest_asyncio.fixture
+async def rng() -> AsyncIterator[FixedRng]:
+    fixed = FixedRng()
+    rolls.set_rng(fixed)
+    yield fixed
+    rolls.reset_rng()
+
+
+class FrozenClock:
+    def __init__(self) -> None:
+        self._now = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
+
+    def now(self) -> datetime:
+        return self._now
+
+    def advance(self, seconds: float) -> None:
+        self._now += timedelta(seconds=seconds)
+
+
+@pytest_asyncio.fixture
+async def frozen(monkeypatch) -> AsyncIterator[FrozenClock]:
+    frozen_clock = FrozenClock()
+    from app.core import clock as clock_module
+
+    monkeypatch.setattr(clock_module, "now", frozen_clock.now)
+    yield frozen_clock
+
+
+@pytest_asyncio.fixture
+async def alice() -> AsyncIterator[AsyncClient]:
+    async with _registered_client("alice") as client:
+        yield client
+
+
+@pytest_asyncio.fixture
+async def bob() -> AsyncIterator[AsyncClient]:
+    async with _registered_client("bob") as client:
+        yield client
+
+
+def _async_client() -> AsyncClient:
+    return AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"Origin": "http://test"},
+    )
+
+
+@asynccontextmanager
+async def _registered_client(login: str) -> AsyncIterator[AsyncClient]:
+    ctx = _async_client()
+    async with ctx as client:
+        resp = await register(client, login)
+        assert resp.status_code == 201, resp.text
+        yield client
+
+
 async def register(
     client: AsyncClient,
     login: str = "alice",
@@ -60,3 +145,28 @@ async def register(
         "password": password,
     }
     return await client.post("/api/v1/auth/register", json=payload)
+
+
+async def start_game(
+    alice_client: AsyncClient, bob_client: AsyncClient, rng: FixedRng, tc: str = "3+2"
+) -> str:
+    rng.values = [0.0]
+    resp = await alice_client.post("/api/v1/invites", json={"time_control": tc})
+    assert resp.status_code == 200, resp.text
+    code = resp.json()["code"]
+    resp = await bob_client.post(f"/api/v1/invites/{code}/accept")
+    assert resp.status_code == 200, resp.text
+    return resp.json()["game_id"]
+
+
+async def set_fen(game_id: str, fen: str, **fields: Any) -> None:
+    async with SessionLocal() as db:
+        async with db.begin():
+            game = await db.get(Game, uuid.UUID(game_id))
+            if game is None:
+                raise AssertionError("game not found")
+            board = chess.Board(fen)
+            game.fen = fen
+            game.repetition = {position_key(board): 1}
+            for key, value in fields.items():
+                setattr(game, key, value)

@@ -1,8 +1,9 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
+import app.core.clock as clock
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import current_user
@@ -10,8 +11,9 @@ from app.core.errors import AppError
 from app.core.security import hash_password, verify_password
 from app.core.sessions import revoke_all
 from app.db import get_db
-from app.models import Ledger, User
+from app.models import ActivePlayer, Game, Ledger, User
 from app.schemas.auth import DailyBonusOut, LedgerItemOut, MeOut, Page, PasswordIn
+from app.schemas.games import GameHistoryItem, GamesHistoryOut
 from app.services.economy import apply_delta, lock_user
 from app.services.settings import get_setting
 
@@ -75,6 +77,63 @@ async def daily_bonus(user: UserDep, db: DbDep) -> DailyBonusOut:
     new_balance = await apply_delta(db, locked.id, bonus, "daily_bonus")
     locked.last_daily_bonus_at = now
     return DailyBonusOut(balance=new_balance, next_available_at=now + timedelta(hours=cooldown_h))
+
+
+@router.get("/me/active-game")
+async def read_active_game(user: UserDep, db: DbDep) -> dict:
+    active = await db.get(ActivePlayer, user.id)
+    return {"game_id": str(active.game_id) if active is not None else None}
+
+
+@router.get("/me/games", response_model=GamesHistoryOut)
+async def read_games_history(
+    user: UserDep,
+    db: DbDep,
+    before: datetime | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> GamesHistoryOut:
+    query = select(Game).where(
+        or_(Game.white_id == user.id, Game.black_id == user.id),
+        Game.status.in_(("finished", "aborted")),
+    )
+    if before is not None:
+        query = query.where(Game.finished_at < before)
+    query = query.order_by(Game.finished_at.desc()).limit(limit)
+    games = (await db.scalars(query)).all()
+    user_ids: set[int] = set()
+    for game in games:
+        user_ids.update((game.white_id, game.black_id))
+    users = {u.id: u for u in (await db.scalars(select(User).where(User.id.in_(user_ids)))).all()}
+    items = []
+    for game in games:
+        if game.white_id == user.id:
+            color, opponent_id = "white", game.black_id
+            elo_delta = (
+                game.white_elo_after - game.white_elo_before
+                if game.white_elo_after is not None
+                else None
+            )
+        else:
+            color, opponent_id = "black", game.white_id
+            elo_delta = (
+                game.black_elo_after - game.black_elo_before
+                if game.black_elo_after is not None
+                else None
+            )
+        items.append(
+            GameHistoryItem(
+                id=str(game.id),
+                opponent_login=users[opponent_id].login,
+                color=color,
+                result=game.result,
+                end_reason=game.end_reason,
+                time_control=game.time_control,
+                finished_at=game.finished_at,
+                elo_delta=elo_delta,
+            )
+        )
+    next_before = items[-1].finished_at.isoformat() if items and len(items) == limit else None
+    return GamesHistoryOut(items=items, next_before=next_before)
 
 
 @router.get("/me/ledger", response_model=Page[LedgerItemOut])
