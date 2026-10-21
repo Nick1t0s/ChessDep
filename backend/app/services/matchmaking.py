@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
-from app.db import SessionLocal
+from app.db import SessionLocal, run_after_commit
 from app.models import ActivePlayer, Game
 from app.redis import redis_client
 from app.services.games import create_game
@@ -30,12 +30,21 @@ async def enqueue(db: AsyncSession, user, tc: str) -> None:
     active = await db.get(ActivePlayer, user.id)
     if active is not None:
         raise AppError(409, "ALREADY_IN_GAME", "У вас уже есть активная партия")
-    if await redis_client.get(_user_key(user.id)) is not None:
+    queued_tc = await redis_client.get(_user_key(user.id))
+    if queued_tc is not None:
         # Уже в очереди: продлить heartbeat, не дублировать в списке.
         await redis_client.expire(_user_key(user.id), _QUEUE_TTL_S)
+        await _ensure_in_list(user.id, queued_tc)
         return
     await redis_client.set(_user_key(user.id), tc, ex=_QUEUE_TTL_S)
     await redis_client.rpush(_queue_key(tc), str(user.id))
+
+
+async def _ensure_in_list(user_id: int, tc: str) -> None:
+    # Ключ mm:user жив, а в LIST игрока нет (worker упал посреди пары) —
+    # возвращаем в очередь, иначе статус «queued» висел бы вечно.
+    if await redis_client.lpos(_queue_key(tc), str(user_id)) is None:
+        await redis_client.rpush(_queue_key(tc), str(user_id))
 
 
 async def dequeue(user) -> None:
@@ -54,6 +63,7 @@ async def status(db: AsyncSession, user) -> dict:
     tc = await redis_client.get(_user_key(user.id))
     if tc is not None:
         await redis_client.expire(_user_key(user.id), _QUEUE_TTL_S)
+        await _ensure_in_list(user.id, tc)
         return {"status": "queued", "time_control": tc, "game_id": None}
     return {"status": "idle", "time_control": None, "game_id": None}
 
@@ -83,8 +93,11 @@ async def _match_pair(a: str, b: str, tc: str, now: datetime, queue_key: str) ->
         async with SessionLocal() as db:
             async with db.begin():
                 await create_game(db, int(a), int(b), tc, now)
-    except AppError as exc:
-        if exc.code != "ALREADY_IN_GAME":
+            await run_after_commit(db)
+    except Exception as exc:
+        if not (isinstance(exc, AppError) and exc.code == "ALREADY_IN_GAME"):
+            # Любой другой сбой: вернуть пару в начало очереди в исходном порядке.
+            await redis_client.lpush(queue_key, b, a)
             raise
         # Откат уже произошёл. Кто-то из пары уже в партии.
         in_game = await _in_game_ids([int(a), int(b)])

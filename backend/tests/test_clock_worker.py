@@ -112,3 +112,22 @@ async def test_rebuild_deadlines(alice, bob, rng, frozen) -> None:
     score = await redis_client.zscore("clock:deadlines", str(gid))
     assert score is not None
     assert abs(score - expected_score) < 1
+
+
+async def test_tick_clocks_skips_broken_entries(alice, bob, rng, frozen) -> None:
+    game_id = await start_game(alice, bob, rng)
+    for client, uci in ((alice, "e2e4"), (bob, "e7e5")):
+        resp = await client.post(f"/api/v1/games/{game_id}/move", json={"uci": uci})
+        assert resp.status_code == 200, resp.text
+    ghost = str(uuid.uuid4())
+    await redis_client.zadd("clock:deadlines", {ghost: 0, "not-a-uuid": 0})
+
+    frozen.advance(181)
+    await tick_clocks(clock_module.now())
+
+    async with SessionLocal() as check:
+        game = await check.get(Game, _game_id(game_id))
+    assert game.status == "finished"
+    assert game.end_reason == "timeout"
+    assert await redis_client.zscore("clock:deadlines", ghost) is None
+    assert await redis_client.zscore("clock:deadlines", "not-a-uuid") is None

@@ -9,6 +9,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core import clock
+from app.core.errors import AppError
 from app.db import SessionLocal, run_after_commit
 from app.models import Game
 from app.redis import redis_client
@@ -42,16 +43,24 @@ async def rebuild_deadlines() -> None:
 
 
 async def _process_deadline(raw_id: str, now: datetime) -> None:
-    game_id = uuid.UUID(raw_id)
+    try:
+        game_id = uuid.UUID(raw_id)
+    except ValueError:
+        await redis_client.zrem(DEADLINES_KEY, raw_id)
+        return
     need_remove = False
     async with SessionLocal() as db:
         async with db.begin():
-            game = await lock_game(db, game_id)
-            if game.status != "active":
+            try:
+                game = await lock_game(db, game_id)
+            except AppError as exc:
+                if exc.code != "GAME_NOT_FOUND":
+                    raise
                 need_remove = True
             else:
-                handled = await check_timeout(db, game, now)
-                if not handled:
+                if game.status != "active":
+                    need_remove = True
+                elif not await check_timeout(db, game, now):
                     schedule_deadline(db, game)
         await run_after_commit(db)
     if need_remove:
@@ -64,7 +73,11 @@ async def tick_clocks(now: datetime) -> None:
         DEADLINES_KEY, "-inf", now_ms, start=0, num=_DEADLINE_BATCH
     )
     for raw_id in game_ids:
-        await _process_deadline(raw_id, now)
+        # Сбой одной партии не должен блокировать флаги остальных.
+        try:
+            await _process_deadline(raw_id, now)
+        except Exception:
+            logger.exception("deadline processing failed for %s", raw_id)
 
 
 async def main() -> None:

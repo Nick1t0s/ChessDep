@@ -1,12 +1,14 @@
 import uuid
 
+import pytest
 from sqlalchemy import select
 
 from app.core import clock as clock_module
 from app.db import SessionLocal
-from app.models import ActivePlayer, User
+from app.models import ActivePlayer, Game, User
 from app.redis import redis_client
 from app.services import matchmaking
+from app.worker import tick_clocks
 from tests.conftest import register
 
 
@@ -159,3 +161,67 @@ async def test_already_in_game_pushed_back(alice, bob, client, rng) -> None:
     assert await redis_client.get(_user_key(alice_id)) is None
     assert await redis_client.lindex(_queue_key("3+2"), 0) == str(bob_id)
     assert await redis_client.llen(_queue_key("3+2")) == 1
+
+
+async def _queue_both(alice, bob) -> tuple[int, int]:
+    for client in (alice, bob):
+        resp = await client.post("/api/v1/matchmaking/queue", json={"time_control": "3+2"})
+        assert resp.status_code == 202, resp.text
+    return await _user_id("alice"), await _user_id("bob")
+
+
+async def test_matched_game_has_deadline(alice, bob) -> None:
+    await _queue_both(alice, bob)
+    await matchmaking.tick(clock_module.now())
+
+    game_id = (await alice.get("/api/v1/matchmaking/status")).json()["game_id"]
+    async with SessionLocal() as db:
+        game = await db.get(Game, uuid.UUID(game_id))
+    assert game is not None
+    score = await redis_client.zscore("clock:deadlines", game_id)
+    assert score == clock_module.to_ms(game.abort_deadline)
+
+
+async def test_matched_game_aborts_without_moves(alice, bob, frozen) -> None:
+    await _queue_both(alice, bob)
+    await matchmaking.tick(clock_module.now())
+    game_id = (await alice.get("/api/v1/matchmaking/status")).json()["game_id"]
+
+    frozen.advance(31)
+    await tick_clocks(clock_module.now())
+
+    async with SessionLocal() as db:
+        game = await db.get(Game, uuid.UUID(game_id))
+    assert game.status == "aborted"
+    assert game.end_reason == "abort_no_first_move"
+    for client in (alice, bob):
+        assert (await client.get("/api/v1/me/active-game")).json() == {"game_id": None}
+
+
+async def test_requeue_when_missing_from_list(alice) -> None:
+    resp = await alice.post("/api/v1/matchmaking/queue", json={"time_control": "3+2"})
+    assert resp.status_code == 202
+    alice_id = await _user_id("alice")
+
+    await redis_client.lrem(_queue_key("3+2"), 0, str(alice_id))
+    status = (await alice.get("/api/v1/matchmaking/status")).json()
+    assert status["status"] == "queued"
+    assert await redis_client.llen(_queue_key("3+2")) == 1
+
+    await redis_client.lrem(_queue_key("3+2"), 0, str(alice_id))
+    resp = await alice.post("/api/v1/matchmaking/queue", json={"time_control": "3+2"})
+    assert resp.status_code == 202
+    assert await redis_client.llen(_queue_key("3+2")) == 1
+
+
+async def test_match_failure_requeues_both(alice, bob, monkeypatch) -> None:
+    alice_id, bob_id = await _queue_both(alice, bob)
+
+    async def broken_create_game(*args, **kwargs):
+        raise RuntimeError("db is down")
+
+    monkeypatch.setattr(matchmaking, "create_game", broken_create_game)
+    with pytest.raises(RuntimeError):
+        await matchmaking.tick(clock_module.now())
+
+    assert await redis_client.lrange(_queue_key("3+2"), 0, -1) == [str(alice_id), str(bob_id)]
