@@ -3,6 +3,7 @@ import { h } from './dom.js';
 
 const SECTIONS = [
   ['Играть', '/index.html', 'play'],
+  ['Смотреть', '/live.html', 'live'],
   ['Кейсы', '/cases.html', 'cases'],
   ['Инвентарь', '/inventory.html', 'inventory'],
   ['Апгрейд', '/upgrade.html', 'upgrade'],
