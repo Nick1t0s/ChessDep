@@ -12,21 +12,15 @@ export const EXTERIOR_RU = {
   WW: 'Поношенное', BS: 'Закалённое в боях',
 };
 export const SLOT_RU = {
-  P: 'Пешка', N: 'Конь', B: 'Слон', R: 'Ладья', Q: 'Ферзь', K: 'Король', board: 'Доска',
+  wP: 'Белая пешка', wN: 'Белый конь', wB: 'Белый слон', wR: 'Белая ладья', wQ: 'Белый ферзь', wK: 'Белый король',
+  bP: 'Чёрная пешка', bN: 'Чёрный конь', bB: 'Чёрный слон', bR: 'Чёрная ладья', bQ: 'Чёрный ферзь', bK: 'Чёрный король',
 };
+export const WHITE_SLOTS = ['wP', 'wN', 'wB', 'wR', 'wQ', 'wK'];
+export const BLACK_SLOTS = ['bP', 'bN', 'bB', 'bR', 'bQ', 'bK'];
+export const SIDE_RU = { w: 'Белые', b: 'Чёрные' };
 
 export function skinPreview(def) {
-  if (def.kind === 'board_skin') {
-    const grid = h('div', { class: 'skin-board' });
-    for (let i = 0; i < 16; i++) {
-      const cellClass = (Math.floor(i / 4) + i) % 2 === 1 ? 'cell dark' : 'cell light';
-      grid.appendChild(h('span', { class: cellClass }));
-    }
-    grid.style.setProperty('--light', def.asset.light);
-    grid.style.setProperty('--dark', def.asset.dark);
-    return h('div', { class: 'skin-preview' }, grid);
-  }
-  const glyphSpan = h('span', { class: 'skin-glyph' }, glyph(def.piece_type, 'white'));
+  const glyphSpan = h('span', { class: 'skin-glyph' }, glyph(def.piece_type, def.side === 'b' ? 'black' : 'white'));
   glyphSpan.style.setProperty('--piece-color', def.asset.color);
   return h('div', { class: 'skin-preview' }, glyphSpan);
 }
