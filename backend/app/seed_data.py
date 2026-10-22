@@ -1,35 +1,10 @@
 """Сид-данные коллекции Genesis: один источник для миграции и conftest.
 
 Чистый модуль: без БД и I/O. Используют
-- alembic/versions/0003_items.py (op.bulk_insert),
+- alembic/versions/0006_collections_v2.py (op.bulk_insert),
 - tests/conftest.py (TRUNCATE + вставка перед каждым тестом).
 """
 import app.core.clock as clock
-
-# (буква, slug, имя)
-PIECES: list[tuple[str, str, str]] = [
-    ("P", "pawn", "Пешка"),
-    ("N", "knight", "Конь"),
-    ("B", "bishop", "Слон"),
-    ("R", "rook", "Ладья"),
-    ("Q", "queen", "Ферзь"),
-    ("K", "king", "Король"),
-]
-
-# Варианты скинов фигур: (суффикс, название, редкость)
-PIECE_VARIANTS: list[tuple[str, str, str]] = [
-    ("chalk", "Мел", "common"),
-    ("frost", "Иней", "rare"),
-    ("snow", "Снег", "epic"),
-]
-
-# Варианты досок: (суффикс, название, редкость)
-BOARD_VARIANTS: list[tuple[str, str, str]] = [
-    ("paper", "Бумага", "common"),
-    ("porcelain", "Фарфор", "uncommon"),
-    ("marble", "Мрамор", "epic"),
-    ("albion", "Альбион", "mythic"),
-]
 
 RARITY_VALUES: dict[str, int] = {
     "common": 20,
@@ -40,17 +15,36 @@ RARITY_VALUES: dict[str, int] = {
     "mythic": 5000,
 }
 
-# Веса дропов кейса «Genesis: фигуры» (результат auto_weights: common 7992*1000//6,
-# rare 320*1000//6, epic 64*1000//6; сумма 8 375 994).
-PIECE_CASE_WEIGHTS: dict[str, int] = {"chalk": 1332000, "frost": 53333, "snow": 10666}
+SIDES: tuple[str, ...] = ("w", "b")
+PIECE_TYPES: tuple[str, ...] = ("P", "N", "B", "R", "Q", "K")
 
-# Веса дропов кейса «Genesis: доски» (rarity: у каждой по одной доске; сумма 9 660 000).
-BOARD_WEIGHTS: dict[str, int] = {
-    "paper": 7992000,
-    "porcelain": 1598000,
-    "marble": 64000,
-    "albion": 6000,
+PIECE_NAMES: dict[str, str] = {
+    "wP": "Белая пешка", "wN": "Белый конь", "wB": "Белый слон",
+    "wR": "Белая ладья", "wQ": "Белый ферзь", "wK": "Белый король",
+    "bP": "Чёрная пешка", "bN": "Чёрный конь", "bB": "Чёрный слон",
+    "bR": "Чёрная ладья", "bQ": "Чёрный ферзь", "bK": "Чёрный король",
 }
+
+# Канонический порядок 12 скинов коллекции: белые P..K, затем чёрные P..K.
+CANONICAL_SLOTS: tuple[str, ...] = tuple(s + p for s in SIDES for p in PIECE_TYPES)
+
+GENESIS_RARITY: dict[str, str] = {
+    "P": "common", "N": "uncommon", "B": "uncommon",
+    "R": "rare", "Q": "epic", "K": "legendary",
+}
+GENESIS_COLORS: dict[str, str] = {"w": "#ffffff", "b": "#ffc93c"}
+# Результат auto_weights для Genesis при весах редкостей по умолчанию.
+GENESIS_WEIGHTS: dict[str, int] = {
+    "common": 3996000, "uncommon": 399500, "rare": 160000, "epic": 32000, "legendary": 10000,
+}
+
+
+def item_code(collection_code: str, side: str, piece_type: str) -> str:
+    return f"{collection_code}-{side}{piece_type.lower()}"
+
+
+def item_name(collection_name: str, side: str, piece_type: str) -> str:
+    return f"{collection_name} | {PIECE_NAMES[side + piece_type]}"
 
 
 def genesis_rows() -> dict[str, list[dict]]:
@@ -67,66 +61,37 @@ def genesis_rows() -> dict[str, list[dict]]:
     ]
     item_defs: list[dict] = []
     item_id = 0
-    for letter, slug, piece_name in PIECES:
-        for suffix, variant_name, rarity in PIECE_VARIANTS:
+    for side in SIDES:
+        for piece_type in PIECE_TYPES:
             item_id += 1
+            rarity = GENESIS_RARITY[piece_type]
             item_defs.append({
                 "id": item_id,
                 "collection_id": 1,
-                "code": f"genesis-{slug}-{suffix}",
-                "name": f"{piece_name} | {variant_name}",
-                "kind": "piece_skin",
-                "piece_type": letter,
+                "code": item_code("genesis", side, piece_type),
+                "name": item_name("Genesis", side, piece_type),
+                "side": side,
+                "piece_type": piece_type,
                 "rarity": rarity,
                 "value": RARITY_VALUES[rarity],
-                "asset": {"type": "stub", "color": "#ffffff"},
+                "asset": {"type": "stub", "color": GENESIS_COLORS[side]},
                 "is_upgrade_target": True,
             })
-    for suffix, variant_name, rarity in BOARD_VARIANTS:
-        item_id += 1
-        item_defs.append({
-            "id": item_id,
-            "collection_id": 1,
-            "code": f"genesis-board-{suffix}",
-            "name": f"Доска | {variant_name}",
-            "kind": "board_skin",
-            "piece_type": None,
-            "rarity": rarity,
-            "value": RARITY_VALUES[rarity],
-            "asset": {"type": "stub", "light": "#ffffff", "dark": "#e5e5e5"},
-            "is_upgrade_target": True,
-        })
     cases = [
         {
             "id": 1,
-            "collection_id": 1,
-            "code": "genesis-pieces",
-            "name": "Genesis: фигуры",
+            "code": "genesis",
+            "name": "Genesis",
             "price": 100,
-            "is_active": True,
+            "status": "active",
             "sort": 1,
-        },
-        {
-            "id": 2,
-            "collection_id": 1,
-            "code": "genesis-boards",
-            "name": "Genesis: доски",
-            "price": 250,
-            "is_active": True,
-            "sort": 2,
-        },
+        }
     ]
     case_drops: list[dict] = []
     for row in item_defs:
-        suffix = row["code"].rsplit("-", 1)[1]
-        if row["kind"] == "piece_skin":
-            case_drops.append(
-                {"case_id": 1, "item_def_id": row["id"], "weight": PIECE_CASE_WEIGHTS[suffix]}
-            )
-        else:
-            case_drops.append(
-                {"case_id": 2, "item_def_id": row["id"], "weight": BOARD_WEIGHTS[suffix]}
-            )
+        case_drops.append(
+            {"case_id": 1, "item_def_id": row["id"], "weight": GENESIS_WEIGHTS[row["rarity"]]}
+        )
     return {
         "collections": collections,
         "item_defs": item_defs,
