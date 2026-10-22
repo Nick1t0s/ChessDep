@@ -1,0 +1,11 @@
+.upg-layout { display: grid; grid-template-columns: 1fr 300px 1fr; gap: 14px; align-items: start; }
+@media (max-width: 900px) { .upg-layout { grid-template-columns: 1fr; } }
+.upg-sum { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+.upg-center { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.wheel-wrap { position: relative; width: 220px; height: 220px; }
+.wheel { --win: 0deg; width: 220px; height: 220px; border-radius: 50%; border: 3px solid var(--line);
+  background: conic-gradient(var(--gold) 0deg var(--win), rgba(255,255,255,.07) var(--win) 360deg); }
+.wheel-pointer { position: absolute; top: -6px; left: 50%; width: 0; height: 0; margin-left: -10px; z-index: 2;
+  border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 18px solid var(--text); }
+.upg-chance { font-size: 28px; font-weight: 800; color: var(--gold); }
+.upg-reason { min-height: 18px; color: var(--muted); font-size: 12.5px; text-align: center; }
