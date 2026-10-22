@@ -3,23 +3,27 @@ import { h, clear } from './dom.js';
 import { initLayout } from './layout.js';
 import { toast } from './toast.js';
 import { openModal } from './modal.js';
-import { itemCard, SLOT_RU } from './items.js';
+import { itemCard, SLOT_RU, WHITE_SLOTS, BLACK_SLOTS } from './items.js';
 
 const me = await initLayout({ auth: 'required', active: 'inventory' });
 
 const main = h('main', { class: 'wrap-wide inventory' });
 document.body.appendChild(main);
 
-const slotsGrid = h('div', { class: 'inv-slots' });
+const whiteSlots = h('div', { class: 'inv-slots' });
+const blackSlots = h('div', { class: 'inv-slots' });
 const equipCard = h('div', { class: 'card' },
   h('h3', { class: 'card-title' }, 'Экипировка'),
-  slotsGrid,
+  h('h4', {}, 'Белые'),
+  whiteSlots,
+  h('h4', {}, 'Чёрные'),
+  blackSlots,
 );
 
-const kindSelect = h('select', { 'aria-label': 'Вид предметов' },
+const sideSelect = h('select', { 'aria-label': 'Сторона' },
   h('option', { value: '' }, 'Все'),
-  h('option', { value: 'piece_skin' }, 'Фигуры'),
-  h('option', { value: 'board_skin' }, 'Доски'),
+  h('option', { value: 'w' }, 'Белые'),
+  h('option', { value: 'b' }, 'Чёрные'),
 );
 const sortSelect = h('select', { 'aria-label': 'Сортировка' },
   h('option', { value: 'rarity' }, 'По редкости'),
@@ -29,7 +33,7 @@ const sortSelect = h('select', { 'aria-label': 'Сортировка' },
 const grid = h('div', { class: 'item-grid' });
 const itemsCard = h('div', { class: 'card' },
   h('h3', { class: 'card-title' }, 'Предметы'),
-  h('div', { class: 'inv-filters' }, kindSelect, sortSelect),
+  h('div', { class: 'inv-filters' }, sideSelect, sortSelect),
   grid,
 );
 
@@ -43,7 +47,7 @@ let sort = 'rarity';
 
 await loadAll();
 
-kindSelect.addEventListener('change', () => loadItems());
+sideSelect.addEventListener('change', () => loadItems());
 sortSelect.addEventListener('change', () => {
   sort = sortSelect.value;
   loadItems();
@@ -61,27 +65,30 @@ async function loadLoadout() {
     toast(e.message, 'error');
     return;
   }
-  clear(slotsGrid);
-  for (const slot of ['P', 'N', 'B', 'R', 'Q', 'K', 'board']) {
-    const item = loadout[slot];
-    let content;
-    if (item) {
-      content = itemCard(item.def, {
-        exterior: item.exterior,
-        extra: h('button', {
-          type: 'button',
-          class: 'btn btn-ghost btn-sm',
-          onClick: () => unequip(slot),
-        }, 'Снять'),
-      });
-    } else {
-      content = h('div', { class: 'slot-empty' }, 'Пусто');
-    }
-    slotsGrid.appendChild(h('div', { class: 'inv-slot' },
-      h('div', { class: 'inv-slot-label' }, SLOT_RU[slot]),
-      content,
-    ));
+  clear(whiteSlots);
+  clear(blackSlots);
+  for (const slot of WHITE_SLOTS) whiteSlots.appendChild(slotEl(slot, loadout[slot]));
+  for (const slot of BLACK_SLOTS) blackSlots.appendChild(slotEl(slot, loadout[slot]));
+}
+
+function slotEl(slot, item) {
+  let content;
+  if (item) {
+    content = itemCard(item.def, {
+      exterior: item.exterior,
+      extra: h('button', {
+        type: 'button',
+        class: 'btn btn-ghost btn-sm',
+        onClick: () => unequip(slot),
+      }, 'Снять'),
+    });
+  } else {
+    content = h('div', { class: 'slot-empty' }, 'Пусто');
   }
+  return h('div', { class: 'inv-slot' },
+    h('div', { class: 'inv-slot-label' }, SLOT_RU[slot]),
+    content,
+  );
 }
 
 async function unequip(slot) {
@@ -96,7 +103,7 @@ async function unequip(slot) {
 
 async function loadItems() {
   const params = new URLSearchParams({ sort });
-  if (kindSelect.value) params.set('kind', kindSelect.value);
+  if (sideSelect.value) params.set('side', sideSelect.value);
   let items;
   try {
     items = await api('GET', '/inventory?' + params.toString());
@@ -135,7 +142,7 @@ function itemActions(item) {
 }
 
 async function equip(item) {
-  const slot = item.def.kind === 'board_skin' ? 'board' : item.def.piece_type;
+  const slot = item.def.side + item.def.piece_type;
   try {
     await api('PUT', '/loadout/' + slot, { inventory_item_id: item.id });
     toast('Готово', 'success');
