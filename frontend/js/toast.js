@@ -31,7 +31,10 @@ export function toast(message, kind = 'info') {
   el.appendChild(body);
   el.appendChild(close);
   const pane = stack();
-  while (pane.children.length >= LIMIT) dismiss(pane.firstElementChild);
+  // Считаем только живые тосты: исчезающий (.out) удаляется через EXIT_MS,
+  // и повторный dismiss по нему ничего не меняет — иначе цикл вечный.
+  const live = [...pane.children].filter((c) => !c.classList.contains('out'));
+  while (live.length >= LIMIT) dismiss(live.shift());
   pane.appendChild(el);
   const timer = setTimeout(() => dismiss(el), TTL);
   return el;

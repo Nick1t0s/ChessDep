@@ -26,7 +26,7 @@ const ATTR_KEYS = new Set([
 
 export function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
-  for (const [key, value] of Object.entries(attrs)) {
+  for (const [key, value] of Object.entries(attrs ?? {})) {
     if (value === null || value === undefined || value === false) continue;
     if (key === 'class') {
       const cls = (Array.isArray(value) ? value : [value]).filter(Boolean).join(' ');
