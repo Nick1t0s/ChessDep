@@ -53,7 +53,7 @@ async function load() {
     for (const row of rows) {
       tbody.appendChild(h('tr', { class: row.login === me?.login ? 'me' : '' },
         h('td', {}, row.rank),
-        h('td', {}, row.login),
+        h('td', {}, h('a', { href: '/user.html?login=' + encodeURIComponent(row.login) }, row.login)),
         h('td', {}, row.elo),
         h('td', {}, fmtCrystals(row.balance)),
       ));
