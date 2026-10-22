@@ -1,7 +1,7 @@
 import asyncio
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.db import SessionLocal
 from app.models import InventoryItem, ItemDef, Roll
@@ -15,8 +15,10 @@ async def def_id_by_code(code: str) -> int:
 
 
 async def test_upgrade_preview(alice, db) -> None:
-    ids = await give_items("alice", ["genesis-pawn-frost", "genesis-knight-frost"])
-    epic = await def_id_by_code("genesis-queen-snow")
+    async with SessionLocal() as s, s.begin():
+        await s.execute(update(ItemDef).where(ItemDef.code == "genesis-wk").values(value=5000))
+    ids = await give_items("alice", ["genesis-wr", "genesis-br"])
+    epic = await def_id_by_code("genesis-wq")
 
     resp = await alice.post(
         "/api/v1/upgrade/preview", json={"input_ids": ids, "target_def_id": epic}
@@ -27,7 +29,7 @@ async def test_upgrade_preview(alice, db) -> None:
     assert body["allowed"] is True
     assert body["reason"] is None
 
-    mythic = await def_id_by_code("genesis-board-albion")
+    mythic = await def_id_by_code("genesis-wk")
     resp = await alice.post(
         "/api/v1/upgrade/preview", json={"input_ids": ids, "target_def_id": mythic}
     )
@@ -35,7 +37,7 @@ async def test_upgrade_preview(alice, db) -> None:
     assert body["chance"] == pytest.approx(300 / 5000 * 0.95)
     assert body["allowed"] is True
 
-    common_ids = await give_items("alice", ["genesis-pawn-chalk"])
+    common_ids = await give_items("alice", ["genesis-wp"])
     resp = await alice.post(
         "/api/v1/upgrade/preview", json={"input_ids": common_ids, "target_def_id": mythic}
     )
@@ -44,7 +46,7 @@ async def test_upgrade_preview(alice, db) -> None:
     assert body["reason"] == "UPGRADE_CHANCE_OUT_OF_RANGE"
     assert body["chance"] == pytest.approx(20 / 5000 * 0.95)
 
-    epic_ids = await give_items("alice", ["genesis-pawn-snow"] * 10)
+    epic_ids = await give_items("alice", ["genesis-bq"] * 10)
     resp = await alice.post(
         "/api/v1/upgrade/preview", json={"input_ids": epic_ids, "target_def_id": epic}
     )
@@ -55,10 +57,10 @@ async def test_upgrade_preview(alice, db) -> None:
 
 
 async def test_upgrade_validation(alice, bob, admin) -> None:
-    epic = await def_id_by_code("genesis-queen-snow")
+    epic = await def_id_by_code("genesis-wq")
 
     # Больше 10 предметов.
-    many = await give_items("alice", ["genesis-pawn-snow"] * 11)
+    many = await give_items("alice", ["genesis-bq"] * 11)
     resp = await alice.post(
         "/api/v1/upgrade/preview", json={"input_ids": many, "target_def_id": epic}
     )
@@ -66,7 +68,7 @@ async def test_upgrade_validation(alice, bob, admin) -> None:
     assert resp.json()["reason"] == "TOO_MANY_INPUTS"
 
     # Дубликаты.
-    dup = await give_items("alice", ["genesis-pawn-frost"])
+    dup = await give_items("alice", ["genesis-wr"])
     resp = await alice.post(
         "/api/v1/upgrade/preview",
         json={"input_ids": [dup[0], dup[0]], "target_def_id": epic},
@@ -74,36 +76,39 @@ async def test_upgrade_validation(alice, bob, admin) -> None:
     assert resp.json()["reason"] == "DUPLICATE_INPUTS"
 
     # Чужой предмет — прямое 400.
-    foreign = await give_items("bob", ["genesis-board-marble"])
+    foreign = await give_items("bob", ["genesis-bq"])
     resp = await alice.post(
         "/api/v1/upgrade", json={"input_ids": foreign, "target_def_id": epic}
     )
     assert resp.status_code == 400
     assert resp.json()["error"]["code"] == "ITEM_NOT_OWNED"
 
-    inputs = await give_items("alice", ["genesis-pawn-frost", "genesis-knight-frost"])
+    inputs = await give_items("alice", ["genesis-wr", "genesis-br"])
 
     # Цель из черновой коллекции.
     resp = await admin.post(
         "/api/v1/admin/collections",
-        json={"code": "winter", "name": "Winter", "description": "Зимняя коллекция"},
-    )
-    assert resp.status_code == 201, resp.text
-    collection_id = resp.json()["id"]
-    resp = await admin.post(
-        f"/api/v1/admin/collections/{collection_id}/items",
         json={
-            "code": "winter-queen-snow",
-            "name": "Зимний ферзь",
-            "kind": "piece_skin",
-            "piece_type": "Q",
-            "rarity": "epic",
-            "value": 500,
-            "asset": {"type": "stub", "color": "#ffffff"},
+            "code": "winter",
+            "name": "Winter",
+            "description": "Зимняя коллекция",
+            "pieces": [
+                {
+                    "side": side,
+                    "piece_type": piece_type,
+                    "rarity": "epic",
+                    "value": 500,
+                    "asset": {"type": "stub", "color": "#ffffff"},
+                }
+                for side in ("w", "b")
+                for piece_type in ("P", "N", "B", "R", "Q", "K")
+            ],
         },
     )
     assert resp.status_code == 201, resp.text
-    draft_target = resp.json()["id"]
+    draft_target = next(
+        item["id"] for item in resp.json()["items"] if item["code"] == "winter-wq"
+    )
     resp = await alice.post(
         "/api/v1/upgrade/preview",
         json={"input_ids": inputs, "target_def_id": draft_target},
@@ -120,10 +125,10 @@ async def test_upgrade_validation(alice, bob, admin) -> None:
 
 
 async def test_upgrade_success(alice, rng) -> None:
-    ids = await give_items("alice", ["genesis-pawn-frost", "genesis-knight-frost"])
-    resp = await alice.put("/api/v1/loadout/N", json={"inventory_item_id": ids[1]})
+    ids = await give_items("alice", ["genesis-wr", "genesis-br"])
+    resp = await alice.put("/api/v1/loadout/bR", json={"inventory_item_id": ids[1]})
     assert resp.status_code == 200, resp.text
-    epic = await def_id_by_code("genesis-queen-snow")
+    epic = await def_id_by_code("genesis-wq")
 
     rng.values = [0.0, 0.3]
     resp = await alice.post("/api/v1/upgrade", json={"input_ids": ids, "target_def_id": epic})
@@ -137,10 +142,10 @@ async def test_upgrade_success(alice, rng) -> None:
     new_item_id = body["item"]["id"]
     assert body["item"]["source"] == "upgrade"
     assert body["item"]["wear"] == pytest.approx(0.3)
-    assert body["item"]["def"]["code"] == "genesis-queen-snow"
+    assert body["item"]["def"]["code"] == "genesis-wq"
 
     loadout = (await alice.get("/api/v1/loadout")).json()
-    assert loadout["N"] is None
+    assert loadout["bR"] is None
 
     async with SessionLocal() as check:
         for item_id in ids:
@@ -154,8 +159,10 @@ async def test_upgrade_success(alice, rng) -> None:
 
 
 async def test_upgrade_fail(alice, rng, db) -> None:
-    ids = await give_items("alice", ["genesis-pawn-frost", "genesis-knight-frost"])
-    mythic = await def_id_by_code("genesis-board-albion")
+    async with SessionLocal() as s, s.begin():
+        await s.execute(update(ItemDef).where(ItemDef.code == "genesis-wk").values(value=5000))
+    ids = await give_items("alice", ["genesis-wr", "genesis-br"])
+    mythic = await def_id_by_code("genesis-wk")
     rng.values = [0.99]
     resp = await alice.post(
         "/api/v1/upgrade", json={"input_ids": ids, "target_def_id": mythic}
@@ -177,8 +184,8 @@ async def test_upgrade_fail(alice, rng, db) -> None:
 
 
 async def test_upgrade_concurrent_same_inputs(alice, rng, db) -> None:
-    ids = await give_items("alice", ["genesis-pawn-frost", "genesis-knight-frost"])
-    epic = await def_id_by_code("genesis-queen-snow")
+    ids = await give_items("alice", ["genesis-wr", "genesis-br"])
+    epic = await def_id_by_code("genesis-wq")
     payload = {"input_ids": ids, "target_def_id": epic}
     responses = await asyncio.gather(
         alice.post("/api/v1/upgrade", json=payload),
