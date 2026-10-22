@@ -25,7 +25,7 @@ from app.services.settings import DEFAULTS
 _TRUNCATE_SQL = text(
     "TRUNCATE users, sessions, ledger, admin_audit, games, game_events, "
     "active_players, invites, rolls, collections, item_defs, inventory_items, "
-    "loadouts, cases, case_drops, market_listings, item_transfers "
+    "loadouts, cases, case_drops, market_listings, item_transfers, game_messages "
     "RESTART IDENTITY CASCADE"
 )
 
