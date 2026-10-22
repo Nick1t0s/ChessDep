@@ -1,0 +1,15 @@
+.admin-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.admin-tab { margin-top: 8px; }
+.admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.admin-table th, .admin-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.admin-table th { color: var(--muted); font-weight: 600; }
+.admin-form { display: grid; gap: 10px; max-width: 520px; }
+.admin-form input, .admin-form select, .admin-form textarea, .admin-table input, .admin-table select, .modal input, .modal select, .modal textarea { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--text); }
+.admin-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.admin-section { margin-top: 20px; }
+.admin-muted { color: var(--muted); font-size: 12px; }
+.status-draft { color: #9aa4b2; }
+.status-released { color: #4ade80; }
+.status-retired { color: #ff7847; }
+.set-input { width: 260px; font-family: var(--mono); }
+.admin .card { margin-bottom: 14px; overflow-x: auto; }
