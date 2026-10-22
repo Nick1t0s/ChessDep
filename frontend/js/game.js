@@ -8,9 +8,10 @@ import { fmtClock, END_REASON_RU, PIECE_NAME_RU, DEP_REASON_RU } from './format.
 import { glyph, pieceColor } from './pieces.js';
 import { toast } from './toast.js';
 import { openModal, confirmModal } from './modal.js';
+import { createMoveList } from './game-moves.js';
+import { createChat } from './game-chat.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const FEED_LIMIT = 30;
 
 await main();
 
@@ -46,9 +47,8 @@ async function main() {
   let endInfoFilled = false; // Elo и награда уже дописаны
   let receivedAt = 0;
   let forbidden = false;
-  let lastFeedKey = null;
   let firstStateSeen = false;
-  const feedItems = [];
+  let viewing = null;        // просматриваемое событие (история ходов) или null
 
   // ---- очередь событий: всё последовательно ----
   let chain = Promise.resolve();
@@ -64,6 +64,13 @@ async function main() {
   cancelPick.addEventListener('click', () => cancelDep());
   const depHint = h('div', { class: 'dep-hint' }, h('span', { class: 'dep-hint-text' }, 'Выберите фигуру для депа'), cancelPick);
   depHint.hidden = true;
+
+  const spectatorBadge = h('div', { class: 'spectator-badge', hidden: true }, 'Вы смотрите партию');
+
+  const viewBannerText = h('span', { class: 'view-banner-text' });
+  const viewBannerBtn = h('button', { type: 'button', class: 'btn btn-ghost btn-sm' }, 'К текущей позиции');
+  viewBannerBtn.addEventListener('click', () => exitView());
+  const viewBanner = h('div', { class: 'view-banner', hidden: true }, viewBannerText, viewBannerBtn);
 
   const boardBox = h('div', { class: 'board-box' });
   const boardApi = createBoard(boardBox, { onSquareClick });
@@ -93,20 +100,26 @@ async function main() {
   btnAbort.addEventListener('click', () => gameAction('/abort'));
   btnAbort.hidden = true;
 
-  const feedList = h('div', { class: 'feed' });
-  const feedCard = h('div', { class: 'card feed-card' }, h('h4', { class: 'card-title' }, 'Лента партии'), feedList);
+  const movesBox = h('div', { class: 'moves' });
+  const movesCard = h('div', { class: 'card moves-card' }, h('h4', { class: 'card-title' }, 'Ходы'), movesBox);
+
+  const chatBox = h('div', { class: 'chat-box' });
+  const chatCard = h('div', { class: 'card chat-card' }, h('h4', { class: 'card-title' }, 'Чат'), chatBox);
 
   const actionsCard = h('div', { class: 'card actions-card' }, btnDep, btnDraw, btnResign, btnAbort, connIndicator);
 
-  const sideCol = h('div', { class: 'side-col' }, drawBanner, depPanel, actionsCard, feedCard);
+  const sideCol = h('div', { class: 'side-col' }, drawBanner, depPanel, actionsCard, movesCard, chatCard);
 
   const gameMain = h('main', { class: 'game-main' },
     h('div', { class: 'match-grid' },
-      h('div', { class: 'board-side' }, oppPanel, depHint, boardBox, youPanel),
+      h('div', { class: 'board-side' }, spectatorBadge, viewBanner, oppPanel, depHint, boardBox, youPanel),
       sideCol,
     ),
   );
   document.body.appendChild(gameMain);
+
+  const moves = createMoveList(movesBox, { onSelect: viewEvent });
+  const chat = createChat(chatBox, { gameId: id, canWrite: true });
 
   function playerPanel() {
     return h('div', { class: 'player-panel' },
@@ -119,15 +132,24 @@ async function main() {
   }
 
   // ---- состояние ----
+  function isSpectator() {
+    return state !== null && state.you === 'spectator';
+  }
+
   function applyState(s) {
     if (s === null || typeof s !== 'object') return;
     if (state !== null && !(s.version > state.version)) return; // защита от перепутанного порядка
     const prevState = state;
     state = s;
     receivedAt = performance.now();
+    const spectator = isSpectator();
+    const versionGrew = prevState !== null;
 
-    boardApi.setOrientation(state.you);
-    if (mode !== 'idle' && (state.status !== 'active' || state.turn !== state.you)) {
+    // Игрок, чей сейчас ход, всегда смотрит актуальную позицию.
+    if (viewing !== null && versionGrew && !spectator && state.turn === state.you) exitView();
+
+    boardApi.setOrientation(state.you === 'black' ? 'black' : 'white');
+    if (mode !== 'idle' && (spectator || state.status !== 'active' || state.turn !== state.you)) {
       mode = 'idle';
       depOptions = null;
       depPiece = null;
@@ -138,13 +160,28 @@ async function main() {
     if (mode === 'idle') selected = null;
     boardRender();
     renderPanels();
-    renderFeed(prevState);
     updateButtons();
-    drawBanner.hidden = !(state.draw_offer_by !== null && state.draw_offer_by !== state.you && state.status === 'active');
-    btnAbort.hidden = !(state.status === 'active' && state.ply < 2);
+    spectatorBadge.hidden = !spectator;
+    actionsCard.hidden = spectator;
+    depHint.hidden = spectator;
+    depPanel.hidden = spectator;
+    drawBanner.hidden = spectator
+      || !(state.draw_offer_by !== null && state.draw_offer_by !== state.you && state.status === 'active');
+    btnAbort.hidden = spectator || !(state.status === 'active' && state.ply < 2);
 
-    if (state.status !== 'active' && !endShown) scheduleEnd();
+    if (spectator) {
+      if (state.status !== 'active' && !endShown) scheduleEnd();
+      else if (state.status === 'active') clearEndTimer();
+    } else if (state.status !== 'active' && !endShown) scheduleEnd();
     else if (state.status === 'active') clearEndTimer();
+
+    // История ходов: первичная полная загрузка, затем инкрементально по версии.
+    if (!firstStateSeen) {
+      firstStateSeen = true;
+      loadEvents(false);
+    } else if (versionGrew) {
+      loadEvents(true);
+    }
   }
 
   function scheduleEnd() {
@@ -205,6 +242,32 @@ async function main() {
     clearEndTimer();
     const aborted = state?.status === 'aborted';
     const res = state?.result;
+
+    if (isSpectator()) {
+      const body = h('div', { class: 'm-body' });
+      let line = null;
+      if (aborted) line = 'Партия отменена';
+      else if (res === 'white') line = 'Победили белые';
+      else if (res === 'black') line = 'Победили чёрные';
+      else if (res === 'draw') line = 'Ничья';
+      if (line) body.appendChild(h('p', { class: 'm-line' }, line));
+      const reason = info?.end_reason ?? state?.end_reason ?? null;
+      const reasonRu = reason === null ? null : (END_REASON_RU[reason] ?? reason);
+      if (reasonRu) body.appendChild(h('p', { class: 'm-line' }, reasonRu));
+      endBody = body;
+      openModal({
+        title: 'Партия завершена',
+        titleAnim: 'none',
+        dismissible: false,
+        body,
+        actions: [
+          { label: 'В лобби', kind: 'ghost', onClick: () => { location.href = '/index.html'; } },
+          { label: 'Новая партия', kind: 'gold', onClick: () => { location.href = '/index.html'; } },
+        ],
+      });
+      return;
+    }
+
     let title;
     let anim = 'none';
     if (aborted) title = 'Партия отменена';
@@ -247,6 +310,16 @@ async function main() {
   }
 
   function boardRender() {
+    if (viewing !== null) {
+      const lastAction = viewing.kind === 'move'
+        ? { kind: 'move', ...viewing.payload }
+        : (viewing.kind === 'dep' ? { kind: 'dep', ...viewing.payload } : null);
+      boardApi.render(
+        { ...state, board: viewing.board, check_square: viewing.check_square, last_action: lastAction },
+        {},
+      );
+      return;
+    }
     const opts = {};
     if (mode === 'idle' && selected !== null) {
       opts.selected = selected;
@@ -267,7 +340,8 @@ async function main() {
 
   function panelFor(color) {
     if (state === null) return null;
-    return color === state.you ? youPanel : oppPanel;
+    const bottom = state.you === 'black' ? 'black' : 'white';
+    return color === bottom ? youPanel : oppPanel;
   }
 
   function renderPanels() {
@@ -502,6 +576,8 @@ async function main() {
   }
 
   function onSquareClick(name) {
+    if (viewing !== null) return;
+    if (isSpectator()) return;
     if (mode === 'dep_piece') {
       if (depOptions !== null && depOptions.pieces.some((p) => p.square === name)) {
         chooseDepPiece(name);
@@ -617,54 +693,34 @@ async function main() {
     });
   }
 
-  // ---- лента ----
-  function pushFeed(who, text, kind) {
-    const row = h('div', { class: 'feed-item' + (kind ? ' ' + kind : '') });
-    if (who) row.appendChild(h('span', { class: 'f-who' }, who));
-    row.appendChild(h('span', { class: 'f-text' }, text));
-    feedList.prepend(row);
-    feedItems.push(row);
-    while (feedItems.length > FEED_LIMIT) {
-      const oldest = feedItems.shift();
-      if (oldest.parentNode === feedList) oldest.remove();
-    }
+  // ---- история ходов: просмотр позиции ----
+  function viewEvent(ev) {
+    if (state === null || ev === null || typeof ev !== 'object' || typeof ev.seq !== 'number') return;
+    viewing = ev;
+    moves.select(ev.seq);
+    viewBannerText.textContent = 'Просмотр позиции · ход ' + (Math.floor((ev.ply - 1) / 2) + 1);
+    viewBanner.hidden = false;
+    boardRender();
   }
 
-  function renderFeed(prevState) {
-    const lastKey = state.last_action === null ? 'none' : JSON.stringify(state.last_action);
-    const prevKey = prevState === null || prevState.last_action === null
-      ? 'none'
-      : JSON.stringify(prevState.last_action);
-    if (!firstStateSeen) {
-      firstStateSeen = true;
-      lastFeedKey = lastKey;
-    } else if (lastKey !== lastFeedKey) {
-      lastFeedKey = lastKey;
-      const la = state.last_action;
-      if (la?.kind === 'move' && la.uci) {
-        const cell = pieceAt(la.uci.slice(2, 4));
-        const color = cell?.color ?? state.turn;
-        const mover = state.players?.[color];
-        const symbol = cell ? glyph(cell.piece, cell.color) : '';
-        pushFeed(mover?.login ?? '', symbol + ' ' + (la.san ?? la.uci), color === state.you ? 'mine' : 'opp');
-      } else if (la?.kind === 'dep') {
-        const color = state.turn; // после депа ход ещё у скомитившего
-        const mover = state.players?.[color];
-        pushFeed(
-          mover?.login ?? '',
-          'Деп: ' + (PIECE_NAME_RU[la.from] ?? la.from) + ' → ' + (PIECE_NAME_RU[la.to] ?? la.to)
-            + (la.success ? ' — успех' : ' — провал'),
-          la.success ? 'good' : 'bad',
-        );
-      }
-    }
-    // Системные строки: предложение ничьей и итог.
-    if (prevState !== null && state.draw_offer_by !== null && state.draw_offer_by !== prevState.draw_offer_by) {
-      const who = state.players?.[state.draw_offer_by];
-      pushFeed(who?.login ?? '', 'предлагает ничью', 'system');
-    }
-    if (prevState !== null && prevState.status === 'active' && state.status !== 'active') {
-      pushFeed('', 'Партия завершена · ' + (END_REASON_RU[state.end_reason] ?? state.end_reason), 'system');
+  function exitView() {
+    if (viewing === null) return;
+    viewing = null;
+    moves.select(null);
+    viewBanner.hidden = true;
+    boardRender();
+  }
+
+  async function loadEvents(after) {
+    const path = after
+      ? '/games/' + id + '/events?after_seq=' + moves.lastSeq()
+      : '/games/' + id + '/events';
+    try {
+      const res = await api('GET', path);
+      if (after) moves.appendEvents(res.events);
+      else moves.setEvents(res.events);
+    } catch (e) {
+      console.error(e);
     }
   }
 
@@ -688,6 +744,8 @@ async function main() {
       }
     } else if (msg.type === 'game_over') {
       enqueue(() => rememberGameOver(msg.data));
+    } else if (msg.type === 'chat') {
+      chat.onWsChat(msg.data);
     }
   }
 
@@ -721,5 +779,6 @@ async function main() {
     return;
   }
 
+  chat.load();
   connectGame(id, { onMessage, onStatus });
 }
