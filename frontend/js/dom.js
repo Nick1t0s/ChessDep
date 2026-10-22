@@ -17,6 +17,11 @@ const ATTR_KEYS = new Set([
   'autocomplete',
   'placeholder',
   'hidden',
+  'min',
+  'max',
+  'step',
+  'rows',
+  'checked',
 ]);
 
 export function h(tag, attrs = {}, ...children) {
