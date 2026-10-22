@@ -32,7 +32,7 @@ function mkSelect(options) {
 }
 
 const raritySel = mkSelect([['', 'Все'], ...RARITIES.map((r) => [r, RARITY_RU[r]])]);
-const kindSel = mkSelect([['', 'Все'], ['piece_skin', 'Фигуры'], ['board_skin', 'Доски']]);
+const sideSel = mkSelect([['', 'Все'], ['w', 'Белые'], ['b', 'Чёрные']]);
 const pieceSel = mkSelect([['', 'Все'], ...['P', 'N', 'B', 'R', 'Q', 'K'].map((p) => [p, PIECE_NAME_RU[p]])]);
 const sortSel = mkSelect([['new', 'Новые'], ['price_asc', 'Сначала дешёвые'], ['price_desc', 'Сначала дорогие']]);
 
@@ -40,7 +40,7 @@ const totalLine = h('p', { class: 'mk-total' });
 const feedGrid = h('div', { class: 'item-grid' });
 const pager = h('div', { class: 'mk-pager' });
 const feedView = h('div', {},
-  h('div', { class: 'mk-filters' }, raritySel, kindSel, pieceSel, sortSel),
+  h('div', { class: 'mk-filters' }, raritySel, sideSel, pieceSel, sortSel),
   totalLine,
   feedGrid,
   pager,
@@ -58,7 +58,7 @@ const mineView = h('div', {},
 main.appendChild(feedView);
 main.appendChild(mineView);
 
-for (const sel of [raritySel, kindSel, pieceSel, sortSel]) {
+for (const sel of [raritySel, sideSel, pieceSel, sortSel]) {
   sel.addEventListener('change', () => {
     page = 1;
     loadFeed();
@@ -81,7 +81,7 @@ async function loadFeed() {
   params.set('limit', '20');
   params.set('sort', sortSel.value);
   if (raritySel.value) params.set('rarity', raritySel.value);
-  if (kindSel.value) params.set('kind', kindSel.value);
+  if (sideSel.value) params.set('side', sideSel.value);
   if (pieceSel.value) params.set('piece_type', pieceSel.value);
   clear(feedGrid);
   try {

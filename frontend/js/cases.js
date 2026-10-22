@@ -14,6 +14,12 @@ const grid = h('div', { class: 'case-grid' });
 main.append(title, grid);
 document.body.appendChild(main);
 
+function collectionsLabel(cols) {
+  if (!Array.isArray(cols) || cols.length === 0) return '';
+  if (cols.length === 1) return 'Коллекция ' + cols[0].name;
+  return 'Смешанный: ' + cols.map((c) => c.name).join(', ');
+}
+
 let cases = [];
 try {
   cases = await api('GET', '/cases');
@@ -27,7 +33,7 @@ if (!Array.isArray(cases) || cases.length === 0) {
   for (const c of cases) {
     grid.appendChild(h('div', { class: 'card case-card' },
       h('h3', { class: 'card-title' }, c.name),
-      h('p', { class: 'case-collection' }, 'Коллекция ' + c.collection.name),
+      h('p', { class: 'case-collection' }, collectionsLabel(c.collections)),
       h('p', { class: 'case-price mono' }, fmtCrystals(c.price)),
       h('a', { href: '/case.html?id=' + encodeURIComponent(c.id), class: 'btn btn-gold btn-block' }, 'Открыть'),
     ));
