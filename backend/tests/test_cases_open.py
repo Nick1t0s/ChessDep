@@ -20,14 +20,29 @@ def test_weighted_pick_boundaries() -> None:
 
 async def test_open_case_deterministic(alice, rng) -> None:
     rng.values = [0.0]
+    async with SessionLocal() as s:
+        drops = list(
+            (
+                await s.scalars(
+                    select(CaseDrop)
+                    .where(CaseDrop.case_id == 1)
+                    .order_by(CaseDrop.item_def_id)
+                )
+            ).all()
+        )
+    total = sum(d.weight for d in drops)
+    assert [d.item_def_id for d in drops] == list(range(1, 13))
+    winner = weighted_pick(drops, rng.values[0])
+
     resp = await alice.post("/api/v1/cases/1/open")
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
     assert body["balance"] == 900
-    assert body["item"]["def"]["code"] == "genesis-pawn-chalk"
-    assert body["item"]["def"]["id"] == 1
+    assert body["item"]["def"]["id"] == winner.item_def_id
+    assert body["item"]["def"]["code"] == "genesis-wp"
     assert body["win_index"] == 45
+    assert 45 <= body["win_index"] <= 54
     assert body["strip"][45] == body["item"]["def"]["id"]
     assert len(body["strip"]) == 60
     assert all(str(def_id) in body["defs"] for def_id in body["strip"])
@@ -42,8 +57,8 @@ async def test_open_case_deterministic(alice, rng) -> None:
         assert ledger.balance_after == 900
         roll = (await check.scalars(select(Roll).where(Roll.kind == "case_open"))).one()
         assert roll.roll_value == 0.0
-        assert float(roll.chance) == pytest.approx(1_332_000 / 8_375_994, abs=1e-7)
-        assert roll.outcome == {"item_def_id": 1, "item_id": body["item"]["id"]}
+        assert float(roll.chance) == pytest.approx(winner.weight / total, abs=1e-7)
+        assert roll.outcome == {"item_def_id": winner.item_def_id, "item_id": body["item"]["id"]}
         item = await check.get(InventoryItem, body["item"]["id"])
         assert item.wear == 0.0
 
@@ -88,21 +103,15 @@ async def test_open_case_concurrent(alice, rng, db) -> None:
         assert sum(deltas) == user.balance
 
 
-async def test_open_unavailable_case(admin, db) -> None:
+async def test_open_unavailable_case(admin) -> None:
     resp = await admin.post(
-        "/api/v1/admin/collections",
-        json={"code": "winter", "name": "Winter", "description": "Зимняя коллекция"},
-    )
-    assert resp.status_code == 201, resp.text
-    collection_id = resp.json()["id"]
-    resp = await admin.post(
-        f"/api/v1/admin/collections/{collection_id}/cases",
-        json={"code": "winter-case", "name": "Winter: кейс", "price": 100, "sort": 0},
+        "/api/v1/admin/cases",
+        json={"code": "c2", "name": "C2", "price": 10},
     )
     assert resp.status_code == 201, resp.text
     case_id = resp.json()["id"]
 
-    # Кейс черновой коллекции публично не существует.
+    # Черновой кейс публично не существует.
     resp = await admin.get(f"/api/v1/cases/{case_id}")
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "CASE_NOT_FOUND"
@@ -110,7 +119,8 @@ async def test_open_unavailable_case(admin, db) -> None:
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "CASE_NOT_FOUND"
 
-    resp = await admin.post("/api/v1/admin/collections/1/retire")
+    # Закрытый кейс не виден и не открывается.
+    resp = await admin.post("/api/v1/admin/cases/1/close")
     assert resp.status_code == 200, resp.text
 
     resp = await admin.get("/api/v1/cases")
@@ -119,6 +129,7 @@ async def test_open_unavailable_case(admin, db) -> None:
 
     resp = await admin.get("/api/v1/cases/1")
     assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "CASE_NOT_FOUND"
 
     resp = await admin.post("/api/v1/cases/1/open")
     assert resp.status_code == 400
