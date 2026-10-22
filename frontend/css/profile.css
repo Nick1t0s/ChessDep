@@ -1,0 +1,10 @@
+.profile .card { margin-bottom: 16px; }
+.pf-row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.pf-row span { color: var(--muted); }
+.pf-form { display: grid; gap: 10px; max-width: 360px; margin-top: 8px; }
+.pf-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pf-table th, .pf-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; }
+.pf-table th { color: var(--muted); font-weight: 600; }
+.pf-table td.pos { color: #4ade80; }
+.pf-table td.neg { color: #ff5470; }
+.profile .table-wrap { overflow-x: auto; }
