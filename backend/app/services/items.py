@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -88,6 +88,72 @@ async def _fetch_owned_items(
 
 async def lock_items(db: AsyncSession, user_id: int, ids: list[int]) -> list[InventoryItem]:
     return await _fetch_owned_items(db, user_id, ids, for_update=True)
+
+
+async def lock_item_any(db: AsyncSession, item_id: int) -> InventoryItem | None:
+    """FOR UPDATE + populate_existing, без проверки владельца и статуса."""
+    return await db.scalar(
+        select(InventoryItem)
+        .where(InventoryItem.id == item_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+
+async def items_out(db: AsyncSession, items: list[InventoryItem]) -> list[ItemOut]:
+    """Пакетная версия item_out: ровно 3 запроса на любой размер списка.
+
+    def'ы (IN), коллекции (IN), слоты loadouts (IN); порядок сохраняется.
+    """
+    if not items:
+        return []
+    def_ids = {item.item_def_id for item in items}
+    defs = {
+        d.id: d
+        for d in (await db.scalars(select(ItemDef).where(ItemDef.id.in_(def_ids)))).all()
+    }
+    collection_ids = {d.collection_id for d in defs.values()}
+    collections: dict[int, Collection] = {}
+    if collection_ids:
+        collections = {
+            c.id: c
+            for c in (
+                await db.scalars(select(Collection).where(Collection.id.in_(collection_ids)))
+            ).all()
+        }
+    item_ids = [item.id for item in items]
+    slots = {
+        row[0]: row[1]
+        for row in (
+            await db.execute(select(Loadout.inventory_item_id, Loadout.slot).where(
+                Loadout.inventory_item_id.in_(item_ids)
+            ))
+        ).all()
+    }
+    result: list[ItemOut] = []
+    for item in items:
+        d = defs[item.item_def_id]
+        collection = collections[d.collection_id]
+        wear = float(item.wear)
+        result.append(
+            ItemOut(
+                id=item.id,
+                item_def=item_def_out(d, collection),
+                wear=wear,
+                exterior=exterior(wear),
+                status=item.status,
+                equipped_slot=slots.get(item.id),
+                source=item.source,
+                acquired_at=item.acquired_at,
+            )
+        )
+    return result
+
+
+def check_trade_hold(item: InventoryItem, hold_hours: int, now: datetime) -> None:
+    if hold_hours > 0 and now < item.acquired_at + timedelta(hours=hold_hours):
+        limit = (item.acquired_at + timedelta(hours=hold_hours)).isoformat()
+        raise AppError(400, "TRADE_HOLD", f"Предмет можно передать после {limit}")
 
 
 async def load_items(db: AsyncSession, user_id: int, ids: list[int]) -> list[InventoryItem]:

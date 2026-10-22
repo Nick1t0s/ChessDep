@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Any
 
 from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -8,7 +7,7 @@ from app.models.base import Base
 
 _reason_check = (
     "reason IN ('signup_bonus', 'daily_bonus', 'game_win', 'game_draw', "
-    "'case_purchase', 'admin_adjust')"
+    "'case_purchase', 'admin_adjust', 'market_buy', 'market_sale')"
 )
 
 

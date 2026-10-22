@@ -1,6 +1,14 @@
+import asyncio
+
 import app.core.clock as clock
-from tests.conftest import SessionLocal, give_items, start_game
-from app.models import InventoryItem
+from sqlalchemy import select
+from tests.conftest import (
+    SessionLocal,
+    count_queries,
+    give_items,
+    start_game,
+)
+from app.models import InventoryItem, Loadout
 
 
 async def test_inventory_and_equip(alice, db) -> None:
@@ -91,3 +99,44 @@ async def test_inventory_hides_burned(alice, db) -> None:
     assert [i["id"] for i in inv] == [ids[2], ids[0]]
     for entry in inv:
         assert entry["status"] == "owned"
+
+
+async def test_loadout_concurrent_put(alice) -> None:
+    ids = await give_items("alice", ["genesis-pawn-chalk"])
+    item_id = ids[0]
+
+    async def alice_id() -> int:
+        from app.models import User
+
+        async with SessionLocal() as db:
+            return (
+                await db.scalars(select(User.id).where(User.login == "alice"))
+            ).one()
+
+    responses = await asyncio.gather(
+        *(
+            alice.put("/api/v1/loadout/P", json={"inventory_item_id": item_id})
+            for _ in range(5)
+        )
+    )
+    for resp in responses:
+        assert resp.status_code == 200, resp.text
+
+    async with SessionLocal() as db:
+        rows = (
+            await db.scalars(select(Loadout).where(Loadout.user_id == await alice_id()))
+        ).all()
+    assert len(rows) == 1
+    assert rows[0].slot == "P"
+    assert rows[0].inventory_item_id == item_id
+
+
+async def test_inventory_query_count(alice) -> None:
+    ids = await give_items("alice", ["genesis-pawn-chalk"] * 30)
+    assert len(ids) == 30
+
+    async with count_queries() as log:
+        resp = await alice.get("/api/v1/inventory")
+    assert resp.status_code == 200
+    queries = [q for q in log if not q.lstrip().upper().startswith("COMMIT")]
+    assert len(queries) <= 12, len(queries)

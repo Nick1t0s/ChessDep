@@ -6,13 +6,17 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.exceptions import RequestValidationError
 
 from app.api import (
+    admin,
     admin_catalog,
     auth,
     games,
+    gifts,
     health,
     internal,
     invites,
     items,
+    leaderboard,
+    market,
     matchmaking,
     me,
     ws,
@@ -55,3 +59,7 @@ app.include_router(invites.router)
 app.include_router(ws.router)
 app.include_router(items.router)
 app.include_router(admin_catalog.router)
+app.include_router(admin.router)
+app.include_router(market.router)
+app.include_router(gifts.router)
+app.include_router(leaderboard.router)

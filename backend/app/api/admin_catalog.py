@@ -29,7 +29,7 @@ from app.schemas.items import (
     RARITY_ORDER,
 )
 from app.services import catalog_admin as service
-from app.services.items import item_def_out, item_out
+from app.services.items import item_def_out, items_out
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin-catalog"])
 
@@ -245,4 +245,4 @@ async def auto_drops(
 async def grant_item(user_id: int, body: GrantItemIn, admin: AdminDep, db: DbDep) -> ItemOut:
     item_id = await service.grant_item(db, admin, user_id, body.item_def_id, clock.now())
     item = await db.get(InventoryItem, item_id)
-    return await item_out(db, item)
+    return (await items_out(db, [item]))[0]

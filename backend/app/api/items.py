@@ -2,7 +2,8 @@ import app.core.clock as clock
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import case as sql_case, delete, func, select
+from sqlalchemy import case as sql_case, func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.chess_engine import format_chance
@@ -31,7 +32,7 @@ from app.schemas.items import (
 )
 from app.services import cases as cases_service
 from app.services import upgrade as upgrade_service
-from app.services.items import item_def_out, item_out, lock_items, slot_matches
+from app.services.items import item_def_out, items_out, lock_items, slot_matches
 
 router = APIRouter(prefix="/api/v1", tags=["items"])
 
@@ -142,7 +143,7 @@ async def list_inventory(
     else:
         query = query.order_by(InventoryItem.acquired_at.desc(), InventoryItem.id.desc())
     items = (await db.scalars(query)).all()
-    return [await item_out(db, item) for item in items]
+    return list(await items_out(db, list(items)))
 
 
 async def _loadout_out(db: AsyncSession, user: User) -> LoadoutOut:
@@ -152,10 +153,14 @@ async def _loadout_out(db: AsyncSession, user: User) -> LoadoutOut:
         .where(Loadout.user_id == user.id)
     )
     by_slot = {loadout.slot: item for loadout, item in rows}
+    item_outs_by_id = {
+        out.id: out
+        for out in await items_out(db, [item for item in by_slot.values() if item is not None])
+    }
     out: dict[str, ItemOut | None] = {}
     for slot_name in _ALL_SLOTS:
         item = by_slot.get(slot_name)
-        out[slot_name] = await item_out(db, item) if item is not None else None
+        out[slot_name] = item_outs_by_id[item.id] if item is not None else None
     return LoadoutOut(
         P=out["P"], N=out["N"], B=out["B"], R=out["R"], Q=out["Q"], K=out["K"], board=out["board"]
     )
@@ -182,13 +187,16 @@ async def put_loadout(
         item_def = await db.get(ItemDef, item.item_def_id)
         if not slot_matches(item_def, slot):
             raise _ITEM_SLOT_MISMATCH
-        row = await db.scalar(
-            select(Loadout).where(Loadout.user_id == user.id, Loadout.slot == slot)
+        # Upsert вместо «select, затем insert или update» — иначе два
+        # параллельных PUT создают дубликат (user_id, slot) или теряют строку.
+        await db.execute(
+            insert(Loadout)
+            .values(user_id=user.id, slot=slot, inventory_item_id=item.id)
+            .on_conflict_do_update(
+                index_elements=["user_id", "slot"],
+                set_={"inventory_item_id": item.id},
+            )
         )
-        if row is not None:
-            row.inventory_item_id = item.id
-        else:
-            db.add(Loadout(user_id=user.id, slot=slot, inventory_item_id=item.id))
     await db.flush()
     return await _loadout_out(db, user)
 

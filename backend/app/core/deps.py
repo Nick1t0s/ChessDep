@@ -24,6 +24,21 @@ async def current_user(request: Request, db: AsyncSession = Depends(get_db)) -> 
     return user
 
 
+async def optional_user(request: Request, db: AsyncSession = Depends(get_db)) -> User | None:
+    """Как current_user, но без cookie/невалидной сессии возвращает None, а не 401."""
+    token = request.cookies.get(settings.cookie_name)
+    if not token:
+        return None
+    resolved = await resolve_session(db, token)
+    if resolved is None:
+        return None
+    row, user = resolved
+    if user.is_banned:
+        raise AppError(403, "USER_BANNED", "Аккаунт заблокирован")
+    request.state.session_id = row.id
+    return user
+
+
 async def require_admin(user: User = Depends(current_user)) -> User:
     if user.role != "admin":
         raise AppError(403, "FORBIDDEN", "Недостаточно прав")

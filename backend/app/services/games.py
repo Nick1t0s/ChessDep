@@ -349,10 +349,10 @@ async def do_dep(
     return game, resolution, roll_id
 
 
-async def do_resign(
-    db: AsyncSession, user: User, game_id: uuid.UUID, expected_version: int | None, now: datetime
-) -> Game:
-    game, color = await _guard_action(db, user.id, game_id, expected_version, now)
+async def forfeit(db: AsyncSession, game: Game, color: str, now: datetime) -> GameOver | None:
+    """Сдача цвета color в уже заблокированной партии. Не active — без действий."""
+    if game.status != "active":
+        return None
     opponent = "black" if color == "white" else "white"
     bump(game)
     add_event(db, game, actor=color, kind="resign", payload={})
@@ -367,6 +367,14 @@ async def do_resign(
     )
     schedule_deadline(db, game)
     publish(db, game, game_over=game_over)
+    return game_over
+
+
+async def do_resign(
+    db: AsyncSession, user: User, game_id: uuid.UUID, expected_version: int | None, now: datetime
+) -> Game:
+    game, color = await _guard_action(db, user.id, game_id, expected_version, now)
+    await forfeit(db, game, color, now)
     return game
 
 

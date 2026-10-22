@@ -7,12 +7,12 @@ from typing import Any
 import chess
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import delete, insert, select, text
+from sqlalchemy import delete, event, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.chess_engine import position_key
 from app.config import settings
-from app.db import SessionLocal
+from app.db import SessionLocal, engine
 from app.main import app
 from app.models import Case, CaseDrop, Collection, Game, ItemDef, Setting, User
 from app.redis import redis_client as redis
@@ -25,7 +25,8 @@ from app.services.settings import DEFAULTS
 _TRUNCATE_SQL = text(
     "TRUNCATE users, sessions, ledger, admin_audit, games, game_events, "
     "active_players, invites, rolls, collections, item_defs, inventory_items, "
-    "loadouts, cases, case_drops RESTART IDENTITY CASCADE"
+    "loadouts, cases, case_drops, market_listings, item_transfers "
+    "RESTART IDENTITY CASCADE"
 )
 
 _SEED_SEQUENCE_TABLES = ("collections", "item_defs", "cases")
@@ -142,6 +143,12 @@ async def bob() -> AsyncIterator[AsyncClient]:
 
 
 @pytest_asyncio.fixture
+async def carol() -> AsyncIterator[AsyncClient]:
+    async with _registered_client("carol") as client:
+        yield client
+
+
+@pytest_asyncio.fixture
 async def admin() -> AsyncIterator[AsyncClient]:
     async with _registered_client("admin") as client:
         async with SessionLocal() as db:
@@ -157,6 +164,11 @@ def _async_client() -> AsyncClient:
         base_url="http://test",
         headers={"Origin": "http://test"},
     )
+
+
+def anonymous() -> AsyncClient:
+    """Клиент без сессии (аноним)."""
+    return _async_client()
 
 
 @asynccontextmanager
@@ -240,3 +252,46 @@ async def set_fen(game_id: str, fen: str, **fields: Any) -> None:
             game.repetition = {position_key(board): 1}
             for key, value in fields.items():
                 setattr(game, key, value)
+
+
+async def set_balance(login: str, value: int) -> None:
+    """Выставить пользователю точный баланс (через apply_delta, ledger keeps sum==balance)."""
+    from app.services.economy import apply_delta
+
+    async with SessionLocal() as db:
+        async with db.begin():
+            user = (await db.scalars(select(User).where(User.login == login))).one()
+            delta = value - user.balance
+            if delta:
+                await apply_delta(db, user.id, delta, "admin_adjust", ref="test-setup")
+
+
+async def set_setting(key: str, value: Any) -> None:
+    """Обновить строку settings напрямую и сбросить кэш."""
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from app.services import settings as settings_service
+
+    async with SessionLocal() as db:
+        async with db.begin():
+            await db.execute(
+                pg_insert(Setting)
+                .values(key=key, value=value)
+                .on_conflict_do_update(index_elements=["key"], set_={"value": value})
+            )
+    settings_service.clear_cache()
+
+
+@asynccontextmanager
+async def count_queries() -> AsyncIterator[list[str]]:
+    """Считает SQL-запросы через engine внутри контекста."""
+    queries: list[str] = []
+
+    def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        queries.append(statement)
+
+    event.listen(engine.sync_engine, "before_cursor_execute", _before_cursor_execute)
+    try:
+        yield queries
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", _before_cursor_execute)
