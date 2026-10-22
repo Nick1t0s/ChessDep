@@ -1,0 +1,7 @@
+.rp-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .rp-layout { grid-template-columns: 1fr; } }
+.rp-head { margin-bottom: 10px; font-size: 14px; }
+.rp-head b { color: var(--text); }
+.rp-controls { display: flex; gap: 6px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
+.rp-info { text-align: center; color: var(--muted); font-size: 13px; margin-top: 8px; min-height: 18px; }
+.replay .card { margin-bottom: 14px; }
