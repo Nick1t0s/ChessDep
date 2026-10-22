@@ -1,0 +1,196 @@
+/* Тосты (стек, анимации tin/tout) */
+.toasts {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(350px, calc(100vw - 36px));
+}
+
+.toast {
+  --c: var(--cyan);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border-radius: 13px;
+  font-size: 13.5px;
+  font-weight: 600;
+  background: #161b29;
+  border: 1px solid color-mix(in srgb, var(--c) 42%, #242b3d);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .55), 0 0 22px color-mix(in srgb, var(--c) 12%, transparent);
+  animation: tin .32s cubic-bezier(.2, 1.2, .4, 1);
+}
+
+.toast.out { animation: tout .3s ease-in forwards; }
+.toast.info { --c: var(--cyan); }
+.toast.success { --c: var(--green); }
+.toast.error { --c: var(--red); }
+
+.toast::before {
+  content: "";
+  width: 4px;
+  align-self: stretch;
+  border-radius: 4px;
+  background: var(--c);
+  box-shadow: 0 0 10px var(--c);
+}
+
+.toast .t-body { flex: 1; text-align: left; }
+
+.toast .t-x {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.toast .t-x:hover { color: var(--text); background: rgba(255, 255, 255, .05); }
+
+@keyframes tin {
+  from { opacity: 0; transform: translateX(40px) scale(.92); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes tout {
+  to { opacity: 0; transform: translateX(50px) scale(.94); }
+}
+
+@media (max-width: 640px) {
+  .toasts {
+    left: 12px;
+    right: 12px;
+    top: 12px;
+    width: auto;
+  }
+}
+
+/* Модалки (pop / shake из шаблона результата) */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 6, 12, .72);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s;
+  padding: 16px;
+}
+
+.overlay.open { opacity: 1; pointer-events: auto; }
+
+.modal {
+  --accent: var(--gold);
+  position: relative;
+  width: min(430px, 94vw);
+  background: linear-gradient(180deg, #171c2e, #10141f);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, #242b3d);
+  border-radius: 18px;
+  padding: 26px 22px 22px;
+  text-align: center;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .6), 0 0 40px color-mix(in srgb, var(--accent) 14%, transparent);
+  transform: scale(.86) translateY(12px);
+  transition: transform .28s cubic-bezier(.2, 1.4, .4, 1);
+}
+
+.overlay.open .modal { transform: scale(1) translateY(0); }
+.modal.shake { animation: modalshake .5s; }
+
+.m-title { font-size: 22px; margin-bottom: 10px; }
+
+.m-title.anim-pop { animation: pop .5s cubic-bezier(.2, 1.6, .4, 1); }
+.m-title.anim-shake { animation: shake .5s; }
+
+@keyframes pop {
+  0% { transform: scale(0) rotate(-25deg); }
+  70% { transform: scale(1.2) rotate(4deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-9px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(4px); }
+}
+
+@keyframes modalshake {
+  0%, 100% { transform: scale(1) translateY(0); }
+  20% { transform: scale(1) translateY(0) translateX(-12px); }
+  40% { transform: scale(1) translateY(0) translateX(10px); }
+  60% { transform: scale(1) translateY(0) translateX(-6px); }
+}
+
+.m-text { color: var(--muted); font-size: 14px; margin-bottom: 14px; }
+.m-line { color: var(--text); font-size: 14.5px; margin: 4px 0; }
+.m-body { margin-bottom: 16px; }
+
+.m-btnrow { display: flex; gap: 10px; }
+.m-btnrow .btn { flex: 1; min-height: 44px; }
+
+.m-x {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: var(--dim);
+}
+
+.m-x:hover { color: var(--text); background: rgba(255, 255, 255, .06); }
+
+.btn-danger {
+  background: none;
+  border: 1px solid rgba(255, 84, 112, .5);
+  color: var(--red);
+}
+
+.btn-danger:hover:not(:disabled) { background: rgba(255, 84, 112, .1); color: #ff8ba3; }
+
+/* Бейджи, спиннер, прочее */
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-family: var(--mono);
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.spinner {
+  width: 22px;
+  height: 22px;
+  border: 3px solid rgba(255, 255, 255, .12);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-color: rgba(255, 201, 60, .45);
+  background: rgba(255, 201, 60, .07);
+}
+
+.banner-text { flex: 1; text-align: left; font-weight: 700; font-size: 13px; color: var(--gold); }

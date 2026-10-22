@@ -2,19 +2,21 @@ export class ApiError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
 }
 
-export async function api(method, path, body) {
-  const opts = { method, credentials: 'same-origin', headers: {} };
+export async function api(method, path, body, opts = {}) {
+  const opts_ = opts ?? {};
+  const redirectOn401 = opts_.redirectOn401 !== false;
+  const req = { method, credentials: 'same-origin', headers: {} };
   if (body !== undefined) {
-    opts.headers['Content-Type'] = 'application/json';
-    opts.body = JSON.stringify(body);
+    req.headers['Content-Type'] = 'application/json';
+    req.body = JSON.stringify(body);
   }
-  const res = await fetch('/api/v1' + path, opts);
+  const res = await fetch('/api/v1' + path, req);
   if (res.status === 204) return null;
   let data = null;
   try { data = await res.json(); } catch { /* пустое тело */ }
   if (!res.ok) {
     const err = (data && data.error) || { code: 'NETWORK', message: 'Ошибка сети' };
-    if (res.status === 401 && err.code === 'UNAUTHENTICATED') redirectToLogin();
+    if (res.status === 401 && err.code === 'UNAUTHENTICATED' && redirectOn401) redirectToLogin();
     throw new ApiError(res.status, err.code, err.message);
   }
   return data;

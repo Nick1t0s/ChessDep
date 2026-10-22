@@ -1,0 +1,201 @@
+/* Игровой экран: раскладка, панели игроков, часы. */
+
+.game-main {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 12px 16px 24px;
+}
+
+.match-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.board-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Панель игрока */
+.player-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: min(100vw - 32px, 760px);
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  transition: border-color .2s, box-shadow .2s;
+}
+
+.player-panel.is-turn {
+  border-color: rgba(255, 201, 60, .65);
+  box-shadow: 0 0 16px rgba(255, 201, 60, .18);
+}
+
+.p-king { font-size: 26px; line-height: 1; color: var(--piece-color, var(--text)); }
+.p-login { font-size: 13.5px; }
+.p-elo, .p-deps { font-size: 11.5px; color: var(--muted); font-family: var(--mono); }
+.p-elo { margin-left: auto; }
+
+.p-clock {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 700;
+  min-width: 66px;
+  text-align: right;
+  color: var(--text);
+}
+
+.p-clock.is-low { color: var(--red); }
+
+/* Десктоп */
+@media (min-width: 900px) {
+  .match-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    align-items: start;
+    gap: 14px;
+  }
+
+  .board-side { align-items: flex-start; }
+
+  .player-panel { max-width: 720px; width: 720px; }
+
+  .side-col { position: sticky; top: 64px; }
+}
+
+/* Панно действий */
+.actions-card { display: flex; flex-direction: column; gap: 10px; }
+.actions-card .btn { min-height: 44px; }
+.btn-cap { font-size: 11px; opacity: .8; font-family: var(--mono); }
+
+.conn { color: var(--gold); font-size: 13px; border-color: rgba(255, 201, 60, .4); background: rgba(255, 201, 60, .06); }
+.conn[hidden] { display: none; }
+
+/* Подсказка выбора фигуры депа над доской */
+.dep-hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  background: rgba(255, 201, 60, .08);
+  border: 1px solid rgba(255, 201, 60, .4);
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.dep-hint[hidden] { display: none; }
+.dep-hint-text { flex: 1; }
+
+/* Панель депа: справа на десктопе, нижний лист на мобилке */
+.dep-panel { display: flex; flex-direction: column; gap: 8px; }
+.dep-panel[hidden] { display: none; }
+
+.dep-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .03);
+  text-align: left;
+  transition: .15s;
+}
+
+.dep-row:not(:disabled):hover { border-color: var(--accent); background: rgba(139, 92, 246, .08); }
+.dep-row:disabled { opacity: .45; cursor: not-allowed; }
+
+.dep-row-glyph { font-size: 24px; color: var(--piece-color); }
+.dep-row-name { font-size: 13.5px; }
+.dep-row-chance { margin-left: auto; font-size: 12px; color: var(--gold); font-weight: 700; }
+.dep-row-note { font-size: 11.5px; color: var(--muted); }
+
+.dep-summary { font-size: 13px; color: var(--muted); line-height: 1.45; }
+
+.dep-btnrow { display: flex; gap: 8px; }
+
+@media (max-width: 899px) {
+  .dep-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 70;
+    border-radius: 16px 16px 0 0;
+    border-bottom: none;
+    background: var(--panel);
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+    box-shadow: 0 -18px 50px rgba(0, 0, 0, .55);
+    animation: sheet-in .22s ease-out;
+  }
+
+  .side-col { padding-bottom: 8px; }
+}
+
+@keyframes sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+/* Лента */
+.feed-card .card-title { margin-bottom: 8px; }
+
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  max-height: 260px;
+  overflow: hidden auto;
+}
+
+.feed-item { display: flex; gap: 8px; align-items: baseline; }
+.f-who { color: var(--dim); white-space: nowrap; }
+.f-text { color: var(--muted); }
+.feed-item.good .f-text { color: var(--green); }
+.feed-item.bad .f-text { color: var(--red); }
+.feed-item.system { color: var(--gold); font-family: var(--font); }
+
+/* Превращение пешки */
+.promo-row { display: flex; gap: 8px; justify-content: center; margin-bottom: 14px; }
+
+.promo-btn {
+  flex: 1;
+  min-height: 76px;
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .03);
+  padding: 6px;
+}
+
+.promo-btn:hover { border-color: var(--gold); background: rgba(255, 201, 60, .08); }
+
+.promo-btn .glyph {
+  --piece-color: var(--text);
+  color: var(--piece-color);
+  font-size: 34px;
+  line-height: 1;
+}
+
+.promo-name { font-size: 10.5px; color: var(--muted); }

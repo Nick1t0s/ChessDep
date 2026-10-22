@@ -1,0 +1,49 @@
+/* Лобби, крест, ленты */
+
+.lobby { display: flex; flex-direction: column; gap: 14px; padding-top: 20px; }
+.lobby-card h3, .game-card h3 { margin-bottom: 12px; font-size: 15px; }
+.note { color: var(--muted); font-size: 13px; line-height: 1.45; }
+
+.tc-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.btn-tc {
+  flex: 1 1 auto;
+  min-width: 104px;
+  min-height: 56px;
+  font-size: 16px;
+  font-family: var(--mono);
+  font-weight: 700;
+}
+
+.search-box { display: flex; flex-direction: column; gap: 10px; }
+.search-box[hidden] { display: none; }
+
+.search-state {
+  font-size: 15px;
+  color: var(--gold);
+  font-weight: 700;
+  animation: tin .3s ease;
+}
+
+.friend-box { display: flex; flex-direction: column; gap: 10px; }
+.friend-box[empty] { display: none; }
+
+.invite-row { display: flex; gap: 8px; }
+.invite-link {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text);
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 11px 12px;
+}
+
+.invite-meta { display: flex; align-items: center; gap: 10px; }
+.invite-countdown { color: var(--muted); font-size: 12px; flex: 1; }
+.game-card { border-color: rgba(255, 201, 60, .45); background: rgba(255, 201, 60, .05); }

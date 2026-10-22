@@ -1,0 +1,102 @@
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 18px;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.logo {
+  font-weight: 900;
+  font-size: 17px;
+  letter-spacing: .5px;
+  color: var(--gold);
+}
+
+.topnav {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.topnav::-webkit-scrollbar { display: none; }
+
+.topnav a {
+  padding: 8px 12px;
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.topnav a:hover { color: var(--text); background: rgba(255, 255, 255, .04); }
+.topnav a.active { color: var(--gold); background: rgba(255, 201, 60, .08); }
+
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pill {
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, .02);
+}
+
+.pill b { color: var(--gold); font-weight: 700; }
+.balance{min-width:5rem;text-align:center}
+.gift-badge[hidden] { display: none; }
+.login-link { color: var(--text); }
+
+.btn-sm { padding: 8px 12px; font-size: 12.5px; }
+
+/* Нижний таб-бар: виден только на мобильной ширине */
+.tabbar {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tabbar a {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  min-height: 52px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tabbar a.active { color: var(--gold); }
+
+@media (max-width: 640px) {
+  .topnav { display: none; }
+  body:not(.game-page) .tabbar { display: flex; }
+  body:not(.game-page) { padding-bottom: calc(52px + env(safe-area-inset-bottom)); }
+  .topbar-right .login-link,
+  .topbar-right .btn-logout { display: none; }
+}
+
+.wrap-wide {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 16px;
+}

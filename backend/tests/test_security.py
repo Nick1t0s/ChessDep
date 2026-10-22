@@ -5,6 +5,7 @@ from app.api.health import redis_client
 from app.config import settings
 from app.main import app
 from app.models import User
+from app.services.settings import DEFAULTS
 from tests.conftest import register
 
 
@@ -103,6 +104,15 @@ async def test_logout_cookie_secure_mode(monkeypatch, client) -> None:
     assert "Secure" in out_cookie
     assert "HttpOnly" in out_cookie
     assert "SameSite=strict" in out_cookie
+
+
+async def test_config_public() -> None:
+    async with await _fresh_client() as client:
+        resp = await client.get("/api/v1/config")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["time_controls"] == DEFAULTS["time_controls"]
+    assert data["dep_limit"] == 10
 
 
 async def test_health_503_when_redis_down(monkeypatch) -> None:

@@ -9,6 +9,7 @@ from app.api import (
     admin,
     admin_catalog,
     auth,
+    config,
     games,
     gifts,
     health,
@@ -53,6 +54,7 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(me.router)
 app.include_router(internal.router)
+app.include_router(config.router)
 app.include_router(games.router)
 app.include_router(matchmaking.router)
 app.include_router(invites.router)

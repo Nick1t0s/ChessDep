@@ -9,6 +9,13 @@ _BANNED_SUBSTRINGS = (
     "indexedDB",
     "document.cookie",
     "Math.random",
+    "outerHTML",
+    "insertAdjacentHTML",
+    "document.write",
+    "eval(",
+    "new Function",
+    'setAttribute("style"',
+    "setAttribute('style'",
 )
 _INNERHTML_RE = re.compile(r"innerHTML\s*=")
 _INLINE_SCRIPT_RE = re.compile(r"<script\b(?![^>]*\bsrc=)[^>]*>", re.IGNORECASE)
