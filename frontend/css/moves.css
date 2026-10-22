@@ -1,0 +1,10 @@
+.mv-list { max-height: 320px; overflow-y: auto; font-family: var(--mono); font-size: 13px; display: flex; flex-direction: column; gap: 2px; }
+.mv-row { display: grid; grid-template-columns: 38px 1fr 1fr; gap: 4px; align-items: center; }
+.mv-num { color: var(--muted); }
+.mv-cell, .mv-dep { padding: 3px 6px; border-radius: 6px; cursor: pointer; }
+.mv-cell:hover, .mv-dep:hover { background: rgba(255,255,255,.06); }
+.mv-cell.sel, .mv-dep.sel { background: color-mix(in srgb, var(--gold) 25%, transparent); color: var(--text); }
+.mv-dep { font-size: 12px; margin-left: 38px; }
+.mv-dep.ok { color: #4ade80; }
+.mv-dep.fail { color: #ff5470; }
+.mv-sys { color: var(--muted); font-size: 12px; margin-left: 38px; padding: 2px 6px; }
