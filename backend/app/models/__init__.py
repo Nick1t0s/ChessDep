@@ -1,5 +1,6 @@
 from app.models.admin_audit import AdminAudit
 from app.models.base import Base, convention
+from app.models.chat import GameMessage
 from app.models.game import ActivePlayer, Game, GameEvent, Invite
 from app.models.items import Case, CaseDrop, Collection, InventoryItem, ItemDef, Loadout
 from app.models.ledger import Ledger
@@ -18,6 +19,7 @@ __all__ = [
     "Collection",
     "Game",
     "GameEvent",
+    "GameMessage",
     "InventoryItem",
     "Invite",
     "ItemDef",
