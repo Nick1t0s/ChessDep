@@ -91,6 +91,7 @@ const gamesCard = h('div', { class: 'card' },
         h('th', null, 'Причина'),
         h('th', null, 'Контроль'),
         h('th', null, 'Elo'),
+        h('th', null, 'Повтор'),
       )),
       gamesBody,
     ),
@@ -109,12 +110,13 @@ function gameRow(game) {
   const elo = game.elo_delta === null ? '—' : (game.elo_delta > 0 ? '+' : '') + String(game.elo_delta);
   return h('tr', null,
     h('td', null, new Date(game.finished_at).toLocaleString('ru-RU')),
-    h('td', null, game.opponent_login),
+    h('td', null, h('a', { href: '/user.html?login=' + encodeURIComponent(game.opponent_login) }, game.opponent_login)),
     h('td', null, game.color === 'white' ? 'Белые' : 'Чёрные'),
     h('td', null, result),
     h('td', null, END_REASON_RU[game.end_reason] ?? ''),
     h('td', null, game.time_control),
     h('td', null, elo),
+    h('td', null, h('a', { href: '/replay.html?id=' + game.id, class: 'btn btn-ghost btn-sm' }, 'Повтор')),
   );
 }
 
@@ -124,7 +126,7 @@ async function loadGames() {
   const page = await api('GET', '/me/games?' + params.toString());
   for (const game of page.items) gamesBody.appendChild(gameRow(game));
   if (page.items.length === 0 && gamesBody.children.length === 0) {
-    gamesBody.appendChild(h('tr', null, h('td', null, 'Партий ещё не было'), h('td', null, ''), h('td', null, ''), h('td', null, ''), h('td', null, ''), h('td', null, ''), h('td', null, '')));
+    gamesBody.appendChild(h('tr', null, h('td', null, 'Партий ещё не было'), h('td', null, ''), h('td', null, ''), h('td', null, ''), h('td', null, ''), h('td', null, ''), h('td', null, ''), h('td', null, '')));
   }
   nextBefore = page.next_before;
   gamesMoreBtn.hidden = nextBefore === null;
