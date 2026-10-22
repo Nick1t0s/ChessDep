@@ -2,11 +2,14 @@ import { api } from '../api.js';
 import { h, clear } from '../dom.js';
 import { toast } from '../toast.js';
 import { confirmModal, openModal } from '../modal.js';
-import { fmtCrystals, PIECE_NAME_RU } from '../format.js';
-import { skinPreview, RARITIES, RARITY_RU } from '../items.js';
-import { renderCasesSection } from './cases.js';
+import { fmtCrystals } from '../format.js';
+import { skinPreview, SLOT_RU, WHITE_SLOTS, BLACK_SLOTS, RARITIES, RARITY_RU } from '../items.js';
 
 const STATUS_RU = { draft: 'Черновик', released: 'Выпущена', retired: 'Снята' };
+
+const DEFAULT_RARITY = { P: 'common', N: 'uncommon', B: 'uncommon', R: 'rare', Q: 'epic', K: 'legendary' };
+const RARITY_VALUE = { common: 20, uncommon: 60, rare: 150, epic: 500, legendary: 1500, mythic: 5000 };
+const DEFAULT_COLOR = { w: '#ffffff', b: '#ffc93c' };
 
 let fieldSeq = 0;
 
@@ -18,11 +21,6 @@ function field(labelText, input) {
 
 function statusPill(status) {
   return h('span', { class: 'pill status-' + status }, STATUS_RU[status] ?? status);
-}
-
-function kindRu(def) {
-  if (def.kind === 'board_skin') return 'Доска';
-  return 'Фигура ' + (PIECE_NAME_RU[def.piece_type] ?? def.piece_type ?? '');
 }
 
 export async function mount(root) {
@@ -50,7 +48,6 @@ async function renderList(root) {
       h('td', {}, c.name),
       h('td', {}, statusPill(c.status)),
       h('td', { class: 'mono' }, String(c.items_count)),
-      h('td', { class: 'mono' }, String(c.cases_count)),
       h('td', {},
         h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: () => renderDetail(root, c.id) }, 'Открыть')),
     ));
@@ -62,7 +59,6 @@ async function renderList(root) {
       h('th', {}, 'Название'),
       h('th', {}, 'Статус'),
       h('th', {}, 'Скинов'),
-      h('th', {}, 'Кейсов'),
       h('th', {}, ''),
     )),
     tbody,
@@ -83,23 +79,52 @@ function createCollectionForm(root) {
   const nameIn = h('input', { type: 'text', name: 'name', required: true });
   const descIn = h('textarea', { name: 'description', rows: 3 });
 
+  const rows = [...WHITE_SLOTS, ...BLACK_SLOTS].map(makePiecesRow);
+
   const form = h('form', { class: 'admin-form' },
     field('Код', codeIn),
     field('Название', nameIn),
     field('Описание', descIn),
+    h('table', { class: 'admin-table' },
+      h('thead', {}, h('tr', {},
+        h('th', {}, 'Фигура'),
+        h('th', {}, 'Редкость'),
+        h('th', {}, 'Ценность'),
+        h('th', {}, 'Цвет'),
+        h('th', {}, 'Цель апгрейда'),
+      )),
+      h('tbody', {}, ...rows.map((r) => r.tr)),
+    ),
     h('div', { class: 'admin-row' },
       h('button', { type: 'submit', class: 'btn btn-gold' }, 'Создать')),
   );
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const pieces = [];
+    for (const row of rows) {
+      const value = Number(row.valIn.value);
+      if (!Number.isInteger(value) || value < 1 || !/^#[0-9a-fA-F]{6}$/.test(row.colorIn.value.trim())) {
+        toast('Строка «' + SLOT_RU[row.slot] + '»: проверьте ценность и цвет', 'error');
+        return;
+      }
+      pieces.push({
+        side: row.slot[0],
+        piece_type: row.slot[1],
+        rarity: row.rarSel.value,
+        value,
+        asset: { type: 'stub', color: row.colorIn.value.trim() },
+        is_upgrade_target: row.upIn.checked,
+      });
+    }
     try {
       const created = await api('POST', '/admin/collections', {
         code: codeIn.value.trim(),
         name: nameIn.value.trim(),
         description: descIn.value.trim(),
+        pieces,
       });
-      toast('Коллекция создана', 'success');
+      toast('Готово', 'success');
       await renderDetail(root, created.id);
     } catch (err2) {
       toast(err2.message, 'error');
@@ -107,6 +132,35 @@ function createCollectionForm(root) {
   });
 
   return form;
+}
+
+function makePiecesRow(slot) {
+  const side = slot[0];
+  const pt = slot[1];
+
+  const rarSel = h('select', { name: 'rarity-' + slot });
+  for (const r of RARITIES) {
+    rarSel.appendChild(h('option', { value: r }, RARITY_RU[r] ?? r));
+  }
+  rarSel.value = DEFAULT_RARITY[pt];
+
+  const valIn = h('input', { type: 'number', name: 'value-' + slot, min: 1, value: RARITY_VALUE[DEFAULT_RARITY[pt]] });
+  rarSel.addEventListener('change', () => {
+    valIn.value = String(RARITY_VALUE[rarSel.value]);
+  });
+
+  const colorIn = h('input', { type: 'text', name: 'color-' + slot, value: DEFAULT_COLOR[side] });
+  const upIn = h('input', { type: 'checkbox', name: 'target-' + slot, checked: true });
+
+  const tr = h('tr', {},
+    h('td', {}, SLOT_RU[slot]),
+    h('td', {}, rarSel),
+    h('td', {}, valIn),
+    h('td', {}, colorIn),
+    h('td', {}, upIn),
+  );
+
+  return { slot, tr, rarSel, valIn, colorIn, upIn };
 }
 
 // ---------- карточка ----------
@@ -132,10 +186,6 @@ async function renderDetail(root, id) {
 
   root.appendChild(actionsRow(root, d));
   root.appendChild(skinsSection(root, d));
-
-  const casesBox = h('div', { class: 'admin-section' });
-  root.appendChild(casesBox);
-  renderCasesSection(casesBox, d, () => renderDetail(root, id));
 }
 
 function actionsRow(root, d) {
@@ -167,7 +217,7 @@ async function releaseCollection(root, d) {
 async function retireCollection(root, d) {
   const ok = await confirmModal(
     'Снять с выпуска',
-    'Снять коллекцию «' + d.name + '» с выпуска?',
+    'Снять коллекцию «' + d.name + '» с выпуска? Все активные кейсы с её скинами будут закрыты.',
     'Снять', 'danger');
   if (!ok) return;
   try {
@@ -197,34 +247,29 @@ async function deleteCollection(root, d) {
 // ---------- скины ----------
 
 function skinsSection(root, d) {
-  const section = h('div', { class: 'admin-section' }, h('h3', { class: 'card-title' }, 'Скины'));
+  const section = h('div', { class: 'admin-section' }, h('h3', { class: 'card-title' }, 'Скины (12)'));
 
   const tbody = h('tbody');
   for (const def of d.items) {
-    const btns = h('td', {},
-      h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: () => openEditModal(root, d, def) }, 'Изменить'),
-      d.status === 'draft'
-        ? h('button', { type: 'button', class: 'btn btn-danger btn-sm', onClick: () => deleteItemDef(root, d, def) }, 'Удалить')
-        : null,
-    );
     tbody.appendChild(h('tr', {},
       h('td', {}, skinPreview(def)),
+      h('td', {}, SLOT_RU[def.side + def.piece_type] ?? (def.side + def.piece_type)),
       h('td', { class: 'mono' }, def.code),
       h('td', {}, def.name),
-      h('td', {}, kindRu(def)),
       h('td', {}, RARITY_RU[def.rarity] ?? def.rarity),
       h('td', { class: 'mono' }, fmtCrystals(def.value)),
       h('td', {}, def.is_upgrade_target ? 'Да' : 'Нет'),
-      btns,
+      h('td', {},
+        h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: () => openEditModal(root, d, def) }, 'Изменить')),
     ));
   }
 
   section.appendChild(h('table', { class: 'admin-table' },
     h('thead', {}, h('tr', {},
       h('th', {}, 'Превью'),
+      h('th', {}, 'Фигура'),
       h('th', {}, 'Код'),
       h('th', {}, 'Название'),
-      h('th', {}, 'Вид'),
       h('th', {}, 'Редкость'),
       h('th', {}, 'Ценность'),
       h('th', {}, 'Цель апгрейда'),
@@ -233,122 +278,13 @@ function skinsSection(root, d) {
     tbody,
   ));
 
-  section.appendChild(h('h3', { class: 'card-title' }, 'Новый скин'));
-  section.appendChild(newSkinForm(root, d));
   return section;
-}
-
-function newSkinForm(root, d) {
-  const codeIn = h('input', { type: 'text', name: 'code', required: true });
-  const nameIn = h('input', { type: 'text', name: 'name', required: true });
-
-  const kindSel = h('select', { name: 'kind' },
-    h('option', { value: 'piece_skin' }, 'Фигура'),
-    h('option', { value: 'board_skin' }, 'Доска'),
-  );
-
-  const ptSel = h('select', { name: 'piece_type' });
-  for (const pt of ['P', 'N', 'B', 'R', 'Q', 'K']) {
-    ptSel.appendChild(h('option', { value: pt }, PIECE_NAME_RU[pt]));
-  }
-
-  const rarSel = h('select', { name: 'rarity' });
-  for (const r of RARITIES) {
-    rarSel.appendChild(h('option', { value: r }, RARITY_RU[r] ?? r));
-  }
-
-  const valIn = h('input', { type: 'number', name: 'value', min: 1, value: 20 });
-  const colorIn = h('input', { type: 'text', name: 'color', value: '#ffffff' });
-  const lightIn = h('input', { type: 'text', name: 'light', value: '#ffffff' });
-  const darkIn = h('input', { type: 'text', name: 'dark', value: '#e5e5e5' });
-  const upIn = h('input', { type: 'checkbox', name: 'is_upgrade_target', checked: true });
-
-  const ptField = field('Тип фигуры', ptSel);
-  const colorField = field('Цвет фигуры', colorIn);
-  const lightField = field('Светлые клетки', lightIn);
-  const darkField = field('Тёмные клетки', darkIn);
-
-  const syncKind = () => {
-    const board = kindSel.value === 'board_skin';
-    ptField.hidden = board;
-    colorField.hidden = board;
-    lightField.hidden = !board;
-    darkField.hidden = !board;
-  };
-  kindSel.addEventListener('change', syncKind);
-  syncKind();
-
-  const form = h('form', { class: 'admin-form' },
-    field('Код', codeIn),
-    field('Название', nameIn),
-    field('Вид', kindSel),
-    ptField,
-    field('Редкость', rarSel),
-    field('Ценность', valIn),
-    colorField,
-    lightField,
-    darkField,
-    field('Цель апгрейда', upIn),
-    h('div', { class: 'admin-row' },
-      h('button', { type: 'submit', class: 'btn btn-gold' }, 'Добавить')),
-  );
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const kind = kindSel.value;
-    const value = Number(valIn.value);
-    if (!codeIn.value.trim() || !nameIn.value.trim()) {
-      toast('Заполните код и название', 'error');
-      return;
-    }
-    if (!Number.isInteger(value) || value < 1) {
-      toast('Ценность должна быть целым числом ≥ 1', 'error');
-      return;
-    }
-    const body = {
-      code: codeIn.value.trim(),
-      name: nameIn.value.trim(),
-      kind,
-      piece_type: kind === 'piece_skin' ? ptSel.value : null,
-      rarity: rarSel.value,
-      value,
-      asset: kind === 'piece_skin'
-        ? { type: 'stub', color: colorIn.value.trim() || colorIn.placeholder || '#ffffff' }
-        : { type: 'stub', light: lightIn.value.trim() || '#ffffff', dark: darkIn.value.trim() || '#e5e5e5' },
-      is_upgrade_target: upIn.checked,
-    };
-    try {
-      await api('POST', '/admin/collections/' + encodeURIComponent(d.id) + '/items', body);
-      toast('Скин добавлен', 'success');
-      await renderDetail(root, d.id);
-    } catch (err2) {
-      toast(err2.message, 'error');
-    }
-  });
-
-  return form;
 }
 
 function openEditModal(root, d, def) {
   const nameIn = h('input', { type: 'text', value: def.name });
   const valIn = h('input', { type: 'number', min: 1, value: def.value });
-
-  let colorField = null;
-  let lightField = null;
-  let darkField = null;
-  let colorIn = null;
-  let lightIn = null;
-  let darkIn = null;
-  if (def.kind === 'board_skin') {
-    lightIn = h('input', { type: 'text', value: def.asset.light });
-    darkIn = h('input', { type: 'text', value: def.asset.dark });
-    lightField = field('Светлые клетки', lightIn);
-    darkField = field('Тёмные клетки', darkIn);
-  } else {
-    colorIn = h('input', { type: 'text', value: def.asset.color });
-    colorField = field('Цвет фигуры', colorIn);
-  }
-
+  const colorIn = h('input', { type: 'text', value: def.asset.color });
   const upIn = h('input', { type: 'checkbox', checked: def.is_upgrade_target });
 
   let rarField = null;
@@ -365,9 +301,7 @@ function openEditModal(root, d, def) {
   const body = h('div', { class: 'admin-form' },
     field('Название', nameIn),
     field('Ценность', valIn),
-    colorField,
-    lightField,
-    darkField,
+    field('Цвет фигуры', colorIn),
     field('Цель апгрейда', upIn),
     rarField,
   );
@@ -393,7 +327,7 @@ function openEditModal(root, d, def) {
             toast('Ценность должна быть целым числом ≥ 1', 'error');
             return false;
           }
-          saveItemDef(root, d, def, { nameIn, valIn, colorIn, lightIn, darkIn, upIn, rarSel });
+          saveItemDef(root, d, def, { nameIn, valIn, colorIn, upIn, rarSel });
         },
       },
     ],
@@ -404,47 +338,22 @@ async function saveItemDef(root, d, def, inputs) {
   const body = {};
   const name = inputs.nameIn.value.trim();
   const value = Number(inputs.valIn.value);
-  if (name !== def.name) body.name = name;
-  if (value !== def.value) body.value = value;
+  body.name = name;
+  body.value = value;
 
-  if (def.kind === 'board_skin') {
-    body.asset = {
-      type: 'stub',
-      light: inputs.lightIn.value.trim() || def.asset.light,
-      dark: inputs.darkIn.value.trim() || def.asset.dark,
-    };
-  } else {
-    body.asset = {
-      type: 'stub',
-      color: inputs.colorIn.value.trim() || def.asset.color,
-    };
-  }
+  body.asset = {
+    type: 'stub',
+    color: inputs.colorIn.value.trim() || def.asset.color,
+  };
 
-  if (inputs.upIn.checked !== def.is_upgrade_target) {
-    body.is_upgrade_target = inputs.upIn.checked;
-  }
-  if (d.status === 'draft' && inputs.rarSel && inputs.rarSel.value !== def.rarity) {
+  body.is_upgrade_target = inputs.upIn.checked;
+  if (d.status === 'draft' && inputs.rarSel) {
     body.rarity = inputs.rarSel.value;
   }
 
   try {
     await api('PATCH', '/admin/item-defs/' + encodeURIComponent(def.id), body);
     toast('Скин обновлён', 'success');
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-  await renderDetail(root, d.id);
-}
-
-async function deleteItemDef(root, d, def) {
-  const ok = await confirmModal(
-    'Удалить скин',
-    'Удалить скин «' + def.name + '» (' + def.code + ')?',
-    'Удалить', 'danger');
-  if (!ok) return;
-  try {
-    await api('DELETE', '/admin/item-defs/' + encodeURIComponent(def.id));
-    toast('Скин удалён', 'success');
   } catch (e) {
     toast(e.message, 'error');
   }
