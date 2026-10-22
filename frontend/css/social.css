@@ -1,0 +1,11 @@
+.sc-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.sc-hint { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+.sc-hint a { color: var(--gold); }
+.sc-gift p { margin: 2px 0; font-size: 12.5px; }
+.sc-who { font-weight: 600; }
+.sc-date { color: var(--muted); }
+.sc-note { font-style: italic; color: var(--text); word-break: break-word; }
+.sc-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.sc-table th, .sc-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; }
+.sc-table th { color: var(--muted); font-weight: 600; }
+.sc-table tr.me td { color: var(--gold); font-weight: 700; }
