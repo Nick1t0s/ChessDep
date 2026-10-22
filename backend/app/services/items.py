@@ -16,7 +16,7 @@ def item_def_out(d: ItemDef, collection: Collection) -> ItemDefOut:
         id=d.id,
         code=d.code,
         name=d.name,
-        kind=d.kind,
+        side=d.side,
         piece_type=d.piece_type,
         rarity=d.rarity,
         value=d.value,
@@ -166,16 +166,17 @@ async def unequip_items(db: AsyncSession, item_ids: list[int]) -> None:
         await db.execute(delete(Loadout).where(Loadout.inventory_item_id.in_(item_ids)))
 
 
-async def loadout_snapshot(db: AsyncSession, user_id: int) -> dict[str, dict]:
+async def loadout_snapshot(db: AsyncSession, user_id: int, side: str) -> dict[str, dict]:
+    """Снапшот слотов одной стороны (side = 'w'|'b'); ключи — буква фигуры без префикса."""
     rows = await db.execute(
         select(Loadout, ItemDef)
         .join(InventoryItem, InventoryItem.id == Loadout.inventory_item_id)
         .join(ItemDef, ItemDef.id == InventoryItem.item_def_id)
-        .where(Loadout.user_id == user_id)
+        .where(Loadout.user_id == user_id, Loadout.slot.startswith(side))
     )
     snapshot: dict[str, dict] = {}
     for loadout, item_def in rows:
-        snapshot[loadout.slot] = {
+        snapshot[loadout.slot[1:]] = {
             "code": item_def.code,
             "name": item_def.name,
             "rarity": item_def.rarity,
@@ -185,6 +186,4 @@ async def loadout_snapshot(db: AsyncSession, user_id: int) -> dict[str, dict]:
 
 
 def slot_matches(item_def: ItemDef, slot: str) -> bool:
-    if slot == "board":
-        return item_def.kind == "board_skin"
-    return item_def.kind == "piece_skin" and item_def.piece_type == slot
+    return slot == item_def.side + item_def.piece_type
