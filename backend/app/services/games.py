@@ -27,6 +27,7 @@ from app.services import pubsub
 from app.services.economy import apply_delta, lock_user
 from app.services.elo import elo_update
 from app.services.game_clock import deadline, is_expired, parse_time_control, remaining_ms, turn_color
+from app.services.items import loadout_snapshot
 from app.services.rolls import get_rng, record_roll
 from app.services.settings import get_setting
 
@@ -156,6 +157,8 @@ async def create_game(
     }
     base_ms, inc_ms = parse_time_control(time_control)
     abort_first_move_s = int(await get_setting(db, "abort_first_move_s"))
+    white_loadout = await loadout_snapshot(db, white_id)
+    black_loadout = await loadout_snapshot(db, black_id)
     start_board = chess.Board()
     game = Game(
         id=uuid.uuid4(),
@@ -175,6 +178,8 @@ async def create_game(
         abort_deadline=now + timedelta(seconds=abort_first_move_s),
         white_elo_before=users[white_id].elo,
         black_elo_before=users[black_id].elo,
+        white_loadout=white_loadout,
+        black_loadout=black_loadout,
         version=0,
     )
     db.add(game)

@@ -7,22 +7,50 @@ from typing import Any
 import chess
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import delete, insert, text
+from sqlalchemy import delete, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.chess_engine import position_key
 from app.config import settings
 from app.db import SessionLocal
 from app.main import app
-from app.models import Game, Setting
+from app.models import Case, CaseDrop, Collection, Game, ItemDef, Setting, User
 from app.redis import redis_client as redis
+from app.seed_data import genesis_rows
 from app.services import rolls
+import app.core.clock as clock
+from app.services.items import create_item
 from app.services.settings import DEFAULTS
 
 _TRUNCATE_SQL = text(
     "TRUNCATE users, sessions, ledger, admin_audit, games, game_events, "
-    "active_players, invites, rolls RESTART IDENTITY CASCADE"
+    "active_players, invites, rolls, collections, item_defs, inventory_items, "
+    "loadouts, cases, case_drops RESTART IDENTITY CASCADE"
 )
+
+_SEED_SEQUENCE_TABLES = ("collections", "item_defs", "cases")
+
+
+async def _seed_settings(db: AsyncSession) -> None:
+    await db.execute(delete(Setting))
+    rows: list[dict[str, Any]] = [
+        {"key": key, "value": value} for key, value in DEFAULTS.items()
+    ]
+    await db.execute(insert(Setting).values(rows))
+
+
+async def _seed_genesis(db: AsyncSession) -> None:
+    rows = genesis_rows()
+    await db.execute(insert(Collection).values(rows["collections"]))
+    await db.execute(insert(ItemDef).values(rows["item_defs"]))
+    await db.execute(insert(Case).values(rows["cases"]))
+    await db.execute(insert(CaseDrop).values(rows["case_drops"]))
+    # После вставки с явными id сдвинуть последовательности.
+    for table in _SEED_SEQUENCE_TABLES:
+        await db.execute(text(
+            f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
+            f"(SELECT max(id) FROM {table}))"
+        ))
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -30,11 +58,8 @@ async def clean_db() -> AsyncIterator[None]:
     async with SessionLocal() as db:
         async with db.begin():
             await db.execute(_TRUNCATE_SQL)
-            await db.execute(delete(Setting))
-            rows: list[dict[str, Any]] = [
-                {"key": key, "value": value} for key, value in DEFAULTS.items()
-            ]
-            await db.execute(insert(Setting).values(rows))
+            await _seed_settings(db)
+            await _seed_genesis(db)
     from app.services import settings as settings_service
 
     settings_service.clear_cache()
@@ -116,6 +141,16 @@ async def bob() -> AsyncIterator[AsyncClient]:
         yield client
 
 
+@pytest_asyncio.fixture
+async def admin() -> AsyncIterator[AsyncClient]:
+    async with _registered_client("admin") as client:
+        async with SessionLocal() as db:
+            async with db.begin():
+                user = (await db.scalars(select(User).where(User.login == "admin"))).one()
+                user.role = "admin"
+        yield client
+
+
 def _async_client() -> AsyncClient:
     return AsyncClient(
         transport=ASGITransport(app=app),
@@ -145,6 +180,41 @@ async def register(
         "password": password,
     }
     return await client.post("/api/v1/auth/register", json=payload)
+
+
+async def give_items(user_login: str, codes: list[str]) -> list[int]:
+    """Создать предметы через create_item в отдельной сессии; wear 0.5.
+
+    Временно ставит FixedRng([0.5]), затем восстанавливает RNG, который был
+    до вызова (иначе сломается фикстура rng).
+    """
+    prev = rolls.get_rng()
+    rolls.set_rng(FixedRng([0.5]))
+    try:
+        async with SessionLocal() as db:
+            async with db.begin():
+                user = (await db.scalars(select(User).where(User.login == user_login))).one()
+                defs = {
+                    d.code: d
+                    for d in (
+                        await db.scalars(select(ItemDef).where(ItemDef.code.in_(codes)))
+                    ).all()
+                }
+                now = clock.now()
+                item_ids: list[int] = []
+                for code in codes:
+                    item = await create_item(
+                        db,
+                        user_id=user.id,
+                        def_id=defs[code].id,
+                        source="admin_grant",
+                        source_ref="test",
+                        now=now,
+                    )
+                    item_ids.append(item.id)
+        return item_ids
+    finally:
+        rolls.set_rng(prev)
 
 
 async def start_game(

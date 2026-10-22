@@ -24,6 +24,17 @@ DEFAULTS: Mapping[str, Any] = {
     "upgrade_max_inputs": 10,
     "time_controls": ["3+2", "5+0", "10+0"],
     "abort_first_move_s": 30,
+    "rarity_weights": {
+        "common": 7992,
+        "uncommon": 1598,
+        "rare": 320,
+        "epic": 64,
+        "legendary": 20,
+        "mythic": 6,
+    },
+    "market_fee": 0.05,
+    "market_max_listings": 50,
+    "trade_hold_hours": 0,
 }
 
 
