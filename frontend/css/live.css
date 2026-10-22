@@ -1,0 +1,8 @@
+.lv-hint { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+.lv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.lv-card { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.lv-players { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.lv-elo { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+.lv-vs { color: var(--gold); font-weight: 800; margin: 0 4px; }
+.lv-meta { color: var(--muted); font-size: 13px; }
+.lv-empty { color: var(--muted); margin-bottom: 8px; }
