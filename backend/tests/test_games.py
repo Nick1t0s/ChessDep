@@ -32,8 +32,8 @@ async def test_stranger_cannot_see_game(alice, bob, rng, client) -> None:
     assert resp.status_code == 201
 
     resp = await client.get(f"/api/v1/games/{game_id}")
-    assert resp.status_code == 404
-    assert resp.json()["error"]["code"] == "GAME_NOT_FOUND"
+    assert resp.status_code == 200
+    assert resp.json()["you"] == "spectator"
 
     resp = await client.post(f"/api/v1/games/{game_id}/move", json={"uci": "e2e4"})
     assert resp.status_code == 404

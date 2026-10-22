@@ -8,13 +8,11 @@ from fastapi import APIRouter, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from app.config import settings
-from app.core.errors import AppError
 from app.core.sessions import resolve_session
 from app.db import SessionLocal
 from app.models import Game, User
 from app.services import pubsub
 from app.services.game_view import build_state, game_players, last_game_action
-from app.services.games import color_of
 
 router = APIRouter(tags=["ws"])
 
@@ -27,6 +25,10 @@ def ws_messages(message: dict, state: dict) -> list[dict]:
     if message.get("game_over"):
         out.append({"type": "game_over", "data": message["game_over"]})
     return out
+
+
+def is_chat_event(event: dict) -> bool:
+    return "chat" in event
 
 
 async def _load_ws_context(
@@ -44,10 +46,6 @@ async def _load_ws_context(
                 return None
             game = await db.get(Game, game_id)
             if game is None:
-                return None
-            try:
-                color_of(game, user.id)
-            except AppError:
                 return None
             players = await game_players(db, game)
             last_action = await last_game_action(db, game.id)
@@ -77,13 +75,12 @@ async def _pubsub_loop(
             event = json.loads(message["data"])
         except (TypeError, ValueError):
             continue
+        if is_chat_event(event):
+            await websocket.send_json({"type": "chat", "data": event["chat"]})
+            continue
         async with SessionLocal() as db:
             game = await db.get(Game, game_id)
             if game is None:
-                continue
-            try:
-                color_of(game, user_id)
-            except AppError:
                 continue
             players = await game_players(db, game)
             last_action = await last_game_action(db, game.id)
