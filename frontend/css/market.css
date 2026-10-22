@@ -1,0 +1,15 @@
+.market .card, .market-item .card { margin-bottom: 16px; }
+.mk-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.mk-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.mk-filters select { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+.mk-total { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+.mk-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.mk-price { color: var(--gold); font-weight: 800; }
+.mk-seller { color: var(--muted); font-size: 12px; }
+.mk-pager { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 14px; }
+.mi-head { display: grid; grid-template-columns: 200px 1fr; gap: 16px; align-items: start; margin-bottom: 16px; }
+@media (max-width: 640px) { .mi-head { grid-template-columns: 1fr; } }
+.mi-stats p { margin-bottom: 6px; }
+.mk-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.mk-table th, .mk-table td { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; }
+.mk-table th { color: var(--muted); font-weight: 600; }
