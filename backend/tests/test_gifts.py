@@ -15,9 +15,9 @@ async def _user_id(login: str) -> int:
 
 
 async def test_gift_flow(alice, bob) -> None:
-    ids = await give_items("alice", ["genesis-knight-frost"])
+    ids = await give_items("alice", ["genesis-wn"])
     item_id = ids[0]
-    resp = await alice.put("/api/v1/loadout/N", json={"inventory_item_id": item_id})
+    resp = await alice.put("/api/v1/loadout/wN", json={"inventory_item_id": item_id})
     assert resp.status_code == 200, resp.text
 
     inv_before = (await alice.get("/api/v1/inventory")).json()
@@ -37,7 +37,7 @@ async def test_gift_flow(alice, bob) -> None:
 
     # Слот пуст.
     loadout = (await alice.get("/api/v1/loadout")).json()
-    assert loadout["N"] is None
+    assert loadout["wN"] is None
 
     # Предмет у bob, acquired_at обновлён.
     bob_id = await _user_id("bob")
@@ -78,7 +78,7 @@ async def test_gift_flow(alice, bob) -> None:
 
 
 async def test_gift_errors(alice, bob, db) -> None:
-    ids = await give_items("alice", ["genesis-pawn-chalk"])
+    ids = await give_items("alice", ["genesis-wp"])
 
     # Себе.
     resp = await alice.post(
@@ -134,7 +134,7 @@ async def test_gift_resets_trade_hold(alice, bob, frozen) -> None:
     from tests.conftest import set_setting
 
     await set_setting("trade_hold_hours", 24)
-    ids = await give_items("alice", ["genesis-pawn-chalk"])
+    ids = await give_items("alice", ["genesis-wp"])
     # Предмет получен alice двое суток назад.
     async with SessionLocal() as db:
         async with db.begin():
