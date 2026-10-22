@@ -1,0 +1,10 @@
+.inventory .card { margin-bottom: 16px; }
+.inv-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.inv-slot { display: flex; flex-direction: column; gap: 6px; }
+.inv-slot-label { font-size: 12px; color: var(--muted); font-weight: 600; }
+.slot-empty { display: grid; place-items: center; height: 150px; border: 1px dashed var(--line); border-radius: 14px; color: var(--muted); font-size: 13px; }
+.inv-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.inv-filters select { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+.item-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.inv-empty { color: var(--muted); margin-bottom: 8px; }
+.inventory input, .inventory textarea { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--text); margin-top: 6px; }
