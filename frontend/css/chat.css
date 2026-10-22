@@ -1,0 +1,10 @@
+.chat-list { height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; font-size: 13px; padding-right: 4px; }
+.chat-msg { line-height: 1.35; word-break: break-word; }
+.chat-time { color: var(--muted); font-family: var(--mono); font-size: 11px; margin-right: 6px; }
+.chat-login { margin-right: 4px; }
+.chat-role { color: var(--muted); font-size: 11px; margin-right: 6px; }
+.chat-msg.role-white .chat-login { color: #f4f6ff; }
+.chat-msg.role-black .chat-login { color: #ff5470; }
+.chat-msg.role-spectator .chat-login { color: var(--muted); }
+.chat-form { display: flex; gap: 6px; margin-top: 8px; }
+.chat-form input { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--text); }
