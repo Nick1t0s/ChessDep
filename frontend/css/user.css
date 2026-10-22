@@ -1,0 +1,8 @@
+.user .card { margin-bottom: 16px; }
+.us-row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.us-row span { color: var(--muted); }
+.us-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.us-table th, .us-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; }
+.us-table th { color: var(--muted); font-weight: 600; }
+.us-table a:not(.btn) { color: var(--gold); }
+.user .table-wrap { overflow-x: auto; }
