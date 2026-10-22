@@ -2,7 +2,8 @@ import uuid
 from typing import Annotated
 
 import app.core.clock as clock
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import current_user
@@ -30,10 +31,15 @@ UserDep = Annotated[User, Depends(current_user)]
 _GAME_NOT_FOUND = AppError(404, "GAME_NOT_FOUND", "Партия не найдена")
 
 
-async def _get_player_game(db: AsyncSession, game_id: uuid.UUID, user_id: int) -> Game:
+async def _get_game(db: AsyncSession, game_id: uuid.UUID) -> Game:
     game = await db.get(Game, game_id)
     if game is None:
         raise _GAME_NOT_FOUND
+    return game
+
+
+async def _get_player_game(db: AsyncSession, game_id: uuid.UUID, user_id: int) -> Game:
+    game = await _get_game(db, game_id)
     games.color_of(game, user_id)
     return game
 
@@ -44,9 +50,41 @@ async def _state(db: AsyncSession, game: Game, user_id: int) -> GameStateOut:
     return build_state(game, user_id, players, clock.now(), last_action)
 
 
+@router.get("/games/live")
+async def get_live_games(
+    user: UserDep, db: DbDep, limit: Annotated[int, Query(ge=1, le=100)] = 50
+) -> list[dict]:
+    active_games = (
+        await db.scalars(
+            select(Game)
+            .where(Game.status == "active")
+            .order_by(Game.created_at.desc())
+            .limit(limit)
+        )
+    ).all()
+    user_ids = {game.white_id for game in active_games} | {
+        game.black_id for game in active_games
+    }
+    users = {
+        u.id: u for u in (await db.scalars(select(User).where(User.id.in_(user_ids)))).all()
+    }
+    return [
+        {
+            "id": str(game.id),
+            "time_control": game.time_control,
+            "ply": game.ply,
+            "created_at": game.created_at.isoformat(),
+            "white": {"login": users[game.white_id].login, "elo": game.white_elo_before},
+            "black": {"login": users[game.black_id].login, "elo": game.black_elo_before},
+            "deps_used": game.white_deps + game.black_deps,
+        }
+        for game in active_games
+    ]
+
+
 @router.get("/games/{game_id}", response_model=GameStateOut)
 async def get_game(game_id: uuid.UUID, user: UserDep, db: DbDep) -> GameStateOut:
-    game = await _get_player_game(db, game_id, user.id)
+    game = await _get_game(db, game_id)
     return await _state(db, game, user.id)
 
 

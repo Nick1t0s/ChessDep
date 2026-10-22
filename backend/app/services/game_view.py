@@ -61,7 +61,12 @@ def build_state(
     turn = turn_color(game)
     turn_board_color = chess.WHITE if turn == "white" else chess.BLACK
     active = game.status == "active"
-    you = "white" if viewer_user_id == game.white_id else "black"
+    if viewer_user_id == game.white_id:
+        you = "white"
+    elif viewer_user_id == game.black_id:
+        you = "black"
+    else:
+        you = "spectator"
     legal_moves = legal_moves_uci(board) if active and you == turn else []
     check_square = None
     if board.is_check():
