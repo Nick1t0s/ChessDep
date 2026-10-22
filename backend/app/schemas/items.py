@@ -8,7 +8,8 @@ from app.chess_engine import format_chance
 
 Rarity = Literal["common", "uncommon", "rare", "epic", "legendary", "mythic"]
 PieceType = Literal["P", "N", "B", "R", "Q", "K"]
-Slot = Literal["P", "N", "B", "R", "Q", "K", "board"]
+Side = Literal["w", "b"]
+Slot = Literal["wP", "wN", "wB", "wR", "wQ", "wK", "bP", "bN", "bB", "bR", "bQ", "bK"]
 
 HexColor = constr(pattern=r"^#[0-9a-fA-F]{6}$")
 SlugCode = constr(pattern=r"^[a-z0-9-]{2,40}$")
@@ -46,14 +47,6 @@ class PieceAsset(BaseModel):
     color: HexColor
 
 
-class BoardAsset(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    type: Literal["stub"]
-    light: HexColor
-    dark: HexColor
-
-
 # --- Выходные схемы ---------------------------------------------------------
 
 
@@ -70,11 +63,11 @@ class ItemDefOut(BaseModel):
     id: int
     code: str
     name: str
-    kind: str
-    piece_type: PieceType | None
+    side: Side
+    piece_type: PieceType
     rarity: str
     value: int
-    asset: PieceAsset | BoardAsset
+    asset: PieceAsset
     collection: CollectionRef
 
 
@@ -94,13 +87,18 @@ class ItemOut(BaseModel):
 class LoadoutOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    P: ItemOut | None
-    N: ItemOut | None
-    B: ItemOut | None
-    R: ItemOut | None
-    Q: ItemOut | None
-    K: ItemOut | None
-    board: ItemOut | None
+    wP: ItemOut | None
+    wN: ItemOut | None
+    wB: ItemOut | None
+    wR: ItemOut | None
+    wQ: ItemOut | None
+    wK: ItemOut | None
+    bP: ItemOut | None
+    bN: ItemOut | None
+    bB: ItemOut | None
+    bR: ItemOut | None
+    bQ: ItemOut | None
+    bK: ItemOut | None
 
 
 class PublicCollectionOut(BaseModel):
@@ -132,7 +130,7 @@ class CaseOut(BaseModel):
     code: str
     name: str
     price: int
-    collection: CollectionRef
+    collections: list[CollectionRef]
 
 
 class CaseDropOut(BaseModel):
@@ -198,12 +196,31 @@ class LoadoutPutIn(BaseModel):
 # --- Админка каталога (входы) ------------------------------------------------
 
 
+class PieceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    side: Side
+    piece_type: PieceType
+    rarity: Rarity
+    value: int = Field(ge=1, le=10_000_000)
+    asset: PieceAsset
+    is_upgrade_target: bool = True
+
+
 class CollectionCreateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     code: SlugCode
     name: NameStr
     description: DescriptionStr
+    pieces: list[PieceIn]
+
+    @model_validator(mode="after")
+    def check_pieces(self) -> "CollectionCreateIn":
+        keys = [p.side + p.piece_type for p in self.pieces]
+        if len(keys) != 12 or len(set(keys)) != 12:
+            raise ValueError("Нужно ровно 12 фигур: по одной на каждую сторону и тип")
+        return self
 
 
 class CollectionPatchIn(BaseModel):
@@ -213,42 +230,13 @@ class CollectionPatchIn(BaseModel):
     description: DescriptionStr | None = None
 
 
-class ItemDefCreateIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    code: SlugCode
-    name: NameStr
-    kind: Literal["piece_skin", "board_skin"]
-    piece_type: PieceType | None = None
-    rarity: Rarity
-    value: int = Field(ge=1, le=10_000_000)
-    asset: PieceAsset | BoardAsset
-    is_upgrade_target: bool = True
-
-    @model_validator(mode="after")
-    def check_kind(self) -> "ItemDefCreateIn":
-        if self.kind == "piece_skin":
-            if self.piece_type is None:
-                raise ValueError("Для piece_skin обязателен piece_type")
-            if not isinstance(self.asset, PieceAsset):
-                raise ValueError("Для piece_skin нужен asset вида PieceAsset")
-        else:
-            if self.piece_type is not None:
-                raise ValueError("Для board_skin piece_type не указывается")
-            if not isinstance(self.asset, BoardAsset):
-                raise ValueError("Для board_skin нужен asset вида BoardAsset")
-        return self
-
-
 class ItemDefPatchIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: NameStr | None = None
-    kind: Literal["piece_skin", "board_skin"] | None = None
-    piece_type: PieceType | None = None
     rarity: Rarity | None = None
     value: int | None = Field(default=None, ge=1, le=10_000_000)
-    asset: PieceAsset | BoardAsset | None = None
+    asset: PieceAsset | None = None
     is_upgrade_target: bool | None = None
 
 
@@ -266,7 +254,6 @@ class CasePatchIn(BaseModel):
 
     name: NameStr | None = None
     price: int | None = Field(default=None, ge=1, le=10_000_000)
-    is_active: bool | None = None
     sort: int | None = None
 
 
@@ -289,7 +276,13 @@ class DropsIn(RootModel[list[DropIn]]):
 class AutoDropsIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["piece_skin", "board_skin"] | None = None
+    collection_ids: conlist(int, min_length=1, max_length=20)  # type: ignore[valid-type]
+
+    @model_validator(mode="after")
+    def no_duplicates(self) -> "AutoDropsIn":
+        if len(set(self.collection_ids)) != len(self.collection_ids):
+            raise ValueError("Повторяющиеся collection_ids")
+        return self
 
 
 class GrantItemIn(BaseModel):
@@ -313,7 +306,6 @@ class AdminCollectionOut(BaseModel):
     released_at: datetime | None
     retired_at: datetime | None
     items_count: int
-    cases_count: int
 
 
 class AdminDropOut(BaseModel):
@@ -330,12 +322,11 @@ class AdminCaseOut(BaseModel):
     code: str
     name: str
     price: int
-    collection: CollectionRef
-    is_active: bool
+    status: str
     sort: int
+    collections: list[CollectionRef]
     drops: list[AdminDropOut]
 
 
 class AdminCollectionDetailOut(AdminCollectionOut):
     items: list[ItemDefOut]
-    cases: list[AdminCaseOut]

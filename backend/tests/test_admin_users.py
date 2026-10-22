@@ -72,7 +72,7 @@ async def test_ban_flow(alice, bob, admin, rng) -> None:
     bob_id = await _user_id("bob")
     admin_id = await _user_id("admin")
 
-    ids = await give_items("bob", ["genesis-pawn-chalk"])
+    ids = await give_items("bob", ["genesis-wp"])
     resp = await bob.post(
         "/api/v1/market/listings", json={"item_id": ids[0], "price": 10}
     )
@@ -313,7 +313,7 @@ async def test_admin_rolls_events_market_audit(alice, bob, admin, rng) -> None:
     assert [e["kind"] for e in events] == ["dep", "move"]
 
     # Админ снимает чужой лот.
-    ids = await give_items("bob", ["genesis-pawn-chalk"])
+    ids = await give_items("bob", ["genesis-wp"])
     resp = await bob.post(
         "/api/v1/market/listings", json={"item_id": ids[0], "price": 50}
     )

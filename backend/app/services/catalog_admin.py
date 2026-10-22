@@ -1,7 +1,7 @@
 import app.core.clock as clock
 from datetime import datetime
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,11 +13,9 @@ from app.schemas.items import (
     CollectionCreateIn,
     CollectionPatchIn,
     DropIn,
-    ItemDefCreateIn,
     ItemDefPatchIn,
-    PieceAsset,
-    BoardAsset,
 )
+from app.seed_data import item_code, item_name
 from app.services.cases import auto_weights
 from app.services.items import create_item
 from app.services.settings import get_setting
@@ -32,24 +30,20 @@ ITEM_CODE_TAKEN = AppError(409, "ITEM_CODE_TAKEN", "Код скина занят
 CASE_CODE_TAKEN = AppError(409, "CASE_CODE_TAKEN", "Код кейса занят")
 
 COLLECTION_NOT_DRAFT = AppError(400, "COLLECTION_NOT_DRAFT", "Действие только для черновика")
-COLLECTION_NOT_READY = AppError(
-    400, "COLLECTION_NOT_READY", "Коллекция не готова к выпуску: нет скинов или у кейса нет дропов"
-)
 COLLECTION_NOT_RELEASED = AppError(400, "COLLECTION_NOT_RELEASED", "Снять можно только выпущенную")
 ITEM_DEF_LOCKED = AppError(
     400, "ITEM_DEF_LOCKED", "После выпуска можно менять только name, asset, value, is_upgrade_target"
 )
-CASE_LOCKED = AppError(400, "CASE_LOCKED", "После выпуска коллекции дропы кейса изменять нельзя")
-DROP_ITEM_NOT_IN_COLLECTION = AppError(
-    400, "DROP_ITEM_NOT_IN_COLLECTION", "Скин не принадлежит коллекции кейса"
-)
 ITEM_DEF_NOT_AVAILABLE = AppError(
     400, "ITEM_DEF_NOT_AVAILABLE", "Скин не из выпущенной коллекции"
 )
-ASSET_KIND_MISMATCH = AppError(422, "VALIDATION_ERROR", "asset не соответствует виду скина")
-PIECE_TYPE_REQUIRED = AppError(
-    422, "VALIDATION_ERROR", "piece_type обязателен для piece_skin"
+
+CASE_LOCKED = AppError(400, "CASE_LOCKED", "Дропы можно менять только у черновика кейса")
+CASE_NOT_READY = AppError(
+    400, "CASE_NOT_READY", "Кейс не готов: нет дропов или есть скины невыпущенных коллекций"
 )
+CASE_NOT_ACTIVE = AppError(400, "CASE_NOT_ACTIVE", "Кейс не активен")
+DROP_ITEM_NOT_AVAILABLE = AppError(400, "DROP_ITEM_NOT_AVAILABLE", "Скин недоступен для кейса")
 
 
 def _audit(
@@ -82,6 +76,26 @@ async def create_collection(
         await db.flush()
     except IntegrityError as exc:
         raise COLLECTION_CODE_TAKEN from exc
+
+    for p in body.pieces:
+        db.add(
+            ItemDef(
+                collection_id=collection.id,
+                code=item_code(body.code, p.side, p.piece_type),
+                name=item_name(body.name, p.side, p.piece_type),
+                side=p.side,
+                piece_type=p.piece_type,
+                rarity=p.rarity,
+                value=p.value,
+                asset=p.asset.model_dump(),
+                is_upgrade_target=p.is_upgrade_target,
+            )
+        )
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        raise ITEM_CODE_TAKEN from exc
+
     _audit(db, admin, "collection.create", f"collection:{collection.id}", body.model_dump(mode="json"))
     return collection
 
@@ -109,9 +123,8 @@ async def delete_collection(db: AsyncSession, admin: User, collection_id: int) -
         raise COLLECTION_NOT_FOUND
     if collection.status != "draft":
         raise COLLECTION_NOT_DRAFT
-    case_ids = select(Case.id).where(Case.collection_id == collection.id)
-    await db.execute(delete(CaseDrop).where(CaseDrop.case_id.in_(case_ids)))
-    await db.execute(delete(Case).where(Case.collection_id == collection.id))
+    def_ids = select(ItemDef.id).where(ItemDef.collection_id == collection.id)
+    await db.execute(delete(CaseDrop).where(CaseDrop.item_def_id.in_(def_ids)))
     await db.execute(delete(ItemDef).where(ItemDef.collection_id == collection.id))
     await db.delete(collection)
     _audit(db, admin, "collection.delete", f"collection:{collection_id}", {})
@@ -125,18 +138,6 @@ async def release_collection(
         raise COLLECTION_NOT_FOUND
     if collection.status != "draft":
         raise COLLECTION_NOT_DRAFT
-    skins_count = await db.scalar(
-        select(func.count()).select_from(ItemDef).where(ItemDef.collection_id == collection.id)
-    )
-    if (skins_count or 0) < 1:
-        raise COLLECTION_NOT_READY
-    cases = (await db.scalars(select(Case).where(Case.collection_id == collection.id))).all()
-    for case in cases:
-        drops_count = await db.scalar(
-            select(func.count()).select_from(CaseDrop).where(CaseDrop.case_id == case.id)
-        )
-        if (drops_count or 0) < 1:
-            raise COLLECTION_NOT_READY
     collection.status = "released"
     collection.released_at = now
     _audit(db, admin, "collection.release", f"collection:{collection.id}", {})
@@ -151,52 +152,29 @@ async def retire_collection(
         raise COLLECTION_NOT_FOUND
     if collection.status != "released":
         raise COLLECTION_NOT_RELEASED
+    ids = list(
+        (
+            await db.scalars(
+                select(Case.id)
+                .join(CaseDrop, CaseDrop.case_id == Case.id)
+                .join(ItemDef, ItemDef.id == CaseDrop.item_def_id)
+                .where(ItemDef.collection_id == collection.id, Case.status == "active")
+                .distinct()
+                .order_by(Case.id)
+            )
+        ).all()
+    )
+    if ids:
+        await db.execute(update(Case).where(Case.id.in_(ids)).values(status="closed"))
     collection.status = "retired"
     collection.retired_at = now
-    _audit(db, admin, "collection.retire", f"collection:{collection.id}", {})
+    _audit(
+        db, admin, "collection.retire", f"collection:{collection.id}", {"closed_case_ids": ids}
+    )
     return collection
 
 
 # --- Скины -------------------------------------------------------------------
-
-
-async def create_item_def(
-    db: AsyncSession, admin: User, collection_id: int, body: ItemDefCreateIn
-) -> ItemDef:
-    collection = await db.get(Collection, collection_id)
-    if collection is None:
-        raise COLLECTION_NOT_FOUND
-    item_def = ItemDef(
-        collection_id=collection.id,
-        code=body.code,
-        name=body.name,
-        kind=body.kind,
-        piece_type=body.piece_type,
-        rarity=body.rarity,
-        value=body.value,
-        asset=body.asset.model_dump(),
-        is_upgrade_target=body.is_upgrade_target,
-    )
-    db.add(item_def)
-    try:
-        await db.flush()
-    except IntegrityError as exc:
-        raise ITEM_CODE_TAKEN from exc
-    _audit(
-        db, admin, "item_def.create", f"item_def:{item_def.id}", body.model_dump(mode="json")
-    )
-    return item_def
-
-
-def _asset_matches_kind(asset: dict, kind: str) -> bool:
-    try:
-        if kind == "piece_skin":
-            PieceAsset.model_validate(asset)
-        else:
-            BoardAsset.model_validate(asset)
-    except Exception:
-        return False
-    return True
 
 
 async def patch_item_def(
@@ -208,37 +186,17 @@ async def patch_item_def(
     collection = await db.get(Collection, item_def.collection_id)
     released = collection is not None and collection.status != "draft"
     fields = body.model_fields_set
-    locked_fields = {"kind", "piece_type", "rarity"}
-    if released and (fields & locked_fields):
+    if released and "rarity" in fields:
         raise ITEM_DEF_LOCKED
-
-    kind = body.kind if "kind" in fields else item_def.kind
-    piece_type = body.piece_type if "piece_type" in fields else item_def.piece_type
-    if kind == "piece_skin":
-        if piece_type is None:
-            raise PIECE_TYPE_REQUIRED
-    else:
-        # board_skin: piece_type сбрасывается в NULL.
-        piece_type = None
-    if "asset" in fields:
-        asset = body.asset.model_dump()
-    else:
-        asset = item_def.asset
-    if not _asset_matches_kind(asset, kind):
-        raise ASSET_KIND_MISMATCH
 
     if "name" in fields:
         item_def.name = body.name
-    if "kind" in fields:
-        item_def.kind = kind
-    if "piece_type" in fields or "kind" in fields:
-        item_def.piece_type = piece_type
     if "rarity" in fields:
         item_def.rarity = body.rarity
     if "value" in fields:
         item_def.value = body.value
     if "asset" in fields:
-        item_def.asset = asset
+        item_def.asset = body.asset.model_dump()
     if "is_upgrade_target" in fields:
         item_def.is_upgrade_target = bool(body.is_upgrade_target)
     _audit(
@@ -247,32 +205,16 @@ async def patch_item_def(
     return item_def
 
 
-async def delete_item_def(db: AsyncSession, admin: User, item_def_id: int) -> None:
-    item_def = await db.get(ItemDef, item_def_id)
-    if item_def is None:
-        raise ITEM_DEF_NOT_FOUND
-    collection = await db.get(Collection, item_def.collection_id)
-    if collection is None or collection.status != "draft":
-        raise ITEM_DEF_LOCKED
-    await db.execute(delete(CaseDrop).where(CaseDrop.item_def_id == item_def.id))
-    await db.delete(item_def)
-    _audit(db, admin, "item_def.delete", f"item_def:{item_def_id}", {})
-
-
 # --- Кейсы -------------------------------------------------------------------
 
 
-async def create_case(db: AsyncSession, admin: User, collection_id: int, body: CaseCreateIn) -> Case:
-    collection = await db.get(Collection, collection_id)
-    if collection is None:
-        raise COLLECTION_NOT_FOUND
+async def create_case(db: AsyncSession, admin: User, body: CaseCreateIn) -> Case:
     case = Case(
-        collection_id=collection.id,
         code=body.code,
         name=body.name,
         price=body.price,
         sort=body.sort,
-        is_active=True,
+        status="draft",
     )
     db.add(case)
     try:
@@ -292,8 +234,6 @@ async def patch_case(db: AsyncSession, admin: User, case_id: int, body: CasePatc
         case.name = body.name
     if "price" in fields:
         case.price = body.price
-    if "is_active" in fields:
-        case.is_active = bool(body.is_active)
     if "sort" in fields:
         case.sort = body.sort
     _audit(
@@ -306,32 +246,40 @@ async def delete_case(db: AsyncSession, admin: User, case_id: int) -> None:
     case = await db.get(Case, case_id)
     if case is None:
         raise CASE_NOT_FOUND
-    collection = await db.get(Collection, case.collection_id)
-    if collection is None or collection.status != "draft":
+    if case.status != "draft":
         raise CASE_LOCKED
     await db.execute(delete(CaseDrop).where(CaseDrop.case_id == case.id))
     await db.delete(case)
     _audit(db, admin, "case.delete", f"case:{case_id}", {})
 
 
-async def set_drops(
-    db: AsyncSession, admin: User, case_id: int, drops: list[DropIn]
-) -> Case:
+async def _draft_case(db: AsyncSession, case_id: int) -> Case:
     case = await db.get(Case, case_id)
     if case is None:
         raise CASE_NOT_FOUND
-    collection = await db.get(Collection, case.collection_id)
-    if collection is None or collection.status != "draft":
+    if case.status != "draft":
         raise CASE_LOCKED
-    allowed_ids = {
-        d.id
-        for d in (
-            await db.scalars(select(ItemDef).where(ItemDef.collection_id == case.collection_id))
-        ).all()
-    }
-    for drop in drops:
-        if drop.item_def_id not in allowed_ids:
-            raise DROP_ITEM_NOT_IN_COLLECTION
+    return case
+
+
+async def _check_available_defs(db: AsyncSession, def_ids: list[int]) -> None:
+    rows = (
+        await db.execute(
+            select(ItemDef.id, Collection.status)
+            .join(Collection, Collection.id == ItemDef.collection_id)
+            .where(ItemDef.id.in_(def_ids))
+        )
+    ).all()
+    found_ids = {row[0] for row in rows}
+    if len(found_ids) < len(def_ids) or any(row[1] == "retired" for row in rows):
+        raise DROP_ITEM_NOT_AVAILABLE
+
+
+async def set_drops(
+    db: AsyncSession, admin: User, case_id: int, drops: list[DropIn]
+) -> Case:
+    case = await _draft_case(db, case_id)
+    await _check_available_defs(db, [d.item_def_id for d in drops])
     await db.execute(delete(CaseDrop).where(CaseDrop.case_id == case.id))
     for drop in drops:
         db.add(
@@ -349,24 +297,63 @@ async def set_drops(
 
 
 async def auto_drops(
-    db: AsyncSession, admin: User, case_id: int, kind: str | None
+    db: AsyncSession, admin: User, case_id: int, collection_ids: list[int]
 ) -> Case:
-    case = await db.get(Case, case_id)
-    if case is None:
-        raise CASE_NOT_FOUND
-    collection = await db.get(Collection, case.collection_id)
-    if collection is None or collection.status != "draft":
-        raise CASE_LOCKED
-    query = select(ItemDef).where(ItemDef.collection_id == case.collection_id)
-    if kind is not None:
-        query = query.where(ItemDef.kind == kind)
-    skins = (await db.scalars(query)).all()
-    weights = auto_weights(list(skins), await get_setting(db, "rarity_weights"))
+    case = await _draft_case(db, case_id)
+    collections = list(
+        (await db.scalars(select(Collection).where(Collection.id.in_(collection_ids)))).all()
+    )
+    if len(collections) < len(collection_ids):
+        raise COLLECTION_NOT_FOUND
+    if any(c.status == "retired" for c in collections):
+        raise DROP_ITEM_NOT_AVAILABLE
+    skins = list(
+        (
+            await db.scalars(select(ItemDef).where(ItemDef.collection_id.in_(collection_ids)))
+        ).all()
+    )
+    weights = auto_weights(skins, await get_setting(db, "rarity_weights"))
     await db.execute(delete(CaseDrop).where(CaseDrop.case_id == case.id))
     for item_def_id, weight in weights.items():
         db.add(CaseDrop(case_id=case.id, item_def_id=item_def_id, weight=weight))
     await db.flush()
-    _audit(db, admin, "case.drops.auto", f"case:{case.id}", {"kind": kind})
+    _audit(db, admin, "case.drops.auto", f"case:{case.id}", {"collection_ids": collection_ids})
+    return case
+
+
+async def activate_case(db: AsyncSession, admin: User, case_id: int) -> Case:
+    case = await db.get(Case, case_id)
+    if case is None:
+        raise CASE_NOT_FOUND
+    if case.status == "active":
+        raise CASE_NOT_READY
+    drops_count = await db.scalar(
+        select(func.count()).select_from(CaseDrop).where(CaseDrop.case_id == case.id)
+    )
+    if (drops_count or 0) < 1:
+        raise CASE_NOT_READY
+    not_released_count = await db.scalar(
+        select(func.count())
+        .select_from(CaseDrop)
+        .join(ItemDef, ItemDef.id == CaseDrop.item_def_id)
+        .join(Collection, Collection.id == ItemDef.collection_id)
+        .where(CaseDrop.case_id == case.id, Collection.status != "released")
+    )
+    if (not_released_count or 0) > 0:
+        raise CASE_NOT_READY
+    case.status = "active"
+    _audit(db, admin, "case.activate", f"case:{case.id}", {})
+    return case
+
+
+async def close_case(db: AsyncSession, admin: User, case_id: int) -> Case:
+    case = await db.get(Case, case_id)
+    if case is None:
+        raise CASE_NOT_FOUND
+    if case.status != "active":
+        raise CASE_NOT_ACTIVE
+    case.status = "closed"
+    _audit(db, admin, "case.close", f"case:{case.id}", {})
     return case
 
 

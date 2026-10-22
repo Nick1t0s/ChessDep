@@ -12,6 +12,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -43,11 +44,9 @@ class Collection(Base):
 class ItemDef(Base):
     __tablename__ = "item_defs"
     __table_args__ = (
-        CheckConstraint("(kind = 'piece_skin') = (piece_type IS NOT NULL)",
-                        name="kind_piece_type_consistency"),
-        CheckConstraint("kind IN ('piece_skin', 'board_skin')", name="kind_whitelist"),
+        CheckConstraint("side IN ('w', 'b')", name="side_whitelist"),
         CheckConstraint(
-            "piece_type IS NULL OR piece_type IN ('P', 'N', 'B', 'R', 'Q', 'K')",
+            "piece_type IN ('P', 'N', 'B', 'R', 'Q', 'K')",
             name="piece_type_whitelist",
         ),
         CheckConstraint(
@@ -55,6 +54,10 @@ class ItemDef(Base):
             name="rarity_whitelist",
         ),
         CheckConstraint("value > 0", name="value_positive"),
+        UniqueConstraint(
+            "collection_id", "side", "piece_type",
+            name="uq_item_defs_collection_id_side_piece_type",
+        ),
         Index("ix_item_defs_collection_id", "collection_id"),
     )
 
@@ -64,8 +67,8 @@ class ItemDef(Base):
     )
     code: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    kind: Mapped[str] = mapped_column(Text, nullable=False)
-    piece_type: Mapped[str | None] = mapped_column(CHAR(1))
+    side: Mapped[str] = mapped_column(CHAR(1), nullable=False)
+    piece_type: Mapped[str] = mapped_column(CHAR(1), nullable=False)
     rarity: Mapped[str] = mapped_column(Text, nullable=False)
     value: Mapped[int] = mapped_column(Integer, nullable=False)
     asset: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -107,8 +110,10 @@ class InventoryItem(Base):
 class Loadout(Base):
     __tablename__ = "loadouts"
     __table_args__ = (
-        CheckConstraint("slot IN ('P', 'N', 'B', 'R', 'Q', 'K', 'board')",
-                        name="slot_whitelist"),
+        CheckConstraint(
+            "slot IN ('wP', 'wN', 'wB', 'wR', 'wQ', 'wK', 'bP', 'bN', 'bB', 'bR', 'bQ', 'bK')",
+            name="slot_whitelist",
+        ),
     )
 
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), primary_key=True)
@@ -122,19 +127,14 @@ class Case(Base):
     __tablename__ = "cases"
     __table_args__ = (
         CheckConstraint("price > 0", name="price_positive"),
-        Index("ix_cases_collection_id", "collection_id"),
+        CheckConstraint("status IN ('draft', 'active', 'closed')", name="status_whitelist"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    collection_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("collections.id"), nullable=False
-    )
     code: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     price: Mapped[int] = mapped_column(Integer, nullable=False)
-    is_active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True, server_default="true"
-    )
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="draft", server_default="draft")
     sort: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
 

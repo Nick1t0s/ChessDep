@@ -149,7 +149,7 @@ def _apply_filters(
     query,
     *,
     collection: str | None,
-    kind: str | None,
+    side: str | None,
     piece_type: str | None,
     rarity: str | None,
     def_id: int | None,
@@ -160,8 +160,8 @@ def _apply_filters(
     )
     if collection is not None:
         base = base.where(Collection.code == collection)
-    if kind is not None:
-        base = base.where(ItemDef.kind == kind)
+    if side is not None:
+        base = base.where(ItemDef.side == side)
     if piece_type is not None:
         base = base.where(ItemDef.piece_type == piece_type)
     if rarity is not None:
@@ -241,7 +241,7 @@ async def browse(
     viewer_id: int | None,
     *,
     collection: str | None = None,
-    kind: str | None = None,
+    side: str | None = None,
     piece_type: str | None = None,
     rarity: str | None = None,
     def_id: int | None = None,
@@ -254,7 +254,7 @@ async def browse(
     filtered = _apply_filters(
         select(MarketListing, User.login).join(User, User.id == MarketListing.seller_id),
         collection=collection,
-        kind=kind,
+        side=side,
         piece_type=piece_type,
         rarity=rarity,
         def_id=def_id,
@@ -263,7 +263,7 @@ async def browse(
     count_query = _apply_filters(
         select(func.count()).select_from(MarketListing),
         collection=collection,
-        kind=kind,
+        side=side,
         piece_type=piece_type,
         rarity=rarity,
         def_id=def_id,

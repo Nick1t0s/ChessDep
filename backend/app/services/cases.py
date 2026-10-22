@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
 from app.models import Case, CaseDrop, Collection, ItemDef, User
-from app.schemas.items import CaseOpenOut, ItemDefOut
+from app.schemas.items import CaseOpenOut, CollectionRef, ItemDefOut
 from app.services.economy import apply_delta
 from app.services.items import create_item, item_def_out, item_out
 from app.services.rolls import get_rng, record_roll
@@ -50,17 +50,41 @@ def weighted_pick(drops: list[CaseDrop], r: float) -> CaseDrop:
     return drops[-1]
 
 
+async def case_collections(
+    db: AsyncSession, case_ids: list[int]
+) -> dict[int, list[CollectionRef]]:
+    """Различные коллекции дропов каждого кейса, по возрастанию collection.id."""
+    if not case_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(
+                CaseDrop.case_id,
+                Collection.id,
+                Collection.code,
+                Collection.name,
+            )
+            .join(ItemDef, ItemDef.id == CaseDrop.item_def_id)
+            .join(Collection, Collection.id == ItemDef.collection_id)
+            .where(CaseDrop.case_id.in_(case_ids))
+            .distinct()
+            .order_by(CaseDrop.case_id, Collection.id)
+        )
+    ).all()
+    result: dict[int, list[CollectionRef]] = {cid: [] for cid in case_ids}
+    for case_id, _collection_id, code, name in rows:
+        result[case_id].append(CollectionRef(code=code, name=name))
+    return result
+
+
 async def openable_case(
     db: AsyncSession, case_id: int
-) -> tuple[Case, Collection, list[CaseDrop]]:
+) -> tuple[Case, list[CaseDrop]]:
     case = await db.get(Case, case_id)
-    if case is None:
-        raise _CASE_NOT_FOUND
-    collection_ref = await db.get(Collection, case.collection_id)
-    if collection_ref is None or collection_ref.status == "draft":
+    if case is None or case.status == "draft":
         # Черновики публично не существуют.
         raise _CASE_NOT_FOUND
-    if collection_ref.status == "retired" or not case.is_active:
+    if case.status == "closed":
         raise _CASE_NOT_AVAILABLE
     drops = list(
         (
@@ -73,11 +97,11 @@ async def openable_case(
     )
     if not drops:
         raise _CASE_NOT_AVAILABLE
-    return case, collection_ref, drops
+    return case, drops
 
 
 async def open_case(db: AsyncSession, user: User, case_id: int, now: datetime) -> CaseOpenOut:
-    case, collection_ref, drops = await openable_case(db, case_id)
+    case, drops = await openable_case(db, case_id)
     # 2. Списание (порядок блокировок: пользователь последний и единственный).
     balance = await apply_delta(db, user.id, -case.price, "case_purchase", ref=str(case.id))
     # Порядок вызовов rng.random() фиксирован, на нём держатся тесты.
@@ -113,12 +137,22 @@ async def open_case(db: AsyncSession, user: User, case_id: int, now: datetime) -
     )
     # 8. defs — все def, встречающиеся в ленте.
     defs: dict[str, ItemDefOut] = {}
-    for def_id in strip:
-        key = str(def_id)
-        if key in defs:
-            continue
-        d = await db.get(ItemDef, def_id)
-        defs[key] = item_def_out(d, collection_ref)
+    by_id: dict[int, ItemDefOut] = {}
+    if strip:
+        rows = (
+            await db.execute(
+                select(ItemDef, Collection)
+                .join(Collection, Collection.id == ItemDef.collection_id)
+                .where(ItemDef.id.in_(set(strip)))
+            )
+        ).all()
+        for d, collection in rows:
+            by_id[d.id] = item_def_out(d, collection)
+        for def_id in strip:
+            key = str(def_id)
+            if key in defs:
+                continue
+            defs[key] = by_id[def_id]
     return CaseOpenOut(
         item=await item_out(db, item),
         strip=strip,

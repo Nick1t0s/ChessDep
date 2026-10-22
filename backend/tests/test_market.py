@@ -27,10 +27,10 @@ async def _create_listing(client, item_id: int, price: int):
 
 
 async def test_list_and_cancel(alice, bob, rng) -> None:
-    ids = await give_items("alice", ["genesis-pawn-chalk"])
+    ids = await give_items("alice", ["genesis-wp"])
     item_id = ids[0]
 
-    resp = await alice.put("/api/v1/loadout/P", json={"inventory_item_id": item_id})
+    resp = await alice.put("/api/v1/loadout/wP", json={"inventory_item_id": item_id})
     assert resp.status_code == 200, resp.text
 
     listing = await _create_listing(alice, item_id, 1000)
@@ -38,7 +38,7 @@ async def test_list_and_cancel(alice, bob, rng) -> None:
 
     # Слот освободился, предмет listed.
     loadout = (await alice.get("/api/v1/loadout")).json()
-    assert loadout["P"] is None
+    assert loadout["wP"] is None
     inv = (await alice.get("/api/v1/inventory")).json()
     entry = next(i for i in inv if i["id"] == item_id)
     assert entry["status"] == "listed"
@@ -53,7 +53,7 @@ async def test_list_and_cancel(alice, bob, rng) -> None:
     assert resp.json()["error"]["code"] == "ITEM_NOT_OWNED"
 
     # Экипировка listed-предмета запрещена.
-    resp = await alice.put("/api/v1/loadout/P", json={"inventory_item_id": item_id})
+    resp = await alice.put("/api/v1/loadout/wP", json={"inventory_item_id": item_id})
     assert resp.status_code == 400
     assert resp.json()["error"]["code"] == "ITEM_NOT_OWNED"
 
@@ -90,7 +90,7 @@ async def test_list_validation(alice, bob, monkeypatch) -> None:
 
     monkeypatch.setattr(market_api, "hit", _noop)
 
-    ids = await give_items("alice", ["genesis-pawn-chalk"])
+    ids = await give_items("alice", ["genesis-wp"])
     item_id = ids[0]
 
     for price in (0, 10_000_001):
@@ -99,7 +99,7 @@ async def test_list_validation(alice, bob, monkeypatch) -> None:
         )
         assert resp.status_code == 422, resp.text
 
-    foreign = await give_items("bob", ["genesis-knight-chalk"])
+    foreign = await give_items("bob", ["genesis-bp"])
     resp = await alice.post(
         "/api/v1/market/listings", json={"item_id": foreign[0], "price": 100}
     )
@@ -114,7 +114,7 @@ async def test_list_validation(alice, bob, monkeypatch) -> None:
     assert resp.json()["error"]["code"] == "ITEM_NOT_OWNED"
 
     await set_setting("market_max_listings", 1)
-    second = await give_items("alice", ["genesis-bishop-chalk"])
+    second = await give_items("alice", ["genesis-bp"])
     resp = await alice.post(
         "/api/v1/market/listings", json={"item_id": second[0], "price": 100}
     )
@@ -124,7 +124,7 @@ async def test_list_validation(alice, bob, monkeypatch) -> None:
 
 async def test_trade_hold(alice, frozen) -> None:
     await set_setting("trade_hold_hours", 24)
-    ids = await give_items("alice", ["genesis-pawn-chalk"])
+    ids = await give_items("alice", ["genesis-wp"])
 
     resp = await alice.post(
         "/api/v1/market/listings", json={"item_id": ids[0], "price": 100}
@@ -141,7 +141,7 @@ async def test_trade_hold(alice, frozen) -> None:
 
 
 async def test_buy_flow(alice, bob) -> None:
-    ids = await give_items("alice", ["genesis-queen-snow"])
+    ids = await give_items("alice", ["genesis-wq"])
     listing = await _create_listing(alice, ids[0], 1000)
     listing_id = listing["id"]
     def_id = listing["item"]["def"]["id"]
@@ -208,7 +208,7 @@ async def test_buy_flow(alice, bob) -> None:
 
 async def test_fee_rounding(alice, bob) -> None:
     # Цена 1: комиссия округляется вверх до 1, продавец получает 0.
-    ids = await give_items("alice", ["genesis-pawn-chalk"])
+    ids = await give_items("alice", ["genesis-wp"])
     listing = await _create_listing(alice, ids[0], 1)
     resp = await bob.post(f"/api/v1/market/listings/{listing['id']}/buy")
     assert resp.status_code == 200, resp.text
@@ -227,7 +227,7 @@ async def test_fee_rounding(alice, bob) -> None:
     assert len(sale_rows) == 0
 
     # Цена 21: комиссия ceil(1.05) = 2, продавец +19.
-    ids = await give_items("alice", ["genesis-knight-chalk"])
+    ids = await give_items("alice", ["genesis-bp"])
     listing = await _create_listing(alice, ids[0], 21)
     resp = await bob.post(f"/api/v1/market/listings/{listing['id']}/buy")
     assert resp.status_code == 200, resp.text
@@ -248,7 +248,7 @@ async def test_fee_rounding(alice, bob) -> None:
 
 async def test_buy_errors(alice, bob) -> None:
     alice_id = await _user_id("alice")
-    ids = await give_items("alice", ["genesis-pawn-chalk"])
+    ids = await give_items("alice", ["genesis-wp"])
     listing = await _create_listing(alice, ids[0], 100)
     listing_id = listing["id"]
 
@@ -287,7 +287,7 @@ async def test_buy_errors(alice, bob) -> None:
 
 
 async def test_buy_concurrent(alice, bob, carol) -> None:
-    ids = await give_items("alice", ["genesis-pawn-chalk"])
+    ids = await give_items("alice", ["genesis-wp"])
     listing = await _create_listing(alice, ids[0], 100)
     listing_id = listing["id"]
 
@@ -327,7 +327,7 @@ async def test_buy_vs_cancel_concurrent(alice, bob) -> None:
 
     for _ in range(10):
         await _clear_rl([alice_id, bob_id])
-        ids = await give_items("alice", ["genesis-pawn-chalk"])
+        ids = await give_items("alice", ["genesis-wp"])
         listing = await _create_listing(alice, ids[0], 100)
         listing_id = listing["id"]
         await _clear_rl([alice_id, bob_id])
@@ -358,9 +358,9 @@ async def test_buy_vs_cancel_concurrent(alice, bob) -> None:
 
 
 async def test_market_browse(alice, bob) -> None:
-    a1 = (await give_items("alice", ["genesis-pawn-chalk"]))[0]  # common
-    a2 = (await give_items("alice", ["genesis-bishop-chalk"]))[0]  # common
-    b1 = (await give_items("bob", ["genesis-knight-frost"]))[0]  # rare
+    a1 = (await give_items("alice", ["genesis-wp"]))[0]  # common, P, w
+    a2 = (await give_items("alice", ["genesis-bp"]))[0]  # common, P, b
+    b1 = (await give_items("bob", ["genesis-br"]))[0]  # rare, R, b
     l1 = await _create_listing(alice, a1, 300)
     l2 = await _create_listing(alice, a2, 200)
     l3 = await _create_listing(bob, b1, 100)
@@ -379,10 +379,37 @@ async def test_market_browse(alice, bob) -> None:
     assert body["total"] == 1
     assert body["items"][0]["id"] == l3["id"]
 
-    resp = await alice.get("/api/v1/market?piece_type=B")
+    resp = await alice.get("/api/v1/market?side=w")
     body = resp.json()
     assert body["total"] == 1
-    assert body["items"][0]["id"] == l2["id"]
+    assert body["items"][0]["id"] == l1["id"]
+
+    resp = await alice.get("/api/v1/market?side=b")
+    body = resp.json()
+    assert body["total"] == 2
+    assert [i["id"] for i in body["items"]] == [l3["id"], l2["id"]]
+
+    resp = await alice.get("/api/v1/market?piece_type=P")
+    body = resp.json()
+    assert body["total"] == 2
+    assert [i["id"] for i in body["items"]] == [l2["id"], l1["id"]]
+
+    resp = await alice.get("/api/v1/market?piece_type=R")
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == l3["id"]
+
+    def_id_a1 = l1["item"]["def"]["id"]
+    resp = await alice.get(f"/api/v1/market?def_id={def_id_a1}")
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == l1["id"]
+
+    def_id_b1 = l3["item"]["def"]["id"]
+    resp = await alice.get(f"/api/v1/market?def_id={def_id_b1}")
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == l3["id"]
 
     resp = await alice.get("/api/v1/market?collection=genesis&sort=price_desc")
     body = resp.json()

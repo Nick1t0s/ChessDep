@@ -157,8 +157,8 @@ async def create_game(
     }
     base_ms, inc_ms = parse_time_control(time_control)
     abort_first_move_s = int(await get_setting(db, "abort_first_move_s"))
-    white_loadout = await loadout_snapshot(db, white_id)
-    black_loadout = await loadout_snapshot(db, black_id)
+    white_loadout = await loadout_snapshot(db, white_id, "w")
+    black_loadout = await loadout_snapshot(db, black_id, "b")
     start_board = chess.Board()
     game = Game(
         id=uuid.uuid4(),
