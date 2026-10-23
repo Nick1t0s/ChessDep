@@ -294,6 +294,7 @@ async def list_market(
                 id=row.id,
                 item_id=row.item_id,
                 item_def_id=row.item_def_id,
+                case_id=row.case_id,
                 seller_id=row.seller_id,
                 price=row.price,
                 status=row.status,
