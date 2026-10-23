@@ -87,12 +87,70 @@
 
 .tabbar a.active { color: var(--gold); }
 
+.tabbar-more-btn {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  min-height: 52px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tabbar-more-btn.active { color: var(--gold); }
+
+/* Меню «Ещё»: над таб-баром, только на мобильной ширине */
+.tabbar-menu {
+  position: fixed;
+  right: 8px;
+  bottom: calc(60px + env(safe-area-inset-bottom));
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+}
+
+.tabbar-menu[hidden] { display: none; }
+
+.tabbar-menu a,
+.tabbar-menu-logout {
+  display: block;
+  min-height: 44px;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tabbar-menu a.active { color: var(--gold); }
+.tabbar-menu-logout { color: var(--red); border-top: 1px solid var(--line); border-radius: 0 0 8px 8px; }
+
 @media (max-width: 640px) {
   .topnav { display: none; }
   body:not(.game-page) .tabbar { display: flex; }
   body:not(.game-page) { padding-bottom: calc(52px + env(safe-area-inset-bottom)); }
   .topbar-right .login-link,
   .topbar-right .btn-logout { display: none; }
+}
+
+@media (min-width: 641px) {
+  .tabbar-menu { display: none; }
 }
 
 .wrap-wide {
