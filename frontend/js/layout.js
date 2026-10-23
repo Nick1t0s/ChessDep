@@ -16,6 +16,13 @@ const TABBAR = [
   ['Магазин', '/cases.html', 'cases'],
   ['Инвентарь', '/inventory.html', 'inventory'],
   ['Маркет', '/market.html', 'market'],
+];
+
+const MORE = [
+  ['Смотреть', '/live.html', 'live'],
+  ['Апгрейд', '/upgrade.html', 'upgrade'],
+  ['Лидеры', '/leaderboard.html', 'leaderboard'],
+  ['Подарки', '/gifts.html', 'gifts'],
   ['Профиль', '/profile.html', 'profile'],
 ];
 
@@ -53,13 +60,7 @@ export async function initLayout({ auth = 'required', active = '' } = {}) {
         right.appendChild(h('a', { class: 'pill', href: '/admin.html' }, 'Админка'));
       }
       const out = h('button', { type: 'button', class: 'btn btn-ghost btn-sm btn-logout' }, 'Выйти');
-      out.addEventListener('click', async () => {
-        try {
-          await api('POST', '/auth/logout');
-        } finally {
-          location.href = '/login.html';
-        }
-      });
+      out.addEventListener('click', logout);
       right.appendChild(out);
       loadGiftBadge();
     } else {
@@ -75,6 +76,24 @@ export async function initLayout({ auth = 'required', active = '' } = {}) {
     for (const [label, href, key] of TABBAR) {
       tabbar.appendChild(h('a', { href, class: key === active ? 'active' : '' }, label));
     }
+    const inMore = MORE.some(([, , key]) => key === active);
+    const moreBtn = h('button', { type: 'button', class: ['tabbar-more-btn', inMore ? 'active' : ''] }, 'Ещё');
+    moreBtn.setAttribute('aria-expanded', 'false');
+    const moreMenu = h('nav', { class: 'tabbar-menu', hidden: true });
+    for (const [label, href, key] of MORE) {
+      moreMenu.appendChild(h('a', { href, class: key === active ? 'active' : '' }, label));
+    }
+    if (me !== null) {
+      const menuOut = h('button', { type: 'button', class: 'tabbar-menu-logout' }, 'Выйти');
+      menuOut.addEventListener('click', logout);
+      moreMenu.appendChild(menuOut);
+    }
+    moreBtn.addEventListener('click', () => {
+      moreMenu.hidden = !moreMenu.hidden;
+      moreBtn.setAttribute('aria-expanded', String(!moreMenu.hidden));
+    });
+    tabbar.appendChild(moreBtn);
+    document.body.appendChild(moreMenu);
     document.body.appendChild(tabbar);
   }
 
@@ -101,5 +120,13 @@ async function loadGiftBadge() {
     }
   } catch {
     /* бейдж не критичен */
+  }
+}
+
+async function logout() {
+  try {
+    await api('POST', '/auth/logout');
+  } finally {
+    location.href = '/login.html';
   }
 }
