@@ -22,6 +22,7 @@ from app.api import (
     market,
     matchmaking,
     me,
+    skins,
     ws,
 )
 from app.core.errors import (
@@ -69,3 +70,4 @@ app.include_router(admin.router)
 app.include_router(market.router)
 app.include_router(gifts.router)
 app.include_router(leaderboard.router)
+app.include_router(skins.router)

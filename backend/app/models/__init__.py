@@ -11,6 +11,7 @@ from app.models.items import (
     ItemDef,
     ItemSet,
     Loadout,
+    SkinImage,
 )
 from app.models.ledger import Ledger
 from app.models.market import ItemTransfer, MarketListing
@@ -41,6 +42,7 @@ __all__ = [
     "Roll",
     "Session",
     "Setting",
+    "SkinImage",
     "User",
     "convention",
 ]

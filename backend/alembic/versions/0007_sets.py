@@ -13,7 +13,7 @@ from alembic import op
 import sqlalchemy.dialects.postgresql as pg
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.seed_data import seed_rows
+from app.seed_data_v3 import seed_rows
 
 revision: str = "0007"
 down_revision: str | None = "0006"

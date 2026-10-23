@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Text,
     UniqueConstraint,
     func,
@@ -213,3 +214,19 @@ class DailyRewardPool(Base):
 
     case_id: Mapped[int] = mapped_column(Integer, ForeignKey("cases.id"), primary_key=True)
     weight: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class SkinImage(Base):
+    """PNG-картинка скина; id — sha256 байт (docs/contracts-skins.md)."""
+
+    __tablename__ = "skin_images"
+    __table_args__ = (
+        CheckConstraint("kind IN ('piece', 'board')", name="kind_whitelist"),
+    )
+
+    id: Mapped[str] = mapped_column(CHAR(64), primary_key=True)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

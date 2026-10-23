@@ -22,6 +22,24 @@ export async function api(method, path, body, opts = {}) {
   return data;
 }
 
+// Загрузка файла сырыми байтами (PNG скина): тело — сам файл, ответ — JSON.
+export async function apiUpload(path, file) {
+  const res = await fetch('/api/v1' + path, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'image/png' },
+    body: file,
+  });
+  let data = null;
+  try { data = await res.json(); } catch { /* пустое тело */ }
+  if (!res.ok) {
+    const err = (data && data.error) || { code: 'NETWORK', message: 'Ошибка сети' };
+    if (res.status === 401 && err.code === 'UNAUTHENTICATED') redirectToLogin();
+    throw new ApiError(res.status, err.code, err.message);
+  }
+  return data;
+}
+
 export function redirectToLogin() {
   const next = location.pathname + location.search;
   location.href = '/login.html?next=' + encodeURIComponent(next);
