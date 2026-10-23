@@ -11,3 +11,4 @@
 
 .modal:has(.case-drops) { width: min(960px, 94vw); }
 .case-drops { max-height: 65vh; overflow-y: auto; margin-bottom: 14px; padding: 4px; text-align: left; }
+.case-grid + .page-title { margin-top: 28px; }
