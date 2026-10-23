@@ -244,7 +244,7 @@ docs/, tasks/, legacy/
 
 Подробный контракт — `docs/contracts-collections.md` (v3).
 - **Набор** (`item_sets`) — перечень коллекций и досок; вне набора их нет. Статус `draft` → `released` → `retired` есть только у набора; коллекции и доски добавляются только в черновик. Снятие набора снимает с продажи все кейсы с его скинами.
-- **Коллекция** — ровно 12 скинов фигур (`side` ∈ `w`/`b` × `piece_type`), создаётся одним запросом целиком; коды и имена генерирует сервер (`seed_data.item_code/item_name`). **Доска** — скин `kind = board`, принадлежит набору напрямую.
+- **Коллекция** — ровно 12 скинов фигур (`side` ∈ `w`/`b` × `piece_type`), создаётся одним запросом целиком; коды и имена генерирует сервер (`seed_data.item_code/item_name`). **Доска** — скин `kind = board`, принадлежит набору напрямую. У игрока нет страницы наборов: набор и коллекция видны только подписью на карточке скина.
 - **Скин** (`item_defs`): `kind` (`piece`/`board`), `set_id`, у фигур — `collection_id`, `side`, `piece_type`; редкость задаётся вручную; `asset` — `{"type": "stub", "color"}` или `{"type": "stub", "light", "dark"}`.
 - **Базовый набор** (`is_base`, id 1): 12 фигур + доска, выдаются при регистрации (`source = 'base'`, `wear = 0`) и сразу надеты. Базовый предмет (`bound`) нельзя продать, подарить, апгрейдить (`ITEM_BOUND`).
 - **Экземпляр** (`inventory_items`): `wear` в [0, 1) (exterior FN/MW/FT/WW/BS — косметика), статус `owned` | `listed` | `burned`, `acquired_at`. Экипировать, апгрейдить, выставлять и дарить можно только `owned`.
@@ -331,7 +331,7 @@ docs/, tasks/, legacy/
 | `toast.js`, `modal.js` | уведомления (не больше 4 одновременно), модалки, `confirmModal` |
 | `format.js` | `fmtCrystals`, `fmtClock`, словари русских названий |
 | `pieces.js` | глифы (форма = сторона), цвета скинов фигур и досок |
-| `items.js` | `itemCard`, `skinPreview`, названия редкостей и износа |
+| `items.js` | `itemCard` (с подписью «Набор · Коллекция»), `skinPreview`, названия редкостей, износа и видов кейсов (`CASE_KIND_RU`) |
 | `board.js` | доска: 64 кнопки, создаются один раз; ориентация; подсветки |
 | `ws.js` | WebSocket с ping и переподключением 1/2/5/10 с |
 | `dep-fx.js` | анимация депа: бар до `roll_value`, затем превращение или сгорание |
@@ -345,7 +345,7 @@ docs/, tasks/, legacy/
 - Просмотр позиции: клик по ходу показывает `events[].board`. Живые обновления продолжают приходить, но доску не перерисовывают до «К текущей позиции».
 
 ### 12.4 Страницы
-`index` (лобби: поиск, приглашение, ежедневная награда), `game`, `live`, `replay`, `user`, `invite`, `login`, `register`, `inventory`, `cases`, `case`, `upgrade`, `market`, `market-item`, `gifts`, `profile`, `leaderboard`, `collections` (наборы), `collection` (набор), `cases` (магазин), `admin` (вкладки грузятся динамически из `js/admin/*.js`: catalog = наборы, cases = кейсы и пул награды, users, settings, misc = маркет + журнал).
+`index` (лобби: поиск, приглашение, ежедневная награда), `game`, `live`, `replay`, `user`, `invite`, `login`, `register`, `inventory`, `cases`, `case`, `upgrade`, `market`, `market-item`, `gifts`, `profile`, `leaderboard`, `cases` (магазин), `admin` (вкладки грузятся динамически из `js/admin/*.js`: catalog = наборы, cases = кейсы и пул награды, users, settings, misc = маркет + журнал).
 
 ## 13. nginx и HTTPS
 - `nginx/40-chessdep-conf.sh` при старте контейнера выбирает шаблон: есть `/etc/nginx/certs/fullchain.pem` и `privkey.pem` — `https.conf.template` (443 + 301 с 80 на `https://$host:${HTTPS_PORT}`, HSTS), иначе `http.conf.template`. Общая часть — `nginx/conf/app.locations`.
