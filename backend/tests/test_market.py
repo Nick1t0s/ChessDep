@@ -1,12 +1,14 @@
 import asyncio
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import func, select
 
 from app.db import SessionLocal
 from app.models import InventoryItem, ItemTransfer, Ledger, MarketListing, User
 from tests.conftest import (
     anonymous,
+    give_cases,
     give_items,
     set_balance,
     set_setting,
@@ -421,3 +423,70 @@ async def test_market_browse(alice, bob) -> None:
     body = resp.json()
     assert body["total"] == 3
     assert all(i["mine"] is False for i in body["items"])
+
+
+async def _base_item_id(client) -> int:
+    inv = (await client.get("/api/v1/inventory")).json()
+    return next(i["id"] for i in inv if i["source"] == "base" and i["bound"] is True)
+
+
+async def test_list_and_buy_case(alice, bob) -> None:
+    (item_id,) = await give_cases("alice", [1])
+    listing = await _create_listing(alice, item_id, 150)
+    listing_id = listing["id"]
+
+    lot = listing["item"]
+    assert lot["kind"] == "case"
+    assert lot["case"]["id"] == 1
+    assert lot["def"] is None
+
+    resp = await bob.post(f"/api/v1/market/listings/{listing_id}/buy")
+    assert resp.status_code == 200, resp.text
+
+    # Предмет-кейс у bob (в инвентаре только кейсы).
+    resp = await bob.get("/api/v1/inventory?kind=case")
+    assert resp.status_code == 200, resp.text
+    inv = resp.json()
+    assert len(inv) == 1
+    assert inv[0]["id"] == item_id
+    assert inv[0]["kind"] == "case"
+    assert inv[0]["case"]["id"] == 1
+    assert inv[0]["status"] == "owned"
+
+    # История цен по кейсу.
+    resp = await anonymous().get("/api/v1/market/cases/1")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["case"]["id"] == 1
+    assert body["stats"]["last_sale_price"] == 150
+    assert len(body["sales"]) == 1
+    assert body["sales"][0]["price"] == 150
+
+
+async def test_kind_filter(alice, bob) -> None:
+    skin = (await give_items("alice", ["genesis-wp"]))[0]
+    board = (await give_items("alice", ["genesis-board-paper"]))[0]
+    case = (await give_cases("alice", [1]))[0]
+    ls = await _create_listing(alice, skin, 300)
+    lb = await _create_listing(alice, board, 200)
+    lc = await _create_listing(alice, case, 100)
+
+    async def _ids(query: str) -> set[int]:
+        resp = await alice.get(f"/api/v1/market?{query}")
+        assert resp.status_code == 200, resp.text
+        return {i["id"] for i in resp.json()["items"]}
+
+    assert await _ids("kind=piece") == {ls["id"]}
+    assert await _ids("kind=board") == {lb["id"]}
+    assert await _ids("kind=case") == {lc["id"]}
+    assert await _ids("case_id=1") == {lc["id"]}
+    assert await _ids("set=genesis") == {ls["id"], lb["id"]}
+
+
+async def test_base_item_not_listable(alice) -> None:
+    base_id = await _base_item_id(alice)
+    resp = await alice.post(
+        "/api/v1/market/listings", json={"item_id": base_id, "price": 100}
+    )
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "ITEM_BOUND"

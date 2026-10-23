@@ -58,8 +58,6 @@ _RARITIES = ("common", "uncommon", "rare", "epic", "legendary", "mythic")
 
 DEFAULTS: Mapping[str, Any] = {
     "starting_balance": 1000,
-    "daily_bonus": 200,
-    "daily_bonus_cooldown_h": 24,
     "game_win_reward": 100,
     "game_draw_reward": 30,
     "reward_min_plies": 10,
@@ -82,6 +80,7 @@ DEFAULTS: Mapping[str, Any] = {
     "market_fee": 0.05,
     "market_max_listings": 50,
     "trade_hold_hours": 0,
+    "daily_reward_wins": 3,
 }
 
 
@@ -95,8 +94,6 @@ def _rarity_weights_validator() -> Callable[[Any], Any]:
 
 SETTINGS_SCHEMA: dict[str, Callable[[Any], Any]] = {
     "starting_balance": _int_validator(0, 10_000_000),
-    "daily_bonus": _int_validator(0, 1_000_000),
-    "daily_bonus_cooldown_h": _int_validator(1, 168),
     "game_win_reward": _int_validator(0, 1_000_000),
     "game_draw_reward": _int_validator(0, 1_000_000),
     "reward_min_plies": _int_validator(0, 500),
@@ -112,6 +109,7 @@ SETTINGS_SCHEMA: dict[str, Callable[[Any], Any]] = {
     "market_fee": _float_validator(gt=None, ge=0.0, le=0.5),
     "market_max_listings": _int_validator(1, 1000),
     "trade_hold_hours": _int_validator(0, 720),
+    "daily_reward_wins": _int_validator(1, 50),
 }
 
 

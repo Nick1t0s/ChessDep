@@ -4,37 +4,51 @@ import { initLayout, setBalance } from './layout.js';
 import { toast } from './toast.js';
 import { confirmModal } from './modal.js';
 import { fmtCrystals } from './format.js';
-import { itemCard, EXTERIOR_RU } from './items.js';
+import { itemCard, casePreview, EXTERIOR_RU } from './items.js';
 
 const me = await initLayout({ auth: 'optional', active: 'market' });
 
 const main = h('main', { class: 'wrap-wide market-item' });
 document.body.appendChild(main);
 
-const defParam = new URLSearchParams(location.search).get('def');
+const params = new URLSearchParams(location.search);
+const caseParam = params.get('case');
+const defParam = params.get('def');
 
-if (defParam === null || !/^\d+$/.test(defParam)) {
-  main.appendChild(h('p', {}, 'Некорректная ссылка'));
+if (caseParam !== null && /^\d+$/.test(caseParam)) {
+  await loadPage('cases/' + caseParam);
+} else if (defParam !== null && /^\d+$/.test(defParam)) {
+  await loadPage('defs/' + defParam);
 } else {
-  await loadPage(defParam);
+  main.appendChild(h('p', {}, 'Некорректная ссылка'));
 }
 
-async function loadPage(defId) {
+async function loadPage(path) {
   try {
-    const data = await api('GET', '/market/defs/' + defId);
+    const data = await api('GET', '/market/' + path);
     render(data);
   } catch (e) {
     toast(e.message, 'error');
   }
 }
 
+function reload() {
+  if (caseParam !== null && /^\d+$/.test(caseParam)) return loadPage('cases/' + caseParam);
+  return loadPage('defs/' + defParam);
+}
+
 function render(data) {
-  const def = data.def;
   const stats = data.stats;
 
   clear(main);
+  const head = data.case
+    ? h('div', { class: 'item-card' },
+        casePreview(data.case),
+        h('div', { class: 'item-name' }, data.case.name),
+      )
+    : itemCard(data.def);
   main.appendChild(h('div', { class: 'mi-head' },
-    itemCard(def),
+    head,
     h('div', { class: 'mi-stats' },
       h('p', {}, 'Лотов: ' + String(stats.active_count)),
       h('p', {}, 'Мин. цена: ' + (stats.min_price === null ? '—' : fmtCrystals(stats.min_price))),
@@ -102,14 +116,15 @@ function salesTable(sales) {
 }
 
 async function buyListing(l) {
-  const ok = await confirmModal('Покупка', l.item.def.name + ' за ' + fmtCrystals(l.price), 'Купить', 'gold');
+  const name = l.item.kind === 'case' ? l.item.case.name : l.item.def.name;
+  const ok = await confirmModal('Покупка', name + ' за ' + fmtCrystals(l.price), 'Купить', 'gold');
   if (!ok) return;
   try {
     await api('POST', '/market/listings/' + String(l.id) + '/buy');
     toast('Куплено', 'success');
     const fresh = await api('GET', '/me');
     setBalance(fresh.balance);
-    await loadPage(defParam);
+    await reload();
   } catch (e) {
     toast(e.message, 'error');
   }

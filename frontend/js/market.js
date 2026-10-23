@@ -4,7 +4,7 @@ import { initLayout, setBalance } from './layout.js';
 import { toast } from './toast.js';
 import { confirmModal } from './modal.js';
 import { fmtCrystals, PIECE_NAME_RU } from './format.js';
-import { itemCard, RARITIES, RARITY_RU } from './items.js';
+import { itemCard, invItemCard, RARITIES, RARITY_RU } from './items.js';
 
 const me = await initLayout({ auth: 'optional', active: 'market' });
 
@@ -31,6 +31,7 @@ function mkSelect(options) {
   return sel;
 }
 
+const kindSel = mkSelect([['', 'Все'], ['piece', 'Фигуры'], ['board', 'Доски'], ['case', 'Кейсы']]);
 const raritySel = mkSelect([['', 'Все'], ...RARITIES.map((r) => [r, RARITY_RU[r]])]);
 const sideSel = mkSelect([['', 'Все'], ['w', 'Белые'], ['b', 'Чёрные']]);
 const pieceSel = mkSelect([['', 'Все'], ...['P', 'N', 'B', 'R', 'Q', 'K'].map((p) => [p, PIECE_NAME_RU[p]])]);
@@ -40,7 +41,7 @@ const totalLine = h('p', { class: 'mk-total' });
 const feedGrid = h('div', { class: 'item-grid' });
 const pager = h('div', { class: 'mk-pager' });
 const feedView = h('div', {},
-  h('div', { class: 'mk-filters' }, raritySel, sideSel, pieceSel, sortSel),
+  h('div', { class: 'mk-filters' }, kindSel, raritySel, sideSel, pieceSel, sortSel),
   totalLine,
   feedGrid,
   pager,
@@ -58,7 +59,7 @@ const mineView = h('div', {},
 main.appendChild(feedView);
 main.appendChild(mineView);
 
-for (const sel of [raritySel, sideSel, pieceSel, sortSel]) {
+for (const sel of [kindSel, raritySel, sideSel, pieceSel, sortSel]) {
   sel.addEventListener('change', () => {
     page = 1;
     loadFeed();
@@ -80,6 +81,7 @@ async function loadFeed() {
   params.set('page', String(page));
   params.set('limit', '20');
   params.set('sort', sortSel.value);
+  if (kindSel.value) params.set('kind', kindSel.value);
   if (raritySel.value) params.set('rarity', raritySel.value);
   if (sideSel.value) params.set('side', sideSel.value);
   if (pieceSel.value) params.set('piece_type', pieceSel.value);
@@ -107,6 +109,13 @@ function lotCard(l) {
     buyBtn.addEventListener('click', () => buyListing(l));
     row.appendChild(buyBtn);
   }
+  if (l.item.kind === 'case') {
+    row.appendChild(h('a', { class: 'btn btn-ghost btn-sm', href: '/market-item.html?case=' + String(l.item.case.id) }, 'История'));
+    return invItemCard(l.item, {
+      badge: l.mine ? 'Ваш лот' : undefined,
+      extra: row,
+    });
+  }
   row.appendChild(h('a', { class: 'btn btn-ghost btn-sm', href: '/market-item.html?def=' + String(l.item.def.id) }, 'История'));
   return itemCard(l.item.def, {
     exterior: l.item.exterior,
@@ -132,7 +141,8 @@ function renderPager() {
 }
 
 async function buyListing(l) {
-  const ok = await confirmModal('Покупка', l.item.def.name + ' за ' + fmtCrystals(l.price), 'Купить', 'gold');
+  const name = l.item.kind === 'case' ? l.item.case.name : l.item.def.name;
+  const ok = await confirmModal('Покупка', name + ' за ' + fmtCrystals(l.price), 'Купить', 'gold');
   if (!ok) return;
   try {
     await api('POST', '/market/listings/' + String(l.id) + '/buy');
@@ -168,6 +178,9 @@ function myLotCard(l) {
     const cancelBtn = h('button', { type: 'button', class: 'btn btn-ghost btn-sm' }, 'Снять');
     cancelBtn.addEventListener('click', () => cancelListing(l));
     row.appendChild(cancelBtn);
+  }
+  if (l.item.kind === 'case') {
+    return invItemCard(l.item, { extra: row });
   }
   return itemCard(l.item.def, {
     exterior: l.item.exterior,

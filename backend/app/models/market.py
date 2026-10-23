@@ -22,6 +22,7 @@ class MarketListing(Base):
     __table_args__ = (
         CheckConstraint("price BETWEEN 1 AND 10000000", name="price_range"),
         CheckConstraint("status IN ('active', 'sold', 'cancelled')", name="status_whitelist"),
+        CheckConstraint("(item_def_id IS NULL) <> (case_id IS NULL)", name="one_kind"),
         Index(
             "uq_market_listings_active_item",
             "item_id",
@@ -29,6 +30,7 @@ class MarketListing(Base):
             postgresql_where=text("status = 'active'"),
         ),
         Index("ix_market_listings_item_def_id_status_price", "item_def_id", "status", "price"),
+        Index("ix_market_listings_case_id_status_price", "case_id", "status", "price"),
         Index("ix_market_listings_seller_id_status", "seller_id", "status"),
         Index("ix_market_listings_status_created_at", "status", text("created_at DESC")),
     )
@@ -37,9 +39,8 @@ class MarketListing(Base):
     item_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("inventory_items.id"), nullable=False
     )
-    item_def_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("item_defs.id"), nullable=False
-    )
+    item_def_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("item_defs.id"))
+    case_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("cases.id"))
     seller_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=False)
     price: Mapped[int] = mapped_column(BigInteger, nullable=False)
     status: Mapped[str] = mapped_column(

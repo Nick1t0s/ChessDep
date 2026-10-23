@@ -9,7 +9,7 @@ from app.core.deps import current_user, optional_user
 from app.core.ratelimit import hit
 from app.db import get_db
 from app.models import User
-from app.schemas.market import BrowseOut, DefMarketOut, ListingCreateIn, ListingOut
+from app.schemas.market import BrowseOut, CaseMarketOut, DefMarketOut, ListingCreateIn, ListingOut
 from app.services import market as market_service
 
 router = APIRouter(prefix="/api/v1", tags=["market"])
@@ -23,11 +23,14 @@ UserDep = Annotated[User, Depends(current_user)]
 async def browse_market(
     db: DbDep,
     viewer: OptionalUserDep,
+    kind: Literal["piece", "board", "case"] | None = None,
+    set: str | None = None,
     collection: str | None = None,
     side: Literal["w", "b"] | None = None,
     piece_type: Literal["P", "N", "B", "R", "Q", "K"] | None = None,
     rarity: Literal["common", "uncommon", "rare", "epic", "legendary", "mythic"] | None = None,
     def_id: int | None = None,
+    case_id: int | None = None,
     sort: Literal["price_asc", "price_desc", "new"] = "new",
     page: Annotated[int, Query(ge=1)] = 1,
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
@@ -36,11 +39,14 @@ async def browse_market(
     items, total = await market_service.browse(
         db,
         viewer_id,
+        kind=kind,
+        set_code=set,
         collection=collection,
         side=side,
         piece_type=piece_type,
         rarity=rarity,
         def_id=def_id,
+        case_id=case_id,
         sort=sort,
         page=page,
         limit=limit,
@@ -52,6 +58,12 @@ async def browse_market(
 async def get_def_market(def_id: int, db: DbDep, viewer: OptionalUserDep) -> DefMarketOut:
     viewer_id = viewer.id if viewer is not None else None
     return await market_service.def_market(db, def_id, viewer_id)
+
+
+@router.get("/market/cases/{case_id}", response_model=CaseMarketOut)
+async def get_case_market(case_id: int, db: DbDep, viewer: OptionalUserDep) -> CaseMarketOut:
+    viewer_id = viewer.id if viewer is not None else None
+    return await market_service.case_market(db, case_id, viewer_id)
 
 
 @router.post("/market/listings", response_model=ListingOut, status_code=201)

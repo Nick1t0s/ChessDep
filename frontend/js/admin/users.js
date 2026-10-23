@@ -1,10 +1,10 @@
-// Админка — вкладка «Пользователи»: поиск, карточка, бан, баланс, выдача скина.
+// Админка — вкладка «Пользователи»: поиск, карточка, бан, баланс, выдача предмета.
 import { api } from '../api.js';
 import { h, clear } from '../dom.js';
 import { toast } from '../toast.js';
 import { openModal } from '../modal.js';
 import { fmtCrystals } from '../format.js';
-import { RARITY_RU } from '../items.js';
+import { RARITY_RU, CASE_KIND_RU } from '../items.js';
 
 export async function mount(root) {
   clear(root);
@@ -135,7 +135,7 @@ async function renderDetail(host, id) {
   balanceBtn.addEventListener('click', () => openBalanceModal(u, refresh));
   actions.appendChild(balanceBtn);
 
-  const grantBtn = h('button', { type: 'button', class: 'btn btn-ghost' }, 'Выдать скин');
+  const grantBtn = h('button', { type: 'button', class: 'btn btn-ghost' }, 'Выдать предмет');
   grantBtn.addEventListener('click', () => openGrantModal(u, refresh));
   actions.appendChild(grantBtn);
 
@@ -279,46 +279,78 @@ function openBalanceModal(u, refresh) {
 
 async function openGrantModal(u, refresh) {
   let defs = [];
+  let cases = [];
   try {
-    defs = await api('GET', '/item-defs');
+    [defs, cases] = await Promise.all([
+      api('GET', '/item-defs'),
+      api('GET', '/admin/cases'),
+    ]);
   } catch (e) {
     toast(e.message, 'error');
     return;
   }
-  if (!Array.isArray(defs) || defs.length === 0) {
-    toast('Нет выпущенных скинов', 'info');
+  defs = Array.isArray(defs) ? defs : [];
+  cases = (Array.isArray(cases) ? cases : []).filter((c) => c.status !== 'draft');
+  if (defs.length === 0 && cases.length === 0) {
+    toast('Нет скинов и кейсов для выдачи', 'info');
     return;
   }
 
-  const sel = h('select', { id: 'adm-grant-def' });
-  for (const def of defs) {
-    sel.appendChild(h('option', { value: String(def.id) },
-      def.name + ' · ' + (RARITY_RU[def.rarity] ?? def.rarity)));
-  }
+  const kindSel = h('select', { id: 'adm-grant-kind' });
+  if (defs.length > 0) kindSel.appendChild(h('option', { value: 'skin' }, 'Скин'));
+  if (cases.length > 0) kindSel.appendChild(h('option', { value: 'case' }, 'Кейс'));
+
+  const itemSel = h('select', { id: 'adm-grant-item' });
+  const itemLabel = h('label', { for: 'adm-grant-item' }, 'Скин');
+  const fillItems = () => {
+    clear(itemSel);
+    if (kindSel.value === 'skin') {
+      for (const def of defs) {
+        itemSel.appendChild(h('option', { value: String(def.id) },
+          def.name + ' · ' + (RARITY_RU[def.rarity] ?? def.rarity)));
+      }
+    } else {
+      for (const c of cases) {
+        itemSel.appendChild(h('option', { value: String(c.id) },
+          c.name + ' · ' + (CASE_KIND_RU[c.kind] ?? c.kind)));
+      }
+    }
+    itemLabel.textContent = kindSel.value === 'skin' ? 'Скин' : 'Кейс';
+  };
+  fillItems();
+  kindSel.addEventListener('change', fillItems);
+
   const body = h('div', { class: 'admin-form' },
     h('div', { class: 'field' },
-      h('label', { for: 'adm-grant-def' }, 'Скин'),
-      sel,
+      h('label', { for: 'adm-grant-kind' }, 'Что выдать'),
+      kindSel,
+    ),
+    h('div', { class: 'field' },
+      itemLabel,
+      itemSel,
     ),
   );
   let busy = false;
   const closeFn = openModal({
-    title: 'Выдать скин: ' + u.login,
+    title: 'Выдать предмет: ' + u.login,
     titleAnim: 'none',
     body,
     actions: [
       { label: 'Отмена', kind: 'ghost' },
       { label: 'Выдать', kind: 'gold', onClick: () => {
         if (busy) return false;
-        const defId = Number(sel.value);
-        if (!Number.isInteger(defId)) {
-          toast('Выберите скин', 'error');
+        const itemId = Number(itemSel.value);
+        if (!Number.isInteger(itemId)) {
+          toast('Выберите предмет', 'error');
           return false;
         }
         busy = true;
-        api('POST', '/admin/users/' + u.id + '/grant-item', { item_def_id: defId })
+        const payload = kindSel.value === 'skin'
+          ? { item_def_id: itemId }
+          : { case_id: itemId };
+        api('POST', '/admin/users/' + u.id + '/grant-item', payload)
           .then(() => {
-            toast('Скин выдан', 'success');
+            toast('Предмет выдан', 'success');
             closeFn();
             refresh();
           })

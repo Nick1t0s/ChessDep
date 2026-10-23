@@ -1,11 +1,11 @@
 import asyncio
 
 import pytest
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 
 from app.db import SessionLocal
-from app.models import InventoryItem, ItemDef, Roll
-from tests.conftest import give_items
+from app.models import InventoryItem, ItemDef, Roll, User
+from tests.conftest import give_cases, give_items
 
 
 async def def_id_by_code(code: str) -> int:
@@ -14,9 +14,22 @@ async def def_id_by_code(code: str) -> int:
         return item_def.id
 
 
-async def test_upgrade_preview(alice, db) -> None:
-    async with SessionLocal() as s, s.begin():
-        await s.execute(update(ItemDef).where(ItemDef.code == "genesis-wk").values(value=5000))
+async def base_item_ids(login: str) -> list[int]:
+    async with SessionLocal() as db:
+        user_id = await db.scalar(select(User.id).where(User.login == login))
+        return list(
+            (
+                await db.scalars(
+                    select(InventoryItem.id).where(
+                        InventoryItem.user_id == user_id,
+                        InventoryItem.source == "base",
+                    )
+                )
+            ).all()
+        )
+
+
+async def test_upgrade_preview(alice, admin) -> None:
     ids = await give_items("alice", ["genesis-wr", "genesis-br"])
     epic = await def_id_by_code("genesis-wq")
 
@@ -29,7 +42,7 @@ async def test_upgrade_preview(alice, db) -> None:
     assert body["allowed"] is True
     assert body["reason"] is None
 
-    mythic = await def_id_by_code("genesis-wk")
+    mythic = await def_id_by_code("genesis-board-albion")
     resp = await alice.post(
         "/api/v1/upgrade/preview", json={"input_ids": ids, "target_def_id": mythic}
     )
@@ -85,9 +98,15 @@ async def test_upgrade_validation(alice, bob, admin) -> None:
 
     inputs = await give_items("alice", ["genesis-wr", "genesis-br"])
 
-    # Цель из черновой коллекции.
+    # Цель из чернового набора: создать набор и коллекцию (12 фигур).
     resp = await admin.post(
-        "/api/v1/admin/collections",
+        "/api/v1/admin/sets",
+        json={"code": "winter", "name": "Winter", "description": "Зимний набор"},
+    )
+    assert resp.status_code == 201, resp.text
+    set_id = resp.json()["id"]
+    resp = await admin.post(
+        f"/api/v1/admin/sets/{set_id}/collections",
         json={
             "code": "winter",
             "name": "Winter",
@@ -107,7 +126,9 @@ async def test_upgrade_validation(alice, bob, admin) -> None:
     )
     assert resp.status_code == 201, resp.text
     draft_target = next(
-        item["id"] for item in resp.json()["items"] if item["code"] == "winter-wq"
+        item["id"]
+        for item in resp.json()["collections"][0]["items"]
+        if item["code"] == "winter-wq"
     )
     resp = await alice.post(
         "/api/v1/upgrade/preview",
@@ -115,13 +136,66 @@ async def test_upgrade_validation(alice, bob, admin) -> None:
     )
     assert resp.json()["reason"] == "UPGRADE_TARGET_NOT_AVAILABLE"
 
-    # Цель с is_upgrade_target=false.
-    resp = await admin.patch("/api/v1/admin/item-defs/1", json={"is_upgrade_target": False})
-    assert resp.status_code == 200, resp.text
+    # Цель — базовый скин: базовый набор не бывает целью апгрейда.
     resp = await alice.post(
         "/api/v1/upgrade/preview", json={"input_ids": inputs, "target_def_id": 1}
     )
     assert resp.json()["reason"] == "UPGRADE_TARGET_NOT_AVAILABLE"
+
+    # Цель с is_upgrade_target=false.
+    resp = await admin.patch("/api/v1/admin/item-defs/18", json={"is_upgrade_target": False})
+    assert resp.status_code == 200, resp.text
+    resp = await alice.post(
+        "/api/v1/upgrade/preview", json={"input_ids": inputs, "target_def_id": 18}
+    )
+    assert resp.json()["reason"] == "UPGRADE_TARGET_NOT_AVAILABLE"
+
+
+async def test_upgrade_restricted_inputs(alice) -> None:
+    epic = await def_id_by_code("genesis-wq")
+
+    # Базовые предметы нельзя апгрейдить.
+    base_ids = await base_item_ids("alice")
+    assert len(base_ids) == 13
+    resp = await alice.post(
+        "/api/v1/upgrade", json={"input_ids": base_ids[:2], "target_def_id": epic}
+    )
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["error"]["code"] == "ITEM_BOUND"
+
+    # Предмет-кейс нельзя апгрейдить.
+    case_ids = await give_cases("alice", [1])
+    resp = await alice.post(
+        "/api/v1/upgrade", json={"input_ids": case_ids, "target_def_id": epic}
+    )
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["error"]["code"] == "ITEM_NOT_UPGRADABLE"
+
+
+async def test_upgrade_to_board(alice, rng) -> None:
+    ids = await give_items("alice", ["genesis-wr", "genesis-br"])
+    resp = await alice.put("/api/v1/loadout/bR", json={"inventory_item_id": ids[1]})
+    assert resp.status_code == 200, resp.text
+    board = await def_id_by_code("genesis-board-albion")
+
+    rng.values = [0.0, 0.3]
+    resp = await alice.post(
+        "/api/v1/upgrade", json={"input_ids": ids, "target_def_id": board}
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True
+    assert body["chance"] == pytest.approx(300 / 5000 * 0.95)
+    assert body["roll_value"] == 0.0
+    assert body["burned_ids"] == sorted(ids)
+    assert body["item"] is not None
+    assert body["item"]["source"] == "upgrade"
+    assert body["item"]["wear"] == pytest.approx(0.3)
+    assert body["item"]["def"]["kind"] == "board"
+    assert body["item"]["def"]["code"] == "genesis-board-albion"
+
+    loadout = (await alice.get("/api/v1/loadout")).json()
+    assert loadout["bR"] is None
 
 
 async def test_upgrade_success(alice, rng) -> None:
@@ -155,14 +229,13 @@ async def test_upgrade_success(alice, rng) -> None:
         roll = (await check.scalars(select(Roll).where(Roll.kind == "upgrade"))).one()
         assert roll.outcome == {"success": True, "item_id": new_item_id}
         count = await check.scalar(select(func.count()).select_from(InventoryItem))
-        assert count == 3
+        # 16 строк: 13 базовых + 2 сгоревших входа + новый предмет.
+        assert count == 16
 
 
 async def test_upgrade_fail(alice, rng, db) -> None:
-    async with SessionLocal() as s, s.begin():
-        await s.execute(update(ItemDef).where(ItemDef.code == "genesis-wk").values(value=5000))
     ids = await give_items("alice", ["genesis-wr", "genesis-br"])
-    mythic = await def_id_by_code("genesis-wk")
+    mythic = await def_id_by_code("genesis-board-albion")
     rng.values = [0.99]
     resp = await alice.post(
         "/api/v1/upgrade", json={"input_ids": ids, "target_def_id": mythic}
@@ -178,7 +251,8 @@ async def test_upgrade_fail(alice, rng, db) -> None:
             item = await check.get(InventoryItem, item_id)
             assert item.status == "burned"
         count = await check.scalar(select(func.count()).select_from(InventoryItem))
-        assert count == 2
+        # 15 строк: 13 базовых + 2 сгоревших входа.
+        assert count == 15
         roll = (await check.scalars(select(Roll).where(Roll.kind == "upgrade"))).one()
         assert roll.outcome == {"success": False, "item_id": None}
 
