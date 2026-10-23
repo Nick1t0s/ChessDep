@@ -89,3 +89,31 @@ downgrade: всем `item_defs` и слотам снапшотов с `png` ве
 Доска с картинкой: у `.board-zone` класс `skinned`, у `.board` — CSS-переменная `--board-image: url("…")`; клетки прозрачные; подписи `.ranks`/`.files` абсолютно позиционированы в полосах рамки (`32 / 1088 = 2.9412 %` ширины).
 
 Админка: вместо полей цвета — `<input type="file" accept="image/png">`; файл сразу грузится `apiUpload('/admin/skin-images?kind=…', file)` (`frontend/js/api.js`), в форму подставляется `image` из ответа, рядом превью.
+
+## 8. Картинки по качеству (exterior)
+
+У скина (фигуры и доски) могут быть отдельные PNG для каждого качества. Это необязательно: если картинки для качества нет, используется основная `image`.
+
+### Asset
+`SkinAsset {type: "png", image: ImageId, exteriors?: {FN?, MW?, FT?, WW?, BS?: ImageId}}` (`app/schemas/items.py`):
+- `Exterior = Literal["FN", "MW", "FT", "WW", "BS"]`;
+- поле `exteriors: dict[Exterior, ImageId] = {}`; неизвестный ключ → `422 VALIDATION_ERROR`;
+- при сериализации пустой `exteriors` **не выводится** (`model_serializer(mode="wrap")`), поэтому в БД, снапшотах и ответах asset без качеств остаётся `{"type": "png", "image": …}`. Миграция не нужна: старые asset валидны.
+
+`resolve_image(asset: dict, ext: str) -> str` (там же): `asset.get("exteriors", {}).get(ext)` или, если нет, `asset["image"]`.
+
+### Проверка (админка)
+При создании коллекции, доски и `PATCH /admin/item-defs/{id}` сервер проверяет `image` и **каждую** картинку из `exteriors` через `ensure_image(db, id, kind)` (те же ошибки `SKIN_IMAGE_NOT_FOUND` / `VALIDATION_ERROR`). Хелпер — `skin_images.ensure_asset(db, asset: SkinAsset, kind)`. `PATCH` заменяет asset целиком: чтобы убрать картинку качества, админ присылает asset без этого ключа.
+
+### Выдача экземпляра
+- `ItemOut.image: str | None` — картинка этого экземпляра: `resolve_image(def.asset, exterior)` для скина, `null` для предмета-кейса.
+- `ListingItemOut.image: str | None = None` — то же для лотов маркета и подарков.
+- `ItemDefOut.asset` — asset скина целиком (с `exteriors`, если есть).
+
+### Партия
+`loadout_snapshot` кладёт в слот `asset = {"type": "png", "image": resolve_image(def.asset, exterior(wear))}` — картинку конкретного надетого экземпляра. Фронт партии не меняется.
+
+### Фронт
+- `skinPreview(def, image = null)` (`frontend/js/items.js`): если `image` задан — рисует `/api/v1/skins/<image>.png`, иначе `def.asset.image`.
+- `itemCard(def, opts)`: `opts.image` передаётся в `skinPreview`. Все места, где карточка строится для экземпляра (`invItemCard`, маркет, апгрейд, итог кейса/апгрейда), передают `image: item.image`. Карточки скина без экземпляра (дропы кейса, лента, цели апгрейда, страница предмета маркета) показывают основную картинку.
+- Админка, окно «Изменить скин»: кроме основной картинки — пять необязательных полей «Картинка: <качество>» (FN…BS, подписи из `EXTERIOR_RU`) с кнопкой «Убрать». При сохранении `asset.exteriors` содержит только заполненные качества. Формы создания коллекции и доски — только основная картинка.

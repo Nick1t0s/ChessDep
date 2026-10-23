@@ -131,7 +131,7 @@ ChessDep — онлайн-шахматы (PvP) с элементами кази�
 
 ### 4.3 Экземпляры
 - `inventory_items`: владелец, `item_def_id`, `wear ∈ [0,1)` (CSPRNG при создании), источник (`case | upgrade | admin_grant`), статус (`owned | listed | burned`), `acquired_at` (время получения текущим владельцем). Сгоревшие предметы физически не удаляются.
-- Exterior по `wear`: FN `[0,0.07)`, MW `[0.07,0.15)`, FT `[0.15,0.38)`, WW `[0.38,0.45)`, BS `[0.45,1)`. Пока чисто косметика, на `value` не влияет.
+- Exterior по `wear`: FN `[0,0.07)`, MW `[0.07,0.15)`, FT `[0.15,0.38)`, WW `[0.38,0.45)`, BS `[0.45,1)`. Пока чисто косметика, на `value` не влияет; у скина может быть своя картинка для каждого exterior (`docs/contracts-skins.md` §8).
 - Экипировать, апгрейдить, выставлять и дарить можно только предмет в статусе `owned`.
 
 ### 4.4 Экипировка (loadout)
@@ -436,7 +436,7 @@ legacy/  site/  templates/       # старый фронт, только как 
 | GET | `/collections` | выпущенные и снятые коллекции `[{code, name, description, status, released_at, items_count}]` |
 | GET | `/collections/{code}` | коллекция + её скины |
 | GET | `/item-defs?upgrade_target=true` | каталог целей апгрейда |
-| GET | `/inventory?kind=&slot=&sort=rarity\|value\|new` | `[{id, def, wear, exterior, status, equipped_slot, acquired_at}]` |
+| GET | `/inventory?kind=&slot=&sort=rarity\|value\|new` | `[{id, def, wear, exterior, image, status, equipped_slot, acquired_at}]` |
 | GET | `/loadout` | `{P: Item\|null, …, board: Item\|null}` |
 | PUT | `/loadout/{slot}` | тело `{inventory_item_id: int\|null}` → `Loadout`; `ITEM_NOT_OWNED`, `ITEM_SLOT_MISMATCH` |
 
