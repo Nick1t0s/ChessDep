@@ -206,7 +206,7 @@ goBtn.addEventListener('click', async () => {
 
 async function loadInventory() {
   const inventory = await api('GET', '/inventory?sort=value');
-  items = (inventory ?? []).filter((item) => item.status === 'owned');
+  items = (inventory ?? []).filter((item) => item.kind === 'skin' && !item.bound && item.status === 'owned');
 }
 
 const targets = await api('GET', '/item-defs?upgrade_target=true');
