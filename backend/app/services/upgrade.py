@@ -5,9 +5,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.chess_engine import format_chance
 from app.core.errors import AppError
-from app.models import Collection, InventoryItem, ItemDef, Roll, User
+from app.models import InventoryItem, ItemDef, ItemSet, Roll, User
 from app.schemas.items import UpgradeOut, UpgradePreviewOut
-from app.services.items import create_item, item_out, load_items, lock_items, unequip_items
+from app.services.items import (
+    ITEM_BOUND,
+    ITEM_NOT_UPGRADABLE,
+    create_item,
+    item_out,
+    load_items,
+    lock_items,
+    unequip_items,
+)
 from app.services.rolls import get_rng, record_roll
 from app.services.settings import get_setting
 
@@ -26,11 +34,21 @@ async def compute(
         raise _DUPLICATE_INPUTS
     fetcher = lock_items if lock else load_items
     items = await fetcher(db, user.id, input_ids)
+    for item in items:
+        if item.case_id is not None:
+            raise ITEM_NOT_UPGRADABLE
+        if item.source == "base":
+            raise ITEM_BOUND
     target = await db.get(ItemDef, target_def_id)
     if target is None:
         raise _TARGET_NOT_AVAILABLE
-    collection = await db.get(Collection, target.collection_id)
-    if collection is None or collection.status != "released" or not target.is_upgrade_target:
+    item_set = await db.get(ItemSet, target.set_id)
+    if (
+        item_set is None
+        or item_set.status != "released"
+        or item_set.is_base
+        or not target.is_upgrade_target
+    ):
         raise _TARGET_NOT_AVAILABLE
     edge = float(await get_setting(db, "upgrade_edge"))
     min_chance = float(await get_setting(db, "upgrade_min_chance"))
