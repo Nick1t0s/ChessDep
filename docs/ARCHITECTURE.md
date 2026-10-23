@@ -10,7 +10,7 @@
 | `docs/ARCHITECTURE.md` | **Этот файл**: устройство, механизмы, решения, рецепты |
 | `docs/TZ.md` | Исходное ТЗ v1.1: правила депа, экономика, модель данных, API |
 | `docs/contracts-spectate.md` | Контракт зрителей, чата, истории ходов, профилей, HTTPS |
-| `docs/contracts-collections.md` | Контракт коллекций v2 (12 фигур) и кейсов без коллекции — заменяет §4.1–4.5 ТЗ |
+| `docs/contracts-collections.md` | Контракт предметов v3: наборы, коллекции, доски, базовые скины, магазин кейсов, ежедневная награда — заменяет §4 ТЗ |
 | `docs/AUDIT.md` | Почему старый фронт (`legacy/`) не используется |
 | `tasks/*.md`, `tasks/delegated/` | Задания, по которым писался код (история, очень подробно) |
 | `CLAUDE.md` | Правила для Claude Code в этом репозитории |
@@ -21,7 +21,7 @@
 
 Онлайн-шахматы (PvP) с элементами казино:
 - **Деп.** В свой ход, до хода, можно рискнуть своей фигурой (кроме короля): с шансом `ценность_из / ценность_в` (P=1, N=B=3, R=5, Q=9) она превращается в более ценную, иначе сгорает. Не больше 1 депа за ход и 10 за партию.
-- **Предметы как в CS:** скины фигур выпускаются коллекциями по 12 фигур (6 белых, 6 чёрных), выпадают из кейсов, апгрейдятся, продаются на маркете между игроками, дарятся.
+- **Предметы как в CS:** наборы из коллекций (по 12 фигур: 6 белых, 6 чёрных) и досок; кейсы продаются в магазине и лежат в инвентаре до открытия; скины апгрейдятся, продаются на маркете между игроками, дарятся. У каждого игрока есть непередаваемые базовые скины.
 - **Зрители, чат партии, история ходов, повтор, профили игроков.**
 
 Валюта ◈ виртуальная: не покупается и не выводится.
@@ -242,14 +242,16 @@ docs/, tasks/, legacy/
 
 ## 7. Предметы
 
-Подробный контракт — `docs/contracts-collections.md`.
-- **Коллекция** — ровно 12 скинов: по одному на `(side, piece_type)`, `side` ∈ `w`/`b`. Создаётся сразу целиком одним запросом (`POST /admin/collections` с `pieces`), скины по одному не добавляются и не удаляются, так что неполных коллекций не бывает. Коды и имена скинов генерирует сервер (`genesis-wn`, «Genesis | Белый конь», `seed_data.item_code/item_name`). Скинов досок нет — доска у всех стандартная. Статусы `draft` → `released` → `retired`; черновик не виден игрокам. Снятие с выпуска переводит все активные кейсы с её скинами в `closed`; предметы у игроков остаются.
-- **Скин** (`item_defs`): `side`, `piece_type`, редкость (задаётся вручную для каждой из 12 фигур, ограничений нет), `value` в ◈, `asset` пока только `{"type": "stub", "color"}`. После выпуска нельзя менять `rarity`; `side`/`piece_type` не меняются никогда. Сторона на доске различается и **формой глифа** (белые — контурные ♔, чёрные — сплошные ♚).
-- **Кейс не принадлежит коллекции:** дропы — любые скины любых не снятых коллекций. «Кейс коллекции» и «смешанный кейс» отличаются только содержимым (`collections` в выдаче = различные коллекции дропов). Статусы `draft` → `active` ⇄ `closed`; дропы меняются только у черновика; активация требует дропы и выпущенные коллекции всех дропов. Игрокам виден и открывается только `active`.
+Подробный контракт — `docs/contracts-collections.md` (v3).
+- **Набор** (`item_sets`) — перечень коллекций и досок; вне набора их нет. Статус `draft` → `released` → `retired` есть только у набора; коллекции и доски добавляются только в черновик. Снятие набора снимает с продажи все кейсы с его скинами.
+- **Коллекция** — ровно 12 скинов фигур (`side` ∈ `w`/`b` × `piece_type`), создаётся одним запросом целиком; коды и имена генерирует сервер (`seed_data.item_code/item_name`). **Доска** — скин `kind = board`, принадлежит набору напрямую.
+- **Скин** (`item_defs`): `kind` (`piece`/`board`), `set_id`, у фигур — `collection_id`, `side`, `piece_type`; редкость задаётся вручную; `asset` — `{"type": "stub", "color"}` или `{"type": "stub", "light", "dark"}`.
+- **Базовый набор** (`is_base`, id 1): 12 фигур + доска, выдаются при регистрации (`source = 'base'`, `wear = 0`) и сразу надеты. Базовый предмет (`bound`) нельзя продать, подарить, апгрейдить (`ITEM_BOUND`).
 - **Экземпляр** (`inventory_items`): `wear` в [0, 1) (exterior FN/MW/FT/WW/BS — косметика), статус `owned` | `listed` | `burned`, `acquired_at`. Экипировать, апгрейдить, выставлять и дарить можно только `owned`.
-- **Экипировка:** 12 слотов `wP…wK`, `bP…bK` (upsert), скин подходит только в слот `side + piece_type`. При создании партии снапшотятся слоты **той стороны, которой играет игрок**, с ключами без префикса (`{"Q": …}`), поэтому формат снапшота, `game_view`, повтор и `pieces.js` не зависят от сторон.
-- **Кейс** (`services/cases.py::open_case`). Порядок вызовов RNG **зафиксирован**, на нём держатся тесты:
-  1. списание;
+- **Экипировка:** 13 слотов (`wP…bK` + `board`). Слот можно очистить, но **в бой нельзя без всех 13** (`LOADOUT_INCOMPLETE`): проверки в очереди, инвайтах и `create_game`; воркер выкидывает из очереди игрока с неполной экипировкой. Снапшот в партию — слоты своей стороны без префикса + `board`; каждый видит свою доску, зритель — доску белых.
+- **Кейс** — товар магазина: `kind` `set` / `collection` / `custom`, статусы `draft` → `on_sale` ⇄ `off_sale`, лимиты — тираж (`stock_limit`, по исчерпании сам `off_sale`; атомарный `UPDATE … sold_count + 1`, `cases` блокируется раньше `users`) и окно продаж (`sale_starts_at/ends_at`). Покупка (`/cases/{id}/buy`) кладёт **предмет-кейс** в инвентарь (`inventory_items.case_id`); его можно открыть, продать, подарить. Дропы заморожены после выхода из черновика, поэтому купленный кейс открывается всегда.
+- **Открытие** (`services/cases.py::open_case_item`, `POST /inventory/{id}/open`). Порядок вызовов RNG **зафиксирован**, на нём держатся тесты:
+  1. предмет-кейс → `burned`;
   2. `r_win` → победитель (`weighted_pick` по дропам, отсортированным по `item_def_id`);
   3. `win_index = 45 + int(r × 10)`;
   4. 60 позиций ленты-филлера;
@@ -258,7 +260,8 @@ docs/, tasks/, legacy/
   Ответ содержит ленту для анимации.
 - **Автовеса:** вес скина = `rarity_weights[редкость] × 1000 // число скинов этой редкости в кейсе`.
 - **Апгрейд:** 1–10 разных `owned` предметов → цель. `chance = Σvalue / target.value × (1 − upgrade_edge)`, допустимо только в `[min, max]`. Входы сгорают при любом исходе. Колесо на фронте останавливается на `roll_value`.
-- **Genesis:** 12 скинов (id 1–12: `wP…wK`, `bP…bK`) и 1 кейс, данные в `app/seed_data.py`; их используют миграция 0006 и `conftest.py`. Старый сид v1 заморожен в `app/seed_data_v1.py` для миграции 0003 — не менять. После вставки с явными id нужен `setval` последовательностей.
+- **Ежедневная награда** (`services/daily_reward.py`): после `daily_reward_wins` (3) побед за сутки UTC (`ply ≥ reward_min_plies`) — кнопка «Забрать»: один предмет-кейс по весам из `daily_reward_pool` (админка), бросок в `rolls` (`daily_reward`), раз в сутки (`users.last_daily_reward_on`).
+- **Сид** (`app/seed_data.py::seed_rows`): базовый набор (скины 1–13) и Genesis (коллекция — скины 14–25, доски 26–27, кейс 1 по набору), пул награды. Используют миграция 0007 и `conftest.py`. Старые сиды заморожены в `seed_data_v1.py` (0003) и `seed_data_v2.py` (0006) — не менять.
 
 ## 8. Маркет и подарки
 - **Лот:** предмет переходит в `listed`, с экипировки снимается. Лимит активных лотов — `market_max_listings`. Задержка передачи `trade_hold_hours` считается по `acquired_at`.
@@ -288,6 +291,7 @@ docs/, tasks/, legacy/
 | 0004 | `market_listings` (частичный unique активного лота на предмет), `item_transfers`; причины `market_buy`/`market_sale` в `ledger` |
 | 0005 | `game_messages` |
 | 0006 | коллекции v2: **удаляет все предметы** (лоты, передачи, инвентарь, кейсы, скины, коллекции); `item_defs.kind` → `side`, у `cases` вместо `collection_id`/`is_active` — `status`, 12 слотов лоадаута; сид Genesis v2 |
+| 0007 | наборы v3: **удаляет все предметы**; `item_sets`, `daily_reward_pool`, доски, предметы-кейсы (`inventory_items.case_id`, лоты кейсов), виды и лимиты кейсов, `users.last_daily_reward_on`; сид; выдача базовых скинов всем пользователям |
 
 Поля таблиц — в моделях `backend/app/models/*.py` и в `docs/TZ.md` §8. Миграции пишутся **руками** (не autogenerate), у каждой есть `downgrade`.
 
@@ -296,14 +300,14 @@ docs/, tasks/, legacy/
 | Группа | Эндпоинты | Доступ |
 |---|---|---|
 | Служебное | `GET /health`, `GET /config` (`time_controls`, `dep_limit`), `GET /internal/require-admin` | публично / для nginx |
-| Аккаунт | `POST /auth/register`, `/auth/login`, `/auth/logout`; `GET /me`, `POST /me/password`, `POST /me/daily-bonus`, `GET /me/ledger`, `/me/games`, `/me/active-game`, `/me/listings`, `/me/gifts`, `/me/gifts/unseen-count` | залогиненный (кроме register/login) |
+| Аккаунт | `POST /auth/register`, `/auth/login`, `/auth/logout`; `GET /me`, `POST /me/password`, `GET/POST /me/daily-reward`, `GET /me/ledger`, `/me/games`, `/me/active-game`, `/me/listings`, `/me/gifts`, `/me/gifts/unseen-count` | залогиненный (кроме register/login) |
 | Игра | `POST/DELETE /matchmaking/queue`, `GET /matchmaking/status`; `POST /invites`, `POST /invites/{code}/accept`, `DELETE /invites/{code}` | залогиненный |
 | Партия | `GET /games/live`, `GET /games/{id}`, `GET /games/{id}/events`, `GET/POST /games/{id}/chat` | любой залогиненный |
 | Действия в партии | `GET /games/{id}/dep-options`, `POST /games/{id}/move`, `/dep`, `/resign`, `/draw/offer`, `/draw/accept`, `/draw/decline`, `/abort` | только игроки |
 | Игроки | `GET /users/{login}`, `/users/{login}/games`, `GET /leaderboard` | залогиненный / лидерборд публичный |
-| Предметы | `GET /collections`, `/collections/{code}`, `/cases`, `/cases/{id}` (публично); `GET /item-defs`, `/inventory`, `/loadout`, `PUT /loadout/{slot}`, `POST /cases/{id}/open`, `POST /upgrade/preview`, `/upgrade` | см. слева |
+| Предметы | `GET /sets`, `/sets/{code}`, `/collections/{code}`, `/shop`, `/cases/{id}` (публично); `GET /item-defs`, `/inventory`, `/loadout`, `PUT /loadout/{slot}`, `POST /cases/{id}/buy`, `POST /inventory/{id}/open`, `POST /upgrade/preview`, `/upgrade` | см. слева |
 | Маркет и подарки | `GET /market`, `/market/defs/{def_id}` (публично); `POST /market/listings`, `DELETE /market/listings/{id}`, `POST /market/listings/{id}/buy`, `POST /gifts` | залогиненный |
-| Админ | `/admin/collections…`, `/admin/item-defs…`, `/admin/cases…` (включая `activate`/`close`), `/admin/users…` (поиск, карточка, ban/unban, balance, grant-item), `/admin/settings…`, `/admin/rolls`, `/admin/games/{id}/events`, `/admin/market…`, `/admin/audit` | admin |
+| Админ | `/admin/sets…`, `/admin/collections/{id}`, `/admin/item-defs…`, `/admin/cases…` (`publish`/`unpublish`), `/admin/daily-reward-pool`, `/admin/users…` (поиск, карточка, ban/unban, balance, grant-item), `/admin/settings…`, `/admin/rolls`, `/admin/games/{id}/events`, `/admin/market…`, `/admin/audit` | admin |
 | WebSocket | `/ws/games/{id}` | любой залогиненный |
 
 Формы запросов и ответов — в `backend/app/schemas/*.py`, `docs/TZ.md` §9, `docs/contracts-spectate.md`.
@@ -341,7 +345,7 @@ docs/, tasks/, legacy/
 - Просмотр позиции: клик по ходу показывает `events[].board`. Живые обновления продолжают приходить, но доску не перерисовывают до «К текущей позиции».
 
 ### 12.4 Страницы
-`index` (лобби: поиск, приглашение, бонус), `game`, `live`, `replay`, `user`, `invite`, `login`, `register`, `inventory`, `cases`, `case`, `upgrade`, `market`, `market-item`, `gifts`, `profile`, `leaderboard`, `collections`, `collection`, `admin` (вкладки грузятся динамически из `js/admin/*.js`: catalog, cases, users, settings, misc = маркет + журнал).
+`index` (лобби: поиск, приглашение, ежедневная награда), `game`, `live`, `replay`, `user`, `invite`, `login`, `register`, `inventory`, `cases`, `case`, `upgrade`, `market`, `market-item`, `gifts`, `profile`, `leaderboard`, `collections` (наборы), `collection` (набор), `cases` (магазин), `admin` (вкладки грузятся динамически из `js/admin/*.js`: catalog = наборы, cases = кейсы и пул награды, users, settings, misc = маркет + журнал).
 
 ## 13. nginx и HTTPS
 - `nginx/40-chessdep-conf.sh` при старте контейнера выбирает шаблон: есть `/etc/nginx/certs/fullchain.pem` и `privkey.pem` — `https.conf.template` (443 + 301 с 80 на `https://$host:${HTTPS_PORT}`, HSTS), иначе `http.conf.template`. Общая часть — `nginx/conf/app.locations`.
