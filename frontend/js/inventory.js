@@ -3,7 +3,7 @@ import { h, clear } from './dom.js';
 import { initLayout } from './layout.js';
 import { toast } from './toast.js';
 import { openModal } from './modal.js';
-import { itemCard, SLOT_RU, WHITE_SLOTS, BLACK_SLOTS } from './items.js';
+import { invItemCard, SLOT_RU, WHITE_SLOTS, BLACK_SLOTS } from './items.js';
 
 const me = await initLayout({ auth: 'required', active: 'inventory' });
 
@@ -12,18 +12,25 @@ document.body.appendChild(main);
 
 const whiteSlots = h('div', { class: 'inv-slots' });
 const blackSlots = h('div', { class: 'inv-slots' });
+const boardSlots = h('div', { class: 'inv-slots' });
+const invWarning = h('p', { class: 'inv-warning', hidden: true },
+  'Экипируйте скины на все фигуры и доску — без этого нельзя играть');
 const equipCard = h('div', { class: 'card' },
   h('h3', { class: 'card-title' }, 'Экипировка'),
+  invWarning,
   h('h4', {}, 'Белые'),
   whiteSlots,
   h('h4', {}, 'Чёрные'),
   blackSlots,
+  h('h4', {}, 'Доска'),
+  boardSlots,
 );
 
-const sideSelect = h('select', { 'aria-label': 'Сторона' },
+const kindSelect = h('select', { 'aria-label': 'Вид' },
   h('option', { value: '' }, 'Все'),
-  h('option', { value: 'w' }, 'Белые'),
-  h('option', { value: 'b' }, 'Чёрные'),
+  h('option', { value: 'piece' }, 'Фигуры'),
+  h('option', { value: 'board' }, 'Доски'),
+  h('option', { value: 'case' }, 'Кейсы'),
 );
 const sortSelect = h('select', { 'aria-label': 'Сортировка' },
   h('option', { value: 'rarity' }, 'По редкости'),
@@ -33,7 +40,7 @@ const sortSelect = h('select', { 'aria-label': 'Сортировка' },
 const grid = h('div', { class: 'item-grid' });
 const itemsCard = h('div', { class: 'card' },
   h('h3', { class: 'card-title' }, 'Предметы'),
-  h('div', { class: 'inv-filters' }, sideSelect, sortSelect),
+  h('div', { class: 'inv-filters' }, kindSelect, sortSelect),
   grid,
 );
 
@@ -47,7 +54,7 @@ let sort = 'rarity';
 
 await loadAll();
 
-sideSelect.addEventListener('change', () => loadItems());
+kindSelect.addEventListener('change', () => loadItems());
 sortSelect.addEventListener('change', () => {
   sort = sortSelect.value;
   loadItems();
@@ -67,15 +74,17 @@ async function loadLoadout() {
   }
   clear(whiteSlots);
   clear(blackSlots);
+  clear(boardSlots);
+  invWarning.hidden = !loadout.complete;
   for (const slot of WHITE_SLOTS) whiteSlots.appendChild(slotEl(slot, loadout[slot]));
   for (const slot of BLACK_SLOTS) blackSlots.appendChild(slotEl(slot, loadout[slot]));
+  for (const slot of ['board']) boardSlots.appendChild(slotEl(slot, loadout[slot]));
 }
 
 function slotEl(slot, item) {
   let content;
   if (item) {
-    content = itemCard(item.def, {
-      exterior: item.exterior,
+    content = invItemCard(item, {
       extra: h('button', {
         type: 'button',
         class: 'btn btn-ghost btn-sm',
@@ -103,7 +112,7 @@ async function unequip(slot) {
 
 async function loadItems() {
   const params = new URLSearchParams({ sort });
-  if (sideSelect.value) params.set('side', sideSelect.value);
+  if (kindSelect.value) params.set('kind', kindSelect.value);
   let items;
   try {
     items = await api('GET', '/inventory?' + params.toString());
@@ -113,9 +122,8 @@ async function loadItems() {
   }
   clear(grid);
   for (const item of items) {
-    const badge = item.status === 'listed' ? 'На маркете' : (item.equipped_slot ? 'Надето' : null);
-    grid.appendChild(itemCard(item.def, {
-      exterior: item.exterior,
+    const badge = item.status === 'listed' ? 'На маркете' : (item.equipped_slot ? 'Надето' : undefined);
+    grid.appendChild(invItemCard(item, {
       badge,
       extra: itemActions(item),
     }));
@@ -132,9 +140,16 @@ function itemActions(item) {
     box.appendChild(h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: fn }, label));
   };
   if (item.status === 'owned') {
-    if (!item.equipped_slot) act('Надеть', () => equip(item));
-    act('Продать', () => sellModal(item));
-    act('Подарить', () => giftModal(item));
+    if (item.kind === 'case') {
+      act('Открыть', () => {
+        location.href = '/case.html?item=' + encodeURIComponent(item.id);
+      });
+    }
+    if (item.kind === 'skin' && !item.equipped_slot) act('Надеть', () => equip(item));
+    if (!item.bound) {
+      act('Продать', () => sellModal(item));
+      act('Подарить', () => giftModal(item));
+    }
   } else if (item.status === 'listed') {
     act('Снять с продажи', () => unlist(item));
   }
@@ -142,7 +157,7 @@ function itemActions(item) {
 }
 
 async function equip(item) {
-  const slot = item.def.side + item.def.piece_type;
+  const slot = item.def.kind === 'board' ? 'board' : item.def.side + item.def.piece_type;
   try {
     await api('PUT', '/loadout/' + slot, { inventory_item_id: item.id });
     toast('Готово', 'success');
