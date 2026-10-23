@@ -31,7 +31,7 @@ from app.seed_data import item_code, item_name
 from app.services.cases import auto_weights
 from app.services.items import create_case_item, create_item
 from app.services.settings import get_setting
-from app.services.skin_images import ensure_image
+from app.services.skin_images import ensure_asset
 
 SET_NOT_FOUND = AppError(404, "SET_NOT_FOUND", "Набор не найден")
 COLLECTION_NOT_FOUND = AppError(404, "COLLECTION_NOT_FOUND", "Коллекция не найдена")
@@ -223,7 +223,7 @@ async def create_collection(
 ) -> Collection:
     await _draft_set(db, set_id)
     for p in body.pieces:
-        await ensure_image(db, p.asset.image, "piece")
+        await ensure_asset(db, p.asset, "piece")
     collection = Collection(
         set_id=set_id,
         code=body.code,
@@ -298,7 +298,7 @@ async def create_board(
     db: AsyncSession, admin: User, set_id: int, body: BoardCreateIn
 ) -> ItemDef:
     await _draft_set(db, set_id)
-    await ensure_image(db, body.asset.image, "board")
+    await ensure_asset(db, body.asset, "board")
     item_def = ItemDef(
         kind="board",
         set_id=set_id,
@@ -334,7 +334,7 @@ async def patch_item_def(
     if "asset" in fields:
         if body.asset is None:
             raise ASSET_REQUIRED
-        await ensure_image(db, body.asset.image, item_def.kind)
+        await ensure_asset(db, body.asset, item_def.kind)
     if "name" in fields:
         item_def.name = body.name
     if "rarity" in fields:

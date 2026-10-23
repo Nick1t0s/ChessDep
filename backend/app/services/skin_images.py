@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
 from app.models import AdminAudit, SkinImage, User
+from app.schemas.items import SkinAsset
 
 PIECE_PX = 128
 BOARD_PX = 1088
@@ -93,3 +94,10 @@ async def ensure_image(db: AsyncSession, image_id: str, kind: str) -> None:
     image = await get_image(db, image_id)
     if image.kind != kind:
         raise ASSET_KIND_MISMATCH
+
+
+async def ensure_asset(db: AsyncSession, asset: SkinAsset, kind: str) -> None:
+    """ensure_image для основной картинки и каждой картинки качества."""
+    await ensure_image(db, asset.image, kind)
+    for image_id in asset.exteriors.values():
+        await ensure_image(db, image_id, kind)

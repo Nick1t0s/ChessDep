@@ -73,6 +73,7 @@ def _item_brief(item_out) -> ListingItemOut:
         case=item_out.case,
         wear=item_out.wear,
         exterior=item_out.exterior,
+        image=item_out.image,
     )
 
 
