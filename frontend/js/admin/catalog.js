@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api, apiUpload } from '../api.js';
 import { h, clear } from '../dom.js';
 import { toast } from '../toast.js';
 import { confirmModal, openModal } from '../modal.js';
@@ -9,8 +9,6 @@ const SET_STATUS_RU = { draft: 'Черновик', released: 'Выпущен', r
 
 const DEFAULT_RARITY = { P: 'common', N: 'uncommon', B: 'uncommon', R: 'rare', Q: 'epic', K: 'legendary' };
 const RARITY_VALUE = { common: 20, uncommon: 60, rare: 150, epic: 500, legendary: 1500, mythic: 5000 };
-const DEFAULT_COLOR = { w: '#ffffff', b: '#ffc93c' };
-const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 let fieldSeq = 0;
 
@@ -18,6 +16,33 @@ function field(labelText, input) {
   const id = 'f-' + String(++fieldSeq);
   input.id = id;
   return h('div', { class: 'field' }, h('label', { for: id }, labelText), input);
+}
+
+// Поле PNG скина: файл сразу грузится на сервер, picker.image — id картинки или null.
+function imagePicker(kind, initialImage) {
+  const picker = { image: initialImage, el: null };
+  const preview = h('span', { class: 'admin-skin-preview' });
+  const input = h('input', { type: 'file' });
+  input.accept = 'image/png';
+  function showPreview() {
+    clear(preview);
+    if (picker.image !== null) preview.appendChild(skinPreview({ kind, asset: { type: 'png', image: picker.image } }));
+  }
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const res = await apiUpload('/admin/skin-images?kind=' + kind, file);
+      picker.image = res.image;
+      showPreview();
+    } catch (err) {
+      input.value = '';
+      toast(err.message, 'error');
+    }
+  });
+  showPreview();
+  picker.el = h('div', { class: 'admin-skin-picker' }, input, preview);
+  return picker;
 }
 
 function setPill(status) {
@@ -275,7 +300,7 @@ function createCollectionForm(root, d) {
         h('th', {}, 'Фигура'),
         h('th', {}, 'Редкость'),
         h('th', {}, 'Ценность'),
-        h('th', {}, 'Цвет'),
+        h('th', {}, 'Картинка 128×128'),
         h('th', {}, 'Цель апгрейда'),
       )),
       h('tbody', {}, ...rows.map((r) => r.tr)),
@@ -289,8 +314,8 @@ function createCollectionForm(root, d) {
     const pieces = [];
     for (const row of rows) {
       const value = Number(row.valIn.value);
-      if (!Number.isInteger(value) || value < 1 || !COLOR_RE.test(row.colorIn.value.trim())) {
-        toast('Строка «' + SLOT_RU[row.slot] + '»: проверьте ценность и цвет', 'error');
+      if (!Number.isInteger(value) || value < 1 || row.picker.image === null) {
+        toast('Строка «' + SLOT_RU[row.slot] + '»: проверьте ценность и загрузите картинку', 'error');
         return;
       }
       pieces.push({
@@ -298,7 +323,7 @@ function createCollectionForm(root, d) {
         piece_type: row.slot[1],
         rarity: row.rarSel.value,
         value,
-        asset: { type: 'stub', color: row.colorIn.value.trim() },
+        asset: { type: 'png', image: row.picker.image },
         is_upgrade_target: row.upIn.checked,
       });
     }
@@ -320,7 +345,6 @@ function createCollectionForm(root, d) {
 }
 
 function makePiecesRow(slot) {
-  const side = slot[0];
   const pt = slot[1];
 
   const rarSel = h('select', { name: 'rarity-' + slot });
@@ -334,18 +358,18 @@ function makePiecesRow(slot) {
     valIn.value = String(RARITY_VALUE[rarSel.value]);
   });
 
-  const colorIn = h('input', { type: 'text', name: 'color-' + slot, value: DEFAULT_COLOR[side] });
+  const picker = imagePicker('piece', null);
   const upIn = h('input', { type: 'checkbox', name: 'target-' + slot, checked: true });
 
   const tr = h('tr', {},
     h('td', {}, SLOT_RU[slot]),
     h('td', {}, rarSel),
     h('td', {}, valIn),
-    h('td', {}, colorIn),
+    h('td', {}, picker.el),
     h('td', {}, upIn),
   );
 
-  return { slot, tr, rarSel, valIn, colorIn, upIn };
+  return { slot, tr, rarSel, valIn, picker, upIn };
 }
 
 async function deleteCollection(root, d, c) {
@@ -427,8 +451,7 @@ function createBoardForm(root, d) {
   rarSel.addEventListener('change', () => {
     valIn.value = String(RARITY_VALUE[rarSel.value]);
   });
-  const lightIn = h('input', { type: 'text', name: 'light', value: '#ffffff' });
-  const darkIn = h('input', { type: 'text', name: 'dark', value: '#e5e5e5' });
+  const picker = imagePicker('board', null);
   const upIn = h('input', { type: 'checkbox', name: 'target', checked: true });
 
   const form = h('form', { class: 'admin-form' },
@@ -436,8 +459,7 @@ function createBoardForm(root, d) {
     field('Название', nameIn),
     field('Редкость', rarSel),
     field('Ценность', valIn),
-    field('Светлые клетки', lightIn),
-    field('Тёмные клетки', darkIn),
+    field('Картинка 1088×1088', picker.el),
     field('Цель апгрейда', upIn),
     h('div', { class: 'admin-row' },
       h('button', { type: 'submit', class: 'btn btn-gold' }, 'Создать')),
@@ -445,15 +467,13 @@ function createBoardForm(root, d) {
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const light = lightIn.value.trim();
-    const dark = darkIn.value.trim();
     const value = Number(valIn.value);
     if (!Number.isInteger(value) || value < 1) {
       toast('Ценность должна быть целым числом ≥ 1', 'error');
       return;
     }
-    if (!COLOR_RE.test(light) || !COLOR_RE.test(dark)) {
-      toast('Проверьте цвета клеток', 'error');
+    if (picker.image === null) {
+      toast('Загрузите картинку доски', 'error');
       return;
     }
     try {
@@ -462,7 +482,7 @@ function createBoardForm(root, d) {
         name: nameIn.value.trim(),
         rarity: rarSel.value,
         value,
-        asset: { type: 'stub', light, dark },
+        asset: { type: 'png', image: picker.image },
         is_upgrade_target: upIn.checked,
       });
       toast('Готово', 'success');
@@ -498,13 +518,7 @@ function openEditModal(root, d, def) {
   const valIn = h('input', { type: 'number', min: 1, value: def.value });
   const upIn = h('input', { type: 'checkbox', checked: def.is_upgrade_target });
 
-  const assetInputs = {};
-  if (isBoard) {
-    assetInputs.lightIn = h('input', { type: 'text', value: def.asset.light });
-    assetInputs.darkIn = h('input', { type: 'text', value: def.asset.dark });
-  } else {
-    assetInputs.colorIn = h('input', { type: 'text', value: def.asset.color });
-  }
+  const picker = imagePicker(def.kind, def.asset.image);
 
   let rarField = null;
   let rarSel = null;
@@ -520,8 +534,7 @@ function openEditModal(root, d, def) {
   const body = h('div', { class: 'admin-form' },
     field('Название', nameIn),
     field('Ценность', valIn),
-    isBoard ? field('Светлые клетки', assetInputs.lightIn) : null,
-    isBoard ? field('Тёмные клетки', assetInputs.darkIn) : field('Цвет фигуры', assetInputs.colorIn),
+    field(isBoard ? 'Картинка 1088×1088' : 'Картинка 128×128', picker.el),
     field('Цель апгрейда', upIn),
     rarField,
   );
@@ -547,14 +560,8 @@ function openEditModal(root, d, def) {
             toast('Ценность должна быть целым числом ≥ 1', 'error');
             return false;
           }
-          if (isBoard) {
-            if (!COLOR_RE.test(assetInputs.lightIn.value.trim()) || !COLOR_RE.test(assetInputs.darkIn.value.trim())) {
-              toast('Проверьте цвета клеток', 'error');
-              return false;
-            }
-          }
           try {
-            await saveItemDef(d, def, { name, value, upIn, rarSel, assetInputs, isBoard });
+            await saveItemDef(d, def, { name, value, upIn, rarSel, picker });
             toast('Готово', 'success');
             await renderDetail(root, d.id);
             return true;
@@ -568,21 +575,12 @@ function openEditModal(root, d, def) {
   });
 }
 
-async function saveItemDef(d, def, { name, value, upIn, rarSel, assetInputs, isBoard }) {
+async function saveItemDef(d, def, { name, value, upIn, rarSel, picker }) {
   const body = {
     name,
     value,
     is_upgrade_target: upIn.checked,
-    asset: isBoard
-      ? {
-          type: 'stub',
-          light: assetInputs.lightIn.value.trim() || def.asset.light,
-          dark: assetInputs.darkIn.value.trim() || def.asset.dark,
-        }
-      : {
-          type: 'stub',
-          color: assetInputs.colorIn.value.trim() || def.asset.color,
-        },
+    asset: { type: 'png', image: picker.image },
   };
   if (d.status === 'draft' && rarSel) {
     body.rarity = rarSel.value;
