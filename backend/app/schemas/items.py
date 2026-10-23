@@ -79,15 +79,13 @@ class ItemDefOut(BaseModel):
     value: int
     asset: SkinAsset
     set: SetRef
+    collection: CollectionRef | None
 
 
 class SkinImageOut(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
     image: str
     kind: Literal["piece", "board"]
     url: str
-    collection: CollectionRef | None
 
 
 class CaseRefOut(BaseModel):
