@@ -4,7 +4,7 @@ from sqlalchemy import select
 from app.chess_engine import format_chance
 from app.models import Case, CaseDrop, ItemDef
 from app.schemas.items import exterior
-from app.seed_skins import seed_image_id
+from app.seed_skins import seed_asset
 from app.services.cases import auto_weights
 from app.services.settings import DEFAULTS
 
@@ -54,7 +54,7 @@ async def test_seed_sets(client) -> None:
         assert item["kind"] == "piece"
         assert item["set"] == {"code": "genesis", "name": "Genesis"}
         assert item["collection"] == {"code": "genesis", "name": "Genesis"}
-        assert item["asset"] == {"type": "png", "image": seed_image_id(item["code"])}
+        assert item["asset"] == seed_asset(item["code"])
     boards = detail["boards"]
     assert [board["code"] for board in boards] == BOARD_CODES
     for board in boards:

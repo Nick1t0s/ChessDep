@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 
 from app.models import AdminAudit, User
-from app.seed_skins import seed_image_id
+from app.seed_skins import seed_asset
 
 SLOTS = [s + p for s in "wb" for p in "PNBRQK"]
 
@@ -14,7 +14,7 @@ SLOTS = [s + p for s in "wb" for p in "PNBRQK"]
 def pieces_body(rarity: str = "common", value: int = 20) -> list[dict]:
     return [
         {"side": s[0], "piece_type": s[1], "rarity": rarity, "value": value,
-         "asset": {"type": "png", "image": seed_image_id("base-wp")}}
+         "asset": seed_asset("base-wp")}
         for s in SLOTS
     ]
 

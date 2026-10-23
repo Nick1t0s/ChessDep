@@ -1,10 +1,13 @@
 """PNG-заглушки сида: файлы app/seed_images/<name>.png (генерирует scripts/gen_seed_images.py).
 
-Используют seed_data.py (id картинок в asset), миграция 0008 и tests/conftest.py (строки skin_images).
+Используют seed_data.py (id картинок в asset), миграция 0008, tests/conftest.py (строки skin_images),
+seed_asset — asset скинов сида и тестов.
 """
 import hashlib
 from functools import cache
 from pathlib import Path
+
+from app.schemas.items import EXTERIORS
 
 SEED_IMAGES_DIR = Path(__file__).parent / "seed_images"
 
@@ -39,3 +42,9 @@ def seed_image_rows() -> list[dict]:
         {"id": seed_image_id(name), "kind": _kind(name), "data": _read(name)}
         for name in SEED_IMAGE_NAMES
     ]
+
+
+def seed_asset(name: str) -> dict:
+    """asset скина сида: картинка name основной и во всех качествах."""
+    image = seed_image_id(name)
+    return {"type": "png", "image": image, "exteriors": {ext: image for ext in EXTERIORS}}
