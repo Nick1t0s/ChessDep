@@ -3,6 +3,8 @@ import { h, clear } from './dom.js';
 import { initLayout, setBalance } from './layout.js';
 import { toast } from './toast.js';
 import { fmtCrystals } from './format.js';
+import { openModal } from './modal.js';
+import { itemCard } from './items.js';
 
 await initLayout({ auth: 'optional', active: 'cases' });
 
@@ -56,6 +58,8 @@ function caseCaption(c) {
 function caseCard(c) {
   const buyBtn = h('button', { type: 'button', class: 'btn btn-gold btn-sm' }, 'Купить');
   buyBtn.addEventListener('click', () => buyCase(String(c.id), buyBtn));
+  const dropsBtn = h('button', { type: 'button', class: 'btn btn-ghost btn-sm' }, 'Содержимое');
+  dropsBtn.addEventListener('click', () => showContents(c, buyBtn));
   return h('div', { class: 'card case-card' },
     h('h3', { class: 'card-title' }, c.name),
     caseCaption(c) !== null ? h('p', { class: 'case-collection' }, caseCaption(c)) : null,
@@ -66,9 +70,29 @@ function caseCard(c) {
       : null,
     h('div', { class: 'case-actions' },
       buyBtn,
-      h('a', { href: '/case.html?id=' + encodeURIComponent(c.id), class: 'btn btn-ghost btn-sm' }, 'Содержимое'),
+      dropsBtn,
     ),
   );
+}
+
+// Содержимое кейса — в модалке поверх магазина.
+async function showContents(c, buyBtn) {
+  let d = null;
+  try {
+    d = await api('GET', '/cases/' + encodeURIComponent(c.id));
+  } catch (e) {
+    toast(e.message, 'error');
+    return;
+  }
+  const grid = h('div', { class: 'item-grid case-drops' });
+  for (const drop of d.drops) {
+    grid.appendChild(itemCard(drop.def, { badge: drop.chance_text }));
+  }
+  const actions = [{ label: 'Закрыть', kind: 'ghost' }];
+  if (d.on_sale_now) {
+    actions.push({ label: 'Купить за ' + fmtCrystals(d.price), kind: 'gold', onClick: () => buyCase(String(c.id), buyBtn) });
+  }
+  openModal({ title: d.name, titleAnim: 'none', body: grid, actions });
 }
 
 async function buyCase(id, btn) {

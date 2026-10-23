@@ -349,7 +349,7 @@ docs/, tasks/, legacy/
 - Просмотр позиции: клик по ходу показывает `events[].board`. Живые обновления продолжают приходить, но доску не перерисовывают до «К текущей позиции».
 
 ### 12.4 Страницы
-`index` (лобби: поиск, приглашение, ежедневная награда), `game`, `live`, `replay`, `user`, `invite`, `login`, `register`, `inventory`, `cases`, `case`, `upgrade`, `market`, `market-item`, `gifts`, `profile`, `leaderboard`, `cases` (магазин), `admin` (вкладки грузятся динамически из `js/admin/*.js`: catalog = наборы, cases = кейсы и пул награды, users, settings, misc = маркет + журнал).
+`index` (лобби: поиск, приглашение, ежедневная награда), `game`, `live`, `replay`, `user`, `invite`, `login`, `register`, `inventory`, `cases` (магазин; «Содержимое» кейса — модалка поверх магазина), `case` (открытие кейса из инвентаря `?item=`; карточка кейса по прямой ссылке `?id=`), `upgrade`, `market`, `market-item`, `gifts`, `profile`, `leaderboard`, `admin` (вкладки грузятся динамически из `js/admin/*.js`: catalog = наборы, cases = кейсы и пул награды, users, settings, misc = маркет + журнал).
 
 ## 13. nginx и HTTPS
 - `nginx/40-chessdep-conf.sh` при старте контейнера выбирает шаблон: есть `/etc/nginx/certs/fullchain.pem` и `privkey.pem` — `https.conf.template` (443 + 301 с 80 на `https://$host:${HTTPS_PORT}`, HSTS), иначе `http.conf.template`. Общая часть — `nginx/conf/app.locations`.

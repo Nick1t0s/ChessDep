@@ -8,3 +8,6 @@
 .strip-track { display: flex; gap: 12px; padding: 10px 0; will-change: transform; }
 .strip-cell { flex: 0 0 120px; width: 120px; }
 .strip-cell .item-card { height: 170px; }
+
+.modal:has(.case-drops) { width: min(960px, 94vw); }
+.case-drops { max-height: 65vh; overflow-y: auto; margin-bottom: 14px; padding: 4px; text-align: left; }
