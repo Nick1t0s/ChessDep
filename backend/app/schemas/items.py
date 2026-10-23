@@ -13,7 +13,7 @@ Slot = Literal["wP", "wN", "wB", "wR", "wQ", "wK", "bP", "bN", "bB", "bR", "bQ",
 DefKind = Literal["piece", "board"]
 CaseKind = Literal["set", "collection", "custom"]
 
-HexColor = constr(pattern=r"^#[0-9a-fA-F]{6}$")
+ImageId = constr(pattern=r"^[0-9a-f]{64}$")
 SlugCode = constr(pattern=r"^[a-z0-9-]{2,40}$")
 
 NameStr = constr(min_length=1, max_length=60)
@@ -42,19 +42,11 @@ def exterior(wear: float) -> str:
     return "BS"
 
 
-class PieceAsset(BaseModel):
+class SkinAsset(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["stub"]
-    color: HexColor
-
-
-class BoardAsset(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    type: Literal["stub"]
-    light: HexColor
-    dark: HexColor
+    type: Literal["png"]
+    image: ImageId
 
 
 # --- Выходные схемы ---------------------------------------------------------
@@ -85,8 +77,16 @@ class ItemDefOut(BaseModel):
     piece_type: PieceType | None
     rarity: str
     value: int
-    asset: PieceAsset | BoardAsset
+    asset: SkinAsset
     set: SetRef
+
+
+class SkinImageOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    image: str
+    kind: Literal["piece", "board"]
+    url: str
     collection: CollectionRef | None
 
 
@@ -288,7 +288,7 @@ class PieceIn(BaseModel):
     piece_type: PieceType
     rarity: Rarity
     value: int = Field(ge=1, le=10_000_000)
-    asset: PieceAsset
+    asset: SkinAsset
     is_upgrade_target: bool = True
 
 
@@ -322,7 +322,7 @@ class BoardCreateIn(BaseModel):
     name: NameStr
     rarity: Rarity
     value: int = Field(ge=1, le=10_000_000)
-    asset: BoardAsset
+    asset: SkinAsset
     is_upgrade_target: bool = True
 
 
@@ -332,7 +332,7 @@ class ItemDefPatchIn(BaseModel):
     name: NameStr | None = None
     rarity: Rarity | None = None
     value: int | None = Field(default=None, ge=1, le=10_000_000)
-    asset: PieceAsset | BoardAsset | None = None
+    asset: SkinAsset | None = None
     is_upgrade_target: bool | None = None
 
 
