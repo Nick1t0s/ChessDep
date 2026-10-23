@@ -95,7 +95,7 @@
 
 **Маркет и подарки:** предметы-кейсы выставляются и дарятся как скины; базовые → `ITEM_BOUND`.
 
-**Апгрейд:** входы — только скины не `base` (кейс → `ITEM_NOT_UPGRADABLE`, базовый → `ITEM_BOUND`); цель — скин (фигура или доска) из `released` небазового набора с `is_upgrade_target`.
+**Апгрейд:** входы — только скины не `base` (кейс → `ITEM_NOT_UPGRADABLE`, базовый → `ITEM_BOUND`); цель — скин (фигура или доска) из `released` небазового набора с `is_upgrade_target` (иначе `UPGRADE_TARGET_NOT_AVAILABLE`); все входы — из того же набора, что и цель (иначе `400 UPGRADE_SET_MISMATCH` «Апгрейд возможен только внутри одного набора»).
 
 **Ежедневная награда:**
 - `wins_today` — число партий `status = 'finished'`, где `result` = цвет игрока, `ply ≥ reward_min_plies`, `finished_at` в текущих сутках UTC (`[00:00, 24:00)` от `clock.now()`).

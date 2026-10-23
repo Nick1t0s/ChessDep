@@ -150,6 +150,7 @@ ChessDep — онлайн-шахматы (PvP) с элементами кази�
 
 ### 4.6 Апгрейд скинов
 - Вход: от 1 до `upgrade_max_inputs` (10) **разных** своих `owned` предметов + целевой `item_def` (коллекция `released`, `is_upgrade_target = true`).
+- Все входы и цель — из **одного набора**, иначе `400 UPGRADE_SET_MISMATCH`. Апгрейд между наборами запрещён.
 - `chance = Σ(value_inputs) / target.value × (1 − upgrade_edge)`. Допустимо, только если `upgrade_min_chance ≤ chance ≤ upgrade_max_chance` (0.01 … 0.80), иначе `400 UPGRADE_CHANCE_OUT_OF_RANGE`.
 - Экипированные входы автоматически снимаются со слотов.
 - Бросок `r`; успех ⇔ `r < chance`. **Все входы сгорают** при любом исходе; при успехе создаётся экземпляр цели (source=`upgrade`).
