@@ -13,6 +13,7 @@ const REASON_RU = {
   TOO_MANY_INPUTS: 'Слишком много предметов',
   DUPLICATE_INPUTS: 'Повторяющиеся предметы',
   UPGRADE_TARGET_NOT_AVAILABLE: 'Цель недоступна',
+  UPGRADE_SET_MISMATCH: 'Апгрейд возможен только внутри одного набора',
 };
 
 let items = [];
@@ -60,6 +61,14 @@ function sumValue() {
   return sum;
 }
 
+function selectedSetCode() {
+  for (const id of selected) {
+    const item = items.find((it) => it.id === id);
+    if (item) return item.def.set.code;
+  }
+  return null;
+}
+
 function renderInventory() {
   const sum = sumValue();
   clear(invSum);
@@ -76,8 +85,10 @@ function renderInventory() {
 
 function renderTargets() {
   const sum = sumValue();
+  const setCode = selectedSetCode();
   clear(targetGrid);
   for (const def of targets) {
+    if (setCode !== null && def.set.code !== setCode) continue;
     if (selected.size > 0 && sum > 0 && def.value <= sum) continue;
     targetGrid.appendChild(itemCard(def, {
       selected: target?.id === def.id,
@@ -98,9 +109,16 @@ function toggleItem(id) {
       toast('Не больше 10 предметов', 'error');
       return;
     }
+    const item = items.find((it) => it.id === id);
+    const setCode = selectedSetCode();
+    if (item && setCode !== null && item.def.set.code !== setCode) {
+      toast('Апгрейд возможен только внутри одного набора', 'error');
+      return;
+    }
     selected.add(id);
   }
   if (selected.size === 0) target = null;
+  if (target !== null && selected.size > 0 && target.set.code !== selectedSetCode()) target = null;
   renderInventory();
   renderTargets();
   refreshPreview();
