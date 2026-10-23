@@ -1,5 +1,6 @@
 .admin-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-.admin-tab { margin-top: 8px; }
+.admin-tab { margin-top: 8px; overflow-x: auto; }
+.admin-tab code { white-space: pre-wrap; word-break: break-all; }
 .admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .admin-table th, .admin-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
 .admin-table th { color: var(--muted); font-weight: 600; }

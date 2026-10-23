@@ -163,8 +163,10 @@ async function main() {
     updateButtons();
     spectatorBadge.hidden = !spectator;
     actionsCard.hidden = spectator;
-    depHint.hidden = spectator;
-    depPanel.hidden = spectator;
+    if (spectator) {
+      depHint.hidden = true;
+      depPanel.hidden = true;
+    }
     drawBanner.hidden = spectator
       || !(state.draw_offer_by !== null && state.draw_offer_by !== state.you && state.status === 'active');
     btnAbort.hidden = spectator || !(state.status === 'active' && state.ply < 2);

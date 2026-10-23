@@ -2,6 +2,20 @@ export class ApiError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
 }
 
+// Запрос, оборванный переходом на другую страницу, не должен всплывать как ошибка.
+let leaving = false;
+addEventListener('beforeunload', () => { leaving = true; });
+addEventListener('pagehide', () => { leaving = true; });
+
+async function send(url, req) {
+  try {
+    return await fetch(url, req);
+  } catch (e) {
+    if (leaving) return new Promise(() => {});
+    throw e;
+  }
+}
+
 export async function api(method, path, body, opts = {}) {
   const opts_ = opts ?? {};
   const redirectOn401 = opts_.redirectOn401 !== false;
@@ -10,7 +24,7 @@ export async function api(method, path, body, opts = {}) {
     req.headers['Content-Type'] = 'application/json';
     req.body = JSON.stringify(body);
   }
-  const res = await fetch('/api/v1' + path, req);
+  const res = await send('/api/v1' + path, req);
   if (res.status === 204) return null;
   let data = null;
   try { data = await res.json(); } catch { /* пустое тело */ }
@@ -24,7 +38,7 @@ export async function api(method, path, body, opts = {}) {
 
 // Загрузка файла сырыми байтами (PNG скина): тело — сам файл, ответ — JSON.
 export async function apiUpload(path, file) {
-  const res = await fetch('/api/v1' + path, {
+  const res = await send('/api/v1' + path, {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'image/png' },

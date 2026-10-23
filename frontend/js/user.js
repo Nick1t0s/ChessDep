@@ -19,7 +19,10 @@ if (login === null || !/^[A-Za-z0-9_-]{3,16}$/.test(login)) {
     user = await api('GET', '/users/' + encodeURIComponent(login));
   } catch (e) {
     if (e.status === 404) {
-      main.appendChild(h('p', {}, 'Игрок не найден'));
+      main.appendChild(h('div', { class: 'card' },
+        h('h3', { class: 'card-title' }, 'Игрок не найден'),
+        h('a', { class: 'btn btn-ghost', href: '/leaderboard.html' }, 'К таблице лидеров'),
+      ));
     } else {
       toast(e.message, 'error');
     }

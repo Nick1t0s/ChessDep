@@ -1,4 +1,6 @@
     server_tokens off;
+    # Относительный Location: иначе nginx подставляет порт 80 и стенд на 8080 ломается.
+    absolute_redirect off;
     client_max_body_size 64k;
     root /usr/share/nginx/html;
 

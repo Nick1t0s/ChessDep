@@ -114,6 +114,8 @@
 }
 
 .board-zone.skinned .files {
+  grid-column: 1;
+  grid-row: 1;
   position: absolute;
   left: 2.9412%;
   right: 2.9412%;

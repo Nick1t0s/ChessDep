@@ -32,7 +32,8 @@
 .friend-box { display: flex; flex-direction: column; gap: 10px; }
 .friend-box[empty] { display: none; }
 
-.invite-row { display: flex; gap: 8px; }
+.invite-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.invite-row .invite-link { flex: 1 1 220px; }
 .invite-link {
   flex: 1;
   min-width: 0;
