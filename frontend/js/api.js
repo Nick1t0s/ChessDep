@@ -30,7 +30,11 @@ export async function api(method, path, body, opts = {}) {
   try { data = await res.json(); } catch { /* пустое тело */ }
   if (!res.ok) {
     const err = (data && data.error) || { code: 'NETWORK', message: 'Ошибка сети' };
-    if (res.status === 401 && err.code === 'UNAUTHENTICATED' && redirectOn401) redirectToLogin();
+    if (res.status === 401 && err.code === 'UNAUTHENTICATED' && redirectOn401) {
+      // Страница уходит на логин: не бросаем ошибку, чтобы не было необработанного pageerror.
+      redirectToLogin();
+      return new Promise(() => {});
+    }
     throw new ApiError(res.status, err.code, err.message);
   }
   return data;
@@ -48,7 +52,10 @@ export async function apiUpload(path, file) {
   try { data = await res.json(); } catch { /* пустое тело */ }
   if (!res.ok) {
     const err = (data && data.error) || { code: 'NETWORK', message: 'Ошибка сети' };
-    if (res.status === 401 && err.code === 'UNAUTHENTICATED') redirectToLogin();
+    if (res.status === 401 && err.code === 'UNAUTHENTICATED') {
+      redirectToLogin();
+      return new Promise(() => {});
+    }
     throw new ApiError(res.status, err.code, err.message);
   }
   return data;
