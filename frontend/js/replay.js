@@ -159,11 +159,16 @@ async function main() {
     }
     if (ev.kind === 'dep') {
       const p = ev.payload ?? {};
-      infoEl.textContent = 'Ход ' + ev.ply + ' · Деп: ' + PIECE_NAME_RU[p.from] + ' → ' + PIECE_NAME_RU[p.to]
+      infoEl.textContent = 'Ход ' + moveNo(ev.ply) + ' · Деп: ' + PIECE_NAME_RU[p.from] + ' → ' + PIECE_NAME_RU[p.to]
         + ' · шанс ' + (p.chance * 100).toFixed(2) + '% · ' + (p.success ? 'успех' : 'провал');
       return;
     }
-    infoEl.textContent = 'Ход ' + ev.ply;
+    infoEl.textContent = 'Ход ' + moveNo(ev.ply);
+  }
+
+  // Номер полного хода, как в game.js: полуходы 1 и 2 — ход 1.
+  function moveNo(ply) {
+    return Math.floor((ply - 1) / 2) + 1;
   }
 
   function clearInfo() {
