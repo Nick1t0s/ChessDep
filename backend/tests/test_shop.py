@@ -28,15 +28,7 @@ async def test_shop_list(client) -> None:
     assert shop_case["sale_ends_at"] is None
 
 
-_APP_BUG_ITEMS_OUT = (
-    "Баг приложения: app/services/items.py:294 (items_out) — "
-    "'await db.scalars(...).all()' вызывает .all() у корутины, "
-    "любое ItemOut предмета-кейса бросает AttributeError "
-    "(POST /cases/{id}/buy → 500 вместо 200 CaseBuyOut)."
-)
 
-
-@pytest.mark.xfail(reason=_APP_BUG_ITEMS_OUT, strict=True)
 async def test_buy_case(alice) -> None:
     resp = await alice.post("/api/v1/cases/1/buy")
     assert resp.status_code == 200, resp.text
@@ -99,7 +91,6 @@ async def test_buy_insufficient_funds(alice, db) -> None:
         ).all() == []
 
 
-@pytest.mark.xfail(reason=_APP_BUG_ITEMS_OUT, strict=True)
 async def test_stock_limit(admin, alice, bob) -> None:
     resp = await admin.patch("/api/v1/admin/cases/1", json={"stock_limit": 2})
     assert resp.status_code == 200, resp.text
@@ -127,7 +118,6 @@ async def test_stock_limit(admin, alice, bob) -> None:
     assert resp.json() == []
 
 
-@pytest.mark.xfail(reason=_APP_BUG_ITEMS_OUT, strict=True)
 async def test_stock_limit_concurrent(admin, alice, db) -> None:
     resp = await admin.patch("/api/v1/admin/cases/1", json={"stock_limit": 3})
     assert resp.status_code == 200, resp.text
@@ -161,7 +151,6 @@ async def test_stock_limit_concurrent(admin, alice, db) -> None:
         assert user.balance == 10000 - 300
 
 
-@pytest.mark.xfail(reason=_APP_BUG_ITEMS_OUT, strict=True)
 async def test_sale_window(admin, alice, frozen) -> None:
     starts_at = (frozen.now() + timedelta(hours=1)).isoformat()
     resp = await admin.patch("/api/v1/admin/cases/1", json={"sale_starts_at": starts_at})

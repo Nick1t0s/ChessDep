@@ -157,14 +157,6 @@ async def test_gift_resets_trade_hold(alice, bob, frozen) -> None:
     assert resp.json()["error"]["code"] == "TRADE_HOLD"
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Баг приложения: app/services/items.py::items_out — "
-        "await db.scalars(...).all() без обрамляющих скобок для кейсов "
-        "('coroutine' object has no attribute 'all'); тест верен по контракту v3"
-    ),
-    strict=True,
-)
 async def test_gift_case(alice, bob) -> None:
     (case_item_id,) = await give_cases("alice", [1])
     resp = await alice.post(

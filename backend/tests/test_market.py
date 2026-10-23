@@ -430,14 +430,6 @@ async def _base_item_id(client) -> int:
     return next(i["id"] for i in inv if i["source"] == "base" and i["bound"] is True)
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Баг приложения: app/services/items.py::items_out — "
-        "await db.scalars(...).all() без обрамляющих скобок для кейсов "
-        "('coroutine' object has no attribute 'all'); тест верен по контракту v3"
-    ),
-    strict=True,
-)
 async def test_list_and_buy_case(alice, bob) -> None:
     (item_id,) = await give_cases("alice", [1])
     listing = await _create_listing(alice, item_id, 150)
@@ -471,14 +463,6 @@ async def test_list_and_buy_case(alice, bob) -> None:
     assert body["sales"][0]["price"] == 150
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Баг приложения: app/services/items.py::items_out — "
-        "await db.scalars(...).all() без обрамляющих скобок для кейсов "
-        "('coroutine' object has no attribute 'all'); тест верен по контракту v3"
-    ),
-    strict=True,
-)
 async def test_kind_filter(alice, bob) -> None:
     skin = (await give_items("alice", ["genesis-wp"]))[0]
     board = (await give_items("alice", ["genesis-board-paper"]))[0]

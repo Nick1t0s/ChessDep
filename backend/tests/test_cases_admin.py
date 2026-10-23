@@ -309,15 +309,6 @@ async def test_retire_set_unpublishes(admin, db, client) -> None:
     assert resp.json()["on_sale_now"] is False
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Баг приложения: app/services/items.py::items_out вызывает .all() на "
-        "неожиданной корутине db.scalars(...) (строка 294), любой ItemOut для "
-        "предмета-кейса падает с AttributeError: 'coroutine' object has no "
-        "attribute 'all'; POST /cases/{id}/buy → 500 вместо CaseBuyOut"
-    ),
-    strict=True,
-)
 async def test_patch_limits(admin, alice) -> None:
     sold = 0
 
@@ -388,14 +379,6 @@ async def test_daily_pool_admin(admin) -> None:
     assert resp.json() == []
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Баг приложения: app/services/items.py::items_out вызывает .all() на "
-        "неожиданной корутине db.scalars(...) (строка 294), ItemOut для "
-        "выданного предмета-кейса падает с AttributeError вместо ответа 200"
-    ),
-    strict=True,
-)
 async def test_grant_item_and_case(admin, alice, db) -> None:
     alice_id = (await db.scalars(select(User).where(User.login == "alice"))).one().id
 

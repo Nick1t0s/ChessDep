@@ -184,13 +184,6 @@ async def test_inventory_and_equip(alice) -> None:
     assert loadout["complete"] is False
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "app/services/items.py::items_out — отсутствует await db.scalars(...) при загрузке "
-        "кейсов: любой вывод предмета-кейса через GET /inventory падает с AttributeError → 500"
-    ),
-)
 async def test_case_item_in_inventory(alice) -> None:
     case_ids = await give_cases("alice", [1])
     resp = await alice.get("/api/v1/inventory?kind=case")
@@ -198,7 +191,7 @@ async def test_case_item_in_inventory(alice) -> None:
     items = resp.json()
     assert [i["id"] for i in items] == [case_ids[0]]
     assert items[0]["kind"] == "case"
-    assert items[0]["item_def"] is None
+    assert items[0]["def"] is None
     assert items[0]["case"]["code"] == "genesis"
 
 
@@ -269,15 +262,6 @@ async def test_loadout_incomplete_blocks_play(alice, bob) -> None:
     assert resp.status_code == 200, resp.text
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "app/services/matchmaking.py::_match_pair — исключение LOADOUT_INCOMPLETE уходит в `raise` "
-        "(проверяется только ALREADY_IN_GAME, ветка удаления игроков из очереди, стр. 105–116, "
-        "недостижима): по контракту незавершённый игрок должен быть удалён из очереди, но "
-        "приложение возвращает его в очередь и бросает AppError наружу tick"
-    ),
-)
 async def test_matchmaking_drops_incomplete(alice, bob) -> None:
     resp = await alice.post("/api/v1/matchmaking/queue", json={"time_control": "3+2"})
     assert resp.status_code == 202, resp.text
