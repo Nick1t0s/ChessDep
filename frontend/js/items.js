@@ -20,6 +20,12 @@ export const WHITE_SLOTS = ['wP', 'wN', 'wB', 'wR', 'wQ', 'wK'];
 export const BLACK_SLOTS = ['bP', 'bN', 'bB', 'bR', 'bQ', 'bK'];
 export const LOADOUT_SLOTS = [...WHITE_SLOTS, ...BLACK_SLOTS, 'board'];
 export const SIDE_RU = { w: 'Белые', b: 'Чёрные' };
+export const CASE_KIND_RU = { set: 'Набор', collection: 'Коллекция', custom: 'Особый' };
+
+function setLine(def) {
+  if (!def.set) return null;
+  return def.collection ? def.set.name + ' · ' + def.collection.name : def.set.name;
+}
 
 export function skinPreview(def) {
   if (def.kind === 'board') {
@@ -48,6 +54,7 @@ export function itemCard(def, opts = {}) {
   const root = h('div', { class: classes.join(' ') },
     skinPreview(def),
     h('div', { class: 'item-name' }, def.name),
+    setLine(def) ? h('div', { class: 'item-set' }, setLine(def)) : null,
     h('div', { class: 'item-meta' },
       h('span', { class: 'item-rarity' }, RARITY_RU[def.rarity]),
       h('span', { class: 'item-value mono' }, fmtCrystals(def.value))),

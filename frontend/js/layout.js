@@ -5,7 +5,6 @@ const SECTIONS = [
   ['Играть', '/index.html', 'play'],
   ['Смотреть', '/live.html', 'live'],
   ['Магазин', '/cases.html', 'cases'],
-  ['Наборы', '/collections.html', 'sets'],
   ['Инвентарь', '/inventory.html', 'inventory'],
   ['Апгрейд', '/upgrade.html', 'upgrade'],
   ['Маркет', '/market.html', 'market'],
