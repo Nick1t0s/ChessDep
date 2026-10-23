@@ -1,5 +1,5 @@
 import { h } from './dom.js';
-import { glyph } from './pieces.js';
+import { skinUrl } from './pieces.js';
 import { fmtCrystals } from './format.js';
 
 export const RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
@@ -28,19 +28,14 @@ function setLine(def) {
 }
 
 export function skinPreview(def) {
-  if (def.kind === 'board') {
-    const grid = h('div', { class: 'skin-board' });
-    for (let i = 0; i < 16; i += 1) {
-      const cellClass = (Math.floor(i / 4) + i) % 2 === 1 ? 'cell dark' : 'cell light';
-      grid.appendChild(h('span', { class: cellClass }));
-    }
-    grid.style.setProperty('--light', def.asset.light);
-    grid.style.setProperty('--dark', def.asset.dark);
-    return h('div', { class: 'skin-preview' }, grid);
-  }
-  const glyphSpan = h('span', { class: 'skin-glyph' }, glyph(def.piece_type, def.side === 'b' ? 'black' : 'white'));
-  glyphSpan.style.setProperty('--piece-color', def.asset.color);
-  return h('div', { class: 'skin-preview' }, glyphSpan);
+  const url = skinUrl(def.asset);
+  if (url === null) return h('div', { class: 'skin-preview' });
+  const img = h('img', { class: def.kind === 'board' ? 'skin-img skin-img-board' : 'skin-img' });
+  img.alt = '';
+  img.draggable = false;
+  img.loading = 'lazy';
+  img.src = url;
+  return h('div', { class: 'skin-preview' }, img);
 }
 
 export function casePreview(caseRef) {
