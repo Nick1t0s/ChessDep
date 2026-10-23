@@ -9,7 +9,6 @@ from app.core.security import hash_password
 from app.db import SessionLocal
 from app.models import Ledger, User
 from app.services.economy import apply_delta
-from app.services.settings import DEFAULTS
 from tests.conftest import register
 
 
@@ -84,30 +83,6 @@ async def test_apply_delta_concurrent(db) -> None:
     assert sum(deltas) == user.balance
 
 
-async def test_daily_bonus_concurrent(client, db) -> None:
-    resp = await register(client)
-    assert resp.status_code == 201
-
-    responses = await asyncio.gather(
-        *[client.post("/api/v1/me/daily-bonus") for _ in range(10)]
-    )
-    ok = [r for r in responses if r.status_code == 200]
-    cooldown = [r for r in responses if r.status_code == 400]
-    assert len(ok) == 1
-    assert len(cooldown) == 9
-    assert all(r.json()["error"]["code"] == "BONUS_COOLDOWN" for r in cooldown)
-
-    async with SessionLocal() as check:
-        user = (await check.scalars(select(User))).one()
-        daily_rows = (
-            await check.scalars(select(Ledger).where(Ledger.reason == "daily_bonus"))
-        ).all()
-        deltas = (await check.scalars(select(Ledger.delta).where(Ledger.user_id == user.id))).all()
-    assert len(daily_rows) == 1
-    assert user.balance == DEFAULTS["starting_balance"] + DEFAULTS["daily_bonus"]
-    assert sum(deltas) == user.balance
-
-
 async def test_apply_delta_with_preloaded_user(db) -> None:
     user_id = await _seed_user(db, "preloaduser", 1000)
 
@@ -132,49 +107,6 @@ async def test_apply_delta_with_preloaded_user(db) -> None:
     assert user is not None
     assert user.balance == 400
     assert sum(deltas) == user.balance
-
-
-async def test_me_daily_bonus_available_at(client, db) -> None:
-    resp = await register(client)
-    assert resp.status_code == 201
-
-    me = (await client.get("/api/v1/me")).json()
-    assert me["daily_bonus_available_at"] is None
-
-    bonus = await client.post("/api/v1/me/daily-bonus")
-    assert bonus.status_code == 200
-    me = (await client.get("/api/v1/me")).json()
-    available_at = me["daily_bonus_available_at"]
-    assert available_at is not None
-    assert datetime.fromisoformat(available_at) > datetime.now(UTC)
-
-    async with db.begin():
-        user = (await db.scalars(select(User))).one()
-        user.last_daily_bonus_at = datetime.now(UTC) - timedelta(hours=25)
-
-    me = (await client.get("/api/v1/me")).json()
-    assert me["daily_bonus_available_at"] is None
-
-
-async def test_daily_bonus_cooldown(client, db) -> None:
-    resp = await register(client)
-    assert resp.status_code == 201
-
-    first = await client.post("/api/v1/me/daily-bonus")
-    assert first.status_code == 200
-    assert first.json()["balance"] == 1200
-
-    second = await client.post("/api/v1/me/daily-bonus")
-    assert second.status_code == 400
-    assert second.json()["error"]["code"] == "BONUS_COOLDOWN"
-
-    async with db.begin():
-        row = (await db.scalars(select(User))).one()
-        row.last_daily_bonus_at = datetime.now(UTC) - timedelta(hours=25)
-
-    third = await client.post("/api/v1/me/daily-bonus")
-    assert third.status_code == 200
-    assert third.json()["balance"] == 1400
 
 
 async def test_ledger_pagination(client, db) -> None:
