@@ -27,8 +27,8 @@ function setLine(def) {
   return def.collection ? def.set.name + ' · ' + def.collection.name : def.set.name;
 }
 
-export function skinPreview(def) {
-  const url = skinUrl(def.asset);
+export function skinPreview(def, image = null) {
+  const url = image ? skinUrl({ type: 'png', image }) : skinUrl(def.asset);
   if (url === null) return h('div', { class: 'skin-preview' });
   const img = h('img', { class: def.kind === 'board' ? 'skin-img skin-img-board' : 'skin-img' });
   img.alt = '';
@@ -47,7 +47,7 @@ export function itemCard(def, opts = {}) {
   if (opts.selected === true) classes.push('selected');
   if (opts.onClick) classes.push('clickable');
   const root = h('div', { class: classes.join(' ') },
-    skinPreview(def),
+    skinPreview(def, opts.image ?? null),
     h('div', { class: 'item-name' }, def.name),
     setLine(def) ? h('div', { class: 'item-set' }, setLine(def)) : null,
     h('div', { class: 'item-meta' },
@@ -84,6 +84,7 @@ export function invItemCard(item, opts = {}) {
   return itemCard(item.def, {
     ...opts,
     exterior: item.exterior,
+    image: item.image,
     badge: opts.badge ?? (item.bound ? 'Базовый' : null),
   });
 }
