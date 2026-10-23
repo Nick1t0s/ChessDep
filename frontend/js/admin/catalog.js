@@ -3,12 +3,13 @@ import { h, clear } from '../dom.js';
 import { toast } from '../toast.js';
 import { confirmModal, openModal } from '../modal.js';
 import { fmtCrystals } from '../format.js';
-import { skinPreview, SLOT_RU, WHITE_SLOTS, BLACK_SLOTS, RARITIES, RARITY_RU } from '../items.js';
+import { skinPreview, SLOT_RU, WHITE_SLOTS, BLACK_SLOTS, RARITIES, RARITY_RU, EXTERIOR_RU } from '../items.js';
 
 const SET_STATUS_RU = { draft: 'Черновик', released: 'Выпущен', retired: 'Снят' };
 
 const DEFAULT_RARITY = { P: 'common', N: 'uncommon', B: 'uncommon', R: 'rare', Q: 'epic', K: 'legendary' };
 const RARITY_VALUE = { common: 20, uncommon: 60, rare: 150, epic: 500, legendary: 1500, mythic: 5000 };
+const EXTERIORS = ['FN', 'MW', 'FT', 'WW', 'BS'];
 
 let fieldSeq = 0;
 
@@ -19,7 +20,7 @@ function field(labelText, input) {
 }
 
 // Поле PNG скина: файл сразу грузится на сервер, picker.image — id картинки или null.
-function imagePicker(kind, initialImage) {
+function imagePicker(kind, initialImage, clearable = false) {
   const picker = { image: initialImage, el: null };
   const preview = h('span', { class: 'admin-skin-preview' });
   const input = h('input', { type: 'file' });
@@ -42,6 +43,17 @@ function imagePicker(kind, initialImage) {
   });
   showPreview();
   picker.el = h('div', { class: 'admin-skin-picker' }, input, preview);
+  if (clearable) {
+    picker.el.appendChild(h('button', {
+      type: 'button',
+      class: 'btn btn-ghost btn-sm',
+      onClick: () => {
+        picker.image = null;
+        input.value = '';
+        showPreview();
+      },
+    }, 'Убрать'));
+  }
   return picker;
 }
 
@@ -519,6 +531,10 @@ function openEditModal(root, d, def) {
   const upIn = h('input', { type: 'checkbox', checked: def.is_upgrade_target });
 
   const picker = imagePicker(def.kind, def.asset.image);
+  const extPickers = {};
+  for (const ext of EXTERIORS) {
+    extPickers[ext] = imagePicker(def.kind, def.asset.exteriors?.[ext] ?? null, true);
+  }
 
   let rarField = null;
   let rarSel = null;
@@ -535,6 +551,7 @@ function openEditModal(root, d, def) {
     field('Название', nameIn),
     field('Ценность', valIn),
     field(isBoard ? 'Картинка 1088×1088' : 'Картинка 128×128', picker.el),
+    ...EXTERIORS.map((ext) => field('Картинка: ' + EXTERIOR_RU[ext], extPickers[ext].el)),
     field('Цель апгрейда', upIn),
     rarField,
   );
@@ -561,7 +578,7 @@ function openEditModal(root, d, def) {
             return false;
           }
           try {
-            await saveItemDef(d, def, { name, value, upIn, rarSel, picker });
+            await saveItemDef(d, def, { name, value, upIn, rarSel, picker, extPickers });
             toast('Готово', 'success');
             await renderDetail(root, d.id);
             return true;
@@ -575,12 +592,18 @@ function openEditModal(root, d, def) {
   });
 }
 
-async function saveItemDef(d, def, { name, value, upIn, rarSel, picker }) {
+async function saveItemDef(d, def, { name, value, upIn, rarSel, picker, extPickers }) {
+  const exteriors = {};
+  for (const ext of EXTERIORS) {
+    if (extPickers[ext].image !== null) exteriors[ext] = extPickers[ext].image;
+  }
+  const asset = { type: 'png', image: picker.image };
+  if (Object.keys(exteriors).length > 0) asset.exteriors = exteriors;
   const body = {
     name,
     value,
     is_upgrade_target: upIn.checked,
-    asset: { type: 'png', image: picker.image },
+    asset,
   };
   if (d.status === 'draft' && rarSel) {
     body.rarity = rarSel.value;
