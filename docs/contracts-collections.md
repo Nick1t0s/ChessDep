@@ -1,5 +1,7 @@
 # Контракт предметов v3: наборы, коллекции, доски, базовые скины, магазин кейсов, ежедневная награда
 
+Формат `asset` и картинки скинов — в `docs/contracts-skins.md` (заменяет все `stub` ниже).
+
 Заменяет разделы 4.1–4.5 `docs/TZ.md`, эндпоинты предметов и бонуса из §9 и контракт v2 (история — в git). Без изменений остаются: wear/exterior скинов, формула апгрейда, комиссия и логика покупки лота на маркете, trade hold, лента анимации открытия.
 
 ## 1. Модель
@@ -108,7 +110,7 @@
 ### 6.1 Выходные схемы
 
 - `SetRef {code, name}`, `CollectionRef {code, name}`.
-- `ItemDefOut {id, code, name, kind: "piece"|"board", side: "w"|"b"|null, piece_type|null, rarity, value, asset, set: SetRef, collection: CollectionRef|null}`; `asset` — `PieceAsset {type:"stub", color}` или `BoardAsset {type:"stub", light, dark}`.
+- `ItemDefOut {id, code, name, kind: "piece"|"board", side: "w"|"b"|null, piece_type|null, rarity, value, asset, set: SetRef, collection: CollectionRef|null}`; `asset` — `SkinAsset {type:"png", image}` (`docs/contracts-skins.md`).
 - `CaseRefOut {id, code, name, kind, price}`.
 - `ItemOut {id, kind: "skin"|"case", def: ItemDefOut|null, case: CaseRefOut|null, wear: float|null, exterior: str|null, status, equipped_slot|null, source, bound: bool, acquired_at}` — `bound = (source == 'base')`.
 - `LoadoutOut` — 13 полей (`wP`…`bK`, `board`) `ItemOut|null` + `complete: bool`.
@@ -126,8 +128,8 @@
 
 - `SetCreateIn {code, name, description}`, `SetPatchIn {name?, description?}`.
 - `CollectionCreateIn {code, name, description, pieces: [PieceIn×12]}` — как v2 (`PieceIn` без изменений); `CollectionPatchIn {name?, description?}`.
-- `BoardCreateIn {code, name, rarity, value: 1…10 000 000, asset: BoardAsset, is_upgrade_target = true}`.
-- `ItemDefPatchIn {name?, rarity?, value?, asset?: PieceAsset|BoardAsset, is_upgrade_target?}`.
+- `BoardCreateIn {code, name, rarity, value: 1…10 000 000, asset: SkinAsset, is_upgrade_target = true}`.
+- `ItemDefPatchIn {name?, rarity?, value?, asset?: SkinAsset, is_upgrade_target?}`.
 - `CaseCreateIn {code, name, price: 1…10 000 000, sort = 0, kind, set_id: int|null = null, collection_id: int|null = null, stock_limit: int|null = null (≥1), sale_starts_at: datetime|null = null, sale_ends_at: datetime|null = null}` — валидатор: поля ссылки по `kind` как в `ck_cases_kind_ref`, окно `starts < ends` если оба.
 - `CasePatchIn {name?, price?, sort?, stock_limit?, sale_starts_at?, sale_ends_at?}` (явный `null` у трёх последних — снять лимит).
 - `DropIn`/`DropsIn` — как v2. `AutoDropsIn {set_ids: [int] = [], collection_ids: [int] = []}` (до 20 каждого, без повторов).

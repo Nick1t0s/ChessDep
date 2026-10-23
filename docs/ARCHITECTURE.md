@@ -11,6 +11,7 @@
 | `docs/TZ.md` | Исходное ТЗ v1.1: правила депа, экономика, модель данных, API |
 | `docs/contracts-spectate.md` | Контракт зрителей, чата, истории ходов, профилей, HTTPS |
 | `docs/contracts-collections.md` | Контракт предметов v3: наборы, коллекции, доски, базовые скины, магазин кейсов, ежедневная награда — заменяет §4 ТЗ |
+| `docs/contracts-skins.md` | PNG-скины фигур (128×128, прозрачный фон) и досок (1088×1088, рамка 32 px): загрузка, хранение, раздача, отрисовка |
 | `docs/AUDIT.md` | Почему старый фронт (`legacy/`) не используется |
 | `tasks/*.md`, `tasks/delegated/` | Задания, по которым писался код (история, очень подробно) |
 | `CLAUDE.md` | Правила для Claude Code в этом репозитории |
@@ -64,7 +65,8 @@ backend/
     redis.py           общий клиент Redis
     worker.py          цикл worker: tick_clocks, rebuild_deadlines, matchmaking.tick
     cli.py             make-admin / revoke-admin
-    seed_data.py       данные коллекции Genesis (единый источник для миграции и тестов)
+    seed_data.py       сид базового набора и Genesis для тестов (миграции — замороженные seed_data_v*.py)
+    seed_skins.py      PNG-заглушки сида из app/seed_images/ (генерирует scripts/gen_seed_images.py)
     core/              clock, deps (current_user, optional_user, require_admin), errors,
                        origin (CSRF), ratelimit, security (argon2, токены), sessions
     chess_engine/      ЧИСТЫЕ правила шахмат и депа поверх python-chess (без БД и I/O)
@@ -245,7 +247,7 @@ docs/, tasks/, legacy/
 Подробный контракт — `docs/contracts-collections.md` (v3).
 - **Набор** (`item_sets`) — перечень коллекций и досок; вне набора их нет. Статус `draft` → `released` → `retired` есть только у набора; коллекции и доски добавляются только в черновик. Снятие набора снимает с продажи все кейсы с его скинами.
 - **Коллекция** — ровно 12 скинов фигур (`side` ∈ `w`/`b` × `piece_type`), создаётся одним запросом целиком; коды и имена генерирует сервер (`seed_data.item_code/item_name`). **Доска** — скин `kind = board`, принадлежит набору напрямую. У игрока нет страницы наборов: набор и коллекция видны только подписью на карточке скина.
-- **Скин** (`item_defs`): `kind` (`piece`/`board`), `set_id`, у фигур — `collection_id`, `side`, `piece_type`; редкость задаётся вручную; `asset` — `{"type": "stub", "color"}` или `{"type": "stub", "light", "dark"}`.
+- **Скин** (`item_defs`): `kind` (`piece`/`board`), `set_id`, у фигур — `collection_id`, `side`, `piece_type`; редкость задаётся вручную; `asset` — `{"type": "png", "image": "<sha256>"}` (ссылка на `skin_images`, см. ниже).
 - **Базовый набор** (`is_base`, id 1): 12 фигур + доска, выдаются при регистрации (`source = 'base'`, `wear = 0`) и сразу надеты. Базовый предмет (`bound`) нельзя продать, подарить, апгрейдить (`ITEM_BOUND`).
 - **Экземпляр** (`inventory_items`): `wear` в [0, 1) (exterior FN/MW/FT/WW/BS — косметика), статус `owned` | `listed` | `burned`, `acquired_at`. Экипировать, апгрейдить, выставлять и дарить можно только `owned`.
 - **Экипировка:** 13 слотов (`wP…bK` + `board`). Слот можно очистить, но **в бой нельзя без всех 13** (`LOADOUT_INCOMPLETE`): проверки в очереди, инвайтах и `create_game`; воркер выкидывает из очереди игрока с неполной экипировкой. Снапшот в партию — слоты своей стороны без префикса + `board`; каждый видит свою доску, зритель — доску белых.
@@ -261,7 +263,8 @@ docs/, tasks/, legacy/
 - **Автовеса:** вес скина = `rarity_weights[редкость] × 1000 // число скинов этой редкости в кейсе`.
 - **Апгрейд:** 1–10 разных `owned` предметов → цель **из того же набора** (входы из чужого набора — `UPGRADE_SET_MISMATCH`). `chance = Σvalue / target.value × (1 − upgrade_edge)`, допустимо только в `[min, max]`. Входы сгорают при любом исходе. Колесо на фронте останавливается на `roll_value`. Проверка набора — в `services/upgrade.py::compute` до расчёта шанса, поэтому preview отдаёт её как `reason`. Следствие: скины `retired`-набора апгрейдить не во что (цель только из `released`). Страница `upgrade.js` показывает цели только из набора первого выбранного входа и не даёт добавить вход из другого набора.
 - **Ежедневная награда** (`services/daily_reward.py`): после `daily_reward_wins` (3) побед за сутки UTC (`ply ≥ reward_min_plies`) — кнопка «Забрать»: один предмет-кейс по весам из `daily_reward_pool` (админка), бросок в `rolls` (`daily_reward`), раз в сутки (`users.last_daily_reward_on`).
-- **Сид** (`app/seed_data.py::seed_rows`): базовый набор (скины 1–13) и Genesis (коллекция — скины 14–25, доски 26–27, кейс 1 по набору), пул награды. Используют миграция 0007 и `conftest.py`. Старые сиды заморожены в `seed_data_v1.py` (0003) и `seed_data_v2.py` (0006) — не менять.
+- **Картинки скинов** (`services/skin_images.py`, `docs/contracts-skins.md`): PNG хранится в таблице `skin_images` (`id` = sha256 перекодированных байт, `kind`, `data`). Фигура — ровно 128×128, четыре угловых пикселя прозрачные; доска — ровно 1088×1088, рамка 32 px, клетка 128 px, a8 в левом верхнем углу поля. Админ грузит файл `POST /admin/skin-images?kind=…` (сырые байты `image/png`, до 2 МБ; Pillow проверяет и перекодирует в RGBA). Раздача — `GET /skins/<sha>.png` публично с `Cache-Control: immutable`. При создании коллекции/доски и правке asset сервер проверяет, что картинка есть и её вид совпадает со скином.
+- **Сид** (`app/seed_data.py::seed_rows`): базовый набор (скины 1–13) и Genesis (коллекция — скины 14–25, доски 26–27, кейс 1 по набору), пул награды; asset — картинки из `app/seed_images/<code>.png` (id через `app/seed_skins.py`). Использует `conftest.py` (вместе с `seed_image_rows()` для `skin_images`). Сиды миграций заморожены: `seed_data_v1.py` (0003), `seed_data_v2.py` (0006), `seed_data_v3.py` (0007, цветные заглушки) — не менять.
 
 ## 8. Маркет и подарки
 - **Лот:** предмет переходит в `listed`, с экипировки снимается. Лимит активных лотов — `market_max_listings`. Задержка передачи `trade_hold_hours` считается по `acquired_at`.
@@ -292,6 +295,7 @@ docs/, tasks/, legacy/
 | 0005 | `game_messages` |
 | 0006 | коллекции v2: **удаляет все предметы** (лоты, передачи, инвентарь, кейсы, скины, коллекции); `item_defs.kind` → `side`, у `cases` вместо `collection_id`/`is_active` — `status`, 12 слотов лоадаута; сид Genesis v2 |
 | 0007 | наборы v3: **удаляет все предметы**; `item_sets`, `daily_reward_pool`, доски, предметы-кейсы (`inventory_items.case_id`, лоты кейсов), виды и лимиты кейсов, `users.last_daily_reward_on`; сид; выдача базовых скинов всем пользователям |
+| 0008 | `skin_images` + PNG сида; все asset `stub` (в `item_defs` и снапшотах `games.*_loadout`) → `png`: скины сида по своему коду, прочие — базовая картинка того же слота |
 
 Поля таблиц — в моделях `backend/app/models/*.py` и в `docs/TZ.md` §8. Миграции пишутся **руками** (не autogenerate), у каждой есть `downgrade`.
 
@@ -305,9 +309,9 @@ docs/, tasks/, legacy/
 | Партия | `GET /games/live`, `GET /games/{id}`, `GET /games/{id}/events`, `GET/POST /games/{id}/chat` | любой залогиненный |
 | Действия в партии | `GET /games/{id}/dep-options`, `POST /games/{id}/move`, `/dep`, `/resign`, `/draw/offer`, `/draw/accept`, `/draw/decline`, `/abort` | только игроки |
 | Игроки | `GET /users/{login}`, `/users/{login}/games`, `GET /leaderboard` | залогиненный / лидерборд публичный |
-| Предметы | `GET /sets`, `/sets/{code}`, `/collections/{code}`, `/shop`, `/cases/{id}` (публично); `GET /item-defs`, `/inventory`, `/loadout`, `PUT /loadout/{slot}`, `POST /cases/{id}/buy`, `POST /inventory/{id}/open`, `POST /upgrade/preview`, `/upgrade` | см. слева |
+| Предметы | `GET /sets`, `/sets/{code}`, `/collections/{code}`, `/shop`, `/cases/{id}`, `/skins/{sha}.png` (публично); `GET /item-defs`, `/inventory`, `/loadout`, `PUT /loadout/{slot}`, `POST /cases/{id}/buy`, `POST /inventory/{id}/open`, `POST /upgrade/preview`, `/upgrade` | см. слева |
 | Маркет и подарки | `GET /market`, `/market/defs/{def_id}` (публично); `POST /market/listings`, `DELETE /market/listings/{id}`, `POST /market/listings/{id}/buy`, `POST /gifts` | залогиненный |
-| Админ | `/admin/sets…`, `/admin/collections/{id}`, `/admin/item-defs…`, `/admin/cases…` (`publish`/`unpublish`), `/admin/daily-reward-pool`, `/admin/users…` (поиск, карточка, ban/unban, balance, grant-item), `/admin/settings…`, `/admin/rolls`, `/admin/games/{id}/events`, `/admin/market…`, `/admin/audit` | admin |
+| Админ | `/admin/sets…`, `/admin/collections/{id}`, `/admin/item-defs…`, `/admin/skin-images`, `/admin/cases…` (`publish`/`unpublish`), `/admin/daily-reward-pool`, `/admin/users…` (поиск, карточка, ban/unban, balance, grant-item), `/admin/settings…`, `/admin/rolls`, `/admin/games/{id}/events`, `/admin/market…`, `/admin/audit` | admin |
 | WebSocket | `/ws/games/{id}` | любой залогиненный |
 
 Формы запросов и ответов — в `backend/app/schemas/*.py`, `docs/TZ.md` §9, `docs/contracts-spectate.md`.
@@ -330,9 +334,9 @@ docs/, tasks/, legacy/
 | `layout.js` | `initLayout({auth, active})` — шапка, баланс, бейдж подарков, мобильный таб-бар; `setBalance` |
 | `toast.js`, `modal.js` | уведомления (не больше 4 одновременно), модалки, `confirmModal` |
 | `format.js` | `fmtCrystals`, `fmtClock`, словари русских названий |
-| `pieces.js` | глифы (форма = сторона), цвета скинов фигур и досок |
+| `pieces.js` | `skinUrl`, `pieceNode` (картинка скина фигуры, без картинки — глиф), `boardUrl`; размеры PNG |
 | `items.js` | `itemCard` (с подписью «Набор · Коллекция»), `skinPreview`, названия редкостей, износа и видов кейсов (`CASE_KIND_RU`) |
-| `board.js` | доска: 64 кнопки, создаются один раз; ориентация; подсветки |
+| `board.js` | доска: 64 кнопки, создаются один раз; ориентация; подсветки; доска-картинка (`.board-zone.skinned`, отступ рамки 2.9412 %, подписи a–h/1–8 поверх рамки); `pieceElement` для анимации депа |
 | `ws.js` | WebSocket с ping и переподключением 1/2/5/10 с |
 | `dep-fx.js` | анимация депа: бар до `roll_value`, затем превращение или сгорание |
 | `game-moves.js`, `game-chat.js` | список ходов с выбором позиции; чат |
@@ -361,7 +365,7 @@ docs/, tasks/, legacy/
   - клиенты `alice`, `bob`, `carol`, `admin`, `client`;
   - `rng` (`FixedRng`), `frozen` (время);
   - хелперы `start_game` (alice всегда белые), `set_fen`, `give_items`, `set_balance`, `set_setting`, `count_queries`.
-- **Новую таблицу добавлять в `_TRUNCATE_SQL`.**
+- **Новую таблицу добавлять в `_TRUNCATE_SQL`.** Картинки сида (`skin_images`) заливаются заново перед каждым тестом; id картинки сида в тестах — `seed_image_id("<code>")`.
 - Браузерные прогоны в репозиторий не входят. Делались через контейнер `mcr.microsoft.com/playwright:v1.49.1-noble` в сети `chessdep_default` с TCP-прокси `localhost:8080 → nginx:80` внутри контейнера, чтобы `Origin` совпадал.
 
 ## 15. Отступления от `docs/TZ.md` (актуальное поведение)
@@ -370,10 +374,11 @@ docs/, tasks/, legacy/
 - Маркет и подарки были «вне скоупа» в ТЗ 1.0, в 1.1 включены и реализованы.
 - `h(tag, null, …)` допустим (`null` = без атрибутов).
 - Покупка на маркете не ограничена rate-limit (защищена блокировками).
+- Asset скина — только PNG (`docs/contracts-skins.md`), тип `stub` из ТЗ §4 удалён; сторона фигуры задаётся самой картинкой скина, а не формой глифа.
 
 ## 16. Известные ограничения
 - Нет бота, модерации чата (удаление, мут), зрителей без аккаунта.
-- Скины — белые заглушки; новые типы `asset` (картинки) потребуют задачи на бэк, админку и `pieces.js`/`items.js`.
+- Скины сида — сгенерированные PNG-заглушки (глифы DejaVu); настоящие картинки грузятся через админку. Неиспользуемые картинки из `skin_images` не удаляются.
 - `worker` рассчитан на один экземпляр (матчмейкинг без Lua-атомарности).
 - Кэш настроек — 5 с на процесс.
 - HTTPS-сертификаты нужно продлевать вручную (Let's Encrypt не автоматизирован).
