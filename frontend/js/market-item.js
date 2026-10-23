@@ -20,7 +20,10 @@ if (caseParam !== null && /^\d+$/.test(caseParam)) {
 } else if (defParam !== null && /^\d+$/.test(defParam)) {
   await loadPage('defs/' + defParam);
 } else {
-  main.appendChild(h('p', {}, 'Некорректная ссылка'));
+  main.appendChild(h('div', { class: 'card' },
+    h('p', {}, 'Некорректная ссылка'),
+    h('a', { href: '/index.html', class: 'btn btn-gold' }, 'В лобби'),
+  ));
 }
 
 async function loadPage(path) {
