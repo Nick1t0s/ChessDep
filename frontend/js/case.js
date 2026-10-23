@@ -184,7 +184,7 @@ async function openItemCase(itemId, openBtn, windowEl, track) {
   openModal({
     title: 'Выпало!',
     titleAnim: 'pop',
-    body: itemCard(res.item.def, { exterior: res.item.exterior }),
+    body: itemCard(res.item.def, { exterior: res.item.exterior, image: res.item.image }),
     actions: [
       { label: 'В инвентарь', kind: 'ghost', onClick: () => { location.href = '/inventory.html'; } },
       { label: 'В магазин', kind: 'gold', onClick: () => { location.href = '/cases.html'; } },

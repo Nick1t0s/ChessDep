@@ -119,6 +119,7 @@ function lotCard(l) {
   row.appendChild(h('a', { class: 'btn btn-ghost btn-sm', href: '/market-item.html?def=' + String(l.item.def.id) }, 'История'));
   return itemCard(l.item.def, {
     exterior: l.item.exterior,
+    image: l.item.image,
     badge: l.mine ? 'Ваш лот' : undefined,
     extra: row,
   });
@@ -184,6 +185,7 @@ function myLotCard(l) {
   }
   return itemCard(l.item.def, {
     exterior: l.item.exterior,
+    image: l.item.image,
     extra: row,
   });
 }

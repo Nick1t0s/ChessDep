@@ -77,6 +77,7 @@ function renderInventory() {
   for (const item of items) {
     invGrid.appendChild(itemCard(item.def, {
       exterior: item.exterior,
+      image: item.image,
       selected: selected.has(item.id),
       onClick: () => toggleItem(item.id),
     }));
@@ -202,7 +203,7 @@ goBtn.addEventListener('click', async () => {
     openModal({
       title: 'Апгрейд удался!',
       titleAnim: 'pop',
-      body: itemCard(res.item.def, { exterior: res.item.exterior }),
+      body: itemCard(res.item.def, { exterior: res.item.exterior, image: res.item.image }),
       actions: [{ label: 'Отлично', kind: 'gold' }],
     });
   } else {
