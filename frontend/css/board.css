@@ -7,10 +7,6 @@
   width: min(100vw - 32px, 100vh - 140px, 720px);
 }
 
-@media (max-width: 899px) {
-  .board-box { width: 100%; }
-}
-
 .board-zone {
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr);
@@ -277,4 +273,9 @@
   font-size: 10.5px;
   color: var(--dim);
   padding: 4px 2px 0;
+}
+
+@media (max-width: 899px) {
+  .board-box { width: min(100%, 100dvh - 24px); }
+  .sq { font-size: calc(min(100vw - 32px, 100dvh - 24px, 720px) / 13); }
 }

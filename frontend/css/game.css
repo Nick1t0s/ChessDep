@@ -45,7 +45,7 @@
 }
 
 .p-king { font-size: 26px; line-height: 1; color: var(--piece-color, var(--text)); }
-.p-login { font-size: 13.5px; }
+.p-login { font-size: 13.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .p-elo, .p-deps { font-size: 11.5px; color: var(--muted); font-family: var(--mono); }
 .p-elo { margin-left: auto; }
 
@@ -54,6 +54,7 @@
   font-size: 20px;
   font-weight: 700;
   min-width: 66px;
+  flex-shrink: 0;
   text-align: right;
   color: var(--text);
 }
@@ -147,6 +148,12 @@
   }
 
   .side-col { padding-bottom: 8px; }
+  .player-panel { max-width: min(100vw - 32px, 100dvh - 24px); }
+}
+
+@media (max-width: 360px) {
+  .p-deps { display: none; }
+  .p-clock { min-width: 0; font-size: 18px; }
 }
 
 @keyframes sheet-in {
