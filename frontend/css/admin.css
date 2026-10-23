@@ -17,3 +17,7 @@
 .admin-skin-picker { display: flex; align-items: center; gap: 8px; }
 .admin-skin-picker .skin-preview { height: 48px; }
 .admin-skin-picker .skin-img { width: 44px; height: 44px; }
+.set-default { display: inline-block; max-width: 260px; word-break: break-all; }
+.set-changed { white-space: nowrap; }
+.audit-target { max-width: 220px; word-break: break-all; }
+.audit-data { display: block; min-width: 280px; }
