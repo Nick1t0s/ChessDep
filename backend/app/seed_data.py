@@ -5,7 +5,7 @@
 Миграция 0007 использует замороженный seed_data_v3.py, 0008 переводит его на PNG.
 """
 import app.core.clock as clock
-from app.seed_skins import seed_image_id
+from app.seed_skins import seed_asset
 
 RARITY_VALUES: dict[str, int] = {
     "common": 20,
@@ -95,7 +95,7 @@ def seed_rows() -> dict[str, list[dict]]:
             "piece_type": piece_type,
             "rarity": "common",
             "value": 1,
-            "asset": {"type": "png", "image": seed_image_id(item_code("base", side, piece_type))},
+            "asset": seed_asset(item_code("base", side, piece_type)),
             "is_upgrade_target": False,
         })
     # Базовая доска (id 13).
@@ -110,7 +110,7 @@ def seed_rows() -> dict[str, list[dict]]:
         "piece_type": None,
         "rarity": "common",
         "value": 1,
-        "asset": {"type": "png", "image": seed_image_id("base-board")},
+        "asset": seed_asset("base-board"),
         "is_upgrade_target": False,
     })
     # Genesis: 12 фигур коллекции genesis (id 14–25).
@@ -130,7 +130,7 @@ def seed_rows() -> dict[str, list[dict]]:
                 "piece_type": piece_type,
                 "rarity": rarity,
                 "value": RARITY_VALUES[rarity],
-                "asset": {"type": "png", "image": seed_image_id(item_code("genesis", side, piece_type))},
+                "asset": seed_asset(item_code("genesis", side, piece_type)),
                 "is_upgrade_target": True,
             })
     # Доски Genesis (id 26, 27).
@@ -145,7 +145,7 @@ def seed_rows() -> dict[str, list[dict]]:
         "piece_type": None,
         "rarity": "uncommon",
         "value": 60,
-        "asset": {"type": "png", "image": seed_image_id("genesis-board-paper")},
+        "asset": seed_asset("genesis-board-paper"),
         "is_upgrade_target": True,
     })
     item_defs.append({
@@ -159,7 +159,7 @@ def seed_rows() -> dict[str, list[dict]]:
         "piece_type": None,
         "rarity": "mythic",
         "value": 5000,
-        "asset": {"type": "png", "image": seed_image_id("genesis-board-albion")},
+        "asset": seed_asset("genesis-board-albion"),
         "is_upgrade_target": True,
     })
     cases = [

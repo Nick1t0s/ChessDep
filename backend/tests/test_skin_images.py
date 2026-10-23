@@ -4,7 +4,8 @@ from PIL import Image
 from sqlalchemy import select
 
 from app.models import AdminAudit
-from app.seed_skins import seed_image_id
+from app.schemas.items import EXTERIORS
+from app.seed_skins import seed_asset, seed_image_id
 from tests.conftest import anonymous
 
 
@@ -137,7 +138,7 @@ async def test_asset_validation_in_catalog(admin) -> None:
         url,
         json=_board_body(
             "winter-board-piece-img",
-            {"type": "png", "image": seed_image_id("base-wp")},
+            seed_asset("base-wp"),
         ),
     )
     assert resp.status_code == 422, resp.text
@@ -145,7 +146,10 @@ async def test_asset_validation_in_catalog(admin) -> None:
 
     resp = await admin.post(
         url,
-        json=_board_body("winter-board-missing", {"type": "png", "image": "0" * 64}),
+        json=_board_body(
+            "winter-board-missing",
+            {"type": "png", "image": "0" * 64, "exteriors": {e: "0" * 64 for e in EXTERIORS}},
+        ),
     )
     assert resp.status_code == 404, resp.text
     assert resp.json()["error"]["code"] == "SKIN_IMAGE_NOT_FOUND"
@@ -163,7 +167,7 @@ async def test_asset_validation_in_catalog(admin) -> None:
         url,
         json=_board_body(
             "winter-board-ok",
-            {"type": "png", "image": seed_image_id("base-board")},
+            seed_asset("base-board"),
         ),
     )
     assert resp.status_code == 201, resp.text

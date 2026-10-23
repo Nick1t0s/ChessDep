@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, conlist, constr
-from pydantic import model_serializer, model_validator
+from pydantic import model_validator
 
 from app.chess_engine import format_chance
 
@@ -12,6 +12,7 @@ Side = Literal["w", "b"]
 Slot = Literal["wP", "wN", "wB", "wR", "wQ", "wK", "bP", "bN", "bB", "bR", "bQ", "bK", "board"]
 DefKind = Literal["piece", "board"]
 Exterior = Literal["FN", "MW", "FT", "WW", "BS"]
+EXTERIORS: tuple[str, ...] = ("FN", "MW", "FT", "WW", "BS")
 CaseKind = Literal["set", "collection", "custom"]
 
 ImageId = constr(pattern=r"^[0-9a-f]{64}$")
@@ -44,8 +45,8 @@ def exterior(wear: float) -> str:
 
 
 def resolve_image(asset: dict, ext: str) -> str:
-    """Картинка скина для качества ext: своя из asset.exteriors или основная image."""
-    return asset.get("exteriors", {}).get(ext) or asset["image"]
+    """Картинка скина для качества ext (asset.exteriors обязателен)."""
+    return asset["exteriors"][ext]
 
 
 class SkinAsset(BaseModel):
@@ -53,14 +54,13 @@ class SkinAsset(BaseModel):
 
     type: Literal["png"]
     image: ImageId
-    exteriors: dict[Exterior, ImageId] = Field(default_factory=dict)
+    exteriors: dict[Exterior, ImageId]
 
-    @model_serializer(mode="wrap")
-    def _drop_empty_exteriors(self, handler):  # type: ignore[no-untyped-def]
-        data = handler(self)
-        if not data.get("exteriors"):
-            data.pop("exteriors", None)
-        return data
+    @model_validator(mode="after")
+    def check_exteriors(self) -> "SkinAsset":
+        if set(self.exteriors) != set(EXTERIORS):
+            raise ValueError("Нужны картинки для всех качеств: FN, MW, FT, WW, BS")
+        return self
 
 
 # --- Выходные схемы ---------------------------------------------------------

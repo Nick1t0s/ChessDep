@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 
 from app.db import SessionLocal
 from app.models import InventoryItem, ItemDef, Roll, User
-from app.seed_skins import seed_image_id
+from app.seed_skins import seed_asset
 from tests.conftest import give_cases, give_items
 
 
@@ -118,7 +118,7 @@ async def test_upgrade_validation(alice, bob, admin) -> None:
                     "piece_type": piece_type,
                     "rarity": "epic",
                     "value": 500,
-                    "asset": {"type": "png", "image": seed_image_id("base-wp")},
+                    "asset": seed_asset("base-wp"),
                 }
                 for side in ("w", "b")
                 for piece_type in ("P", "N", "B", "R", "Q", "K")
@@ -293,7 +293,7 @@ async def test_upgrade_set_mismatch(alice, admin) -> None:
                     "piece_type": piece_type,
                     "rarity": "epic",
                     "value": 500,
-                    "asset": {"type": "png", "image": seed_image_id("base-wp")},
+                    "asset": seed_asset("base-wp"),
                 }
                 for side in ("w", "b")
                 for piece_type in ("P", "N", "B", "R", "Q", "K")

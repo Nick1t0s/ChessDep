@@ -1,7 +1,7 @@
 from sqlalchemy import select
 
 from app.models import AdminAudit
-from app.seed_skins import seed_image_id
+from app.seed_skins import seed_asset
 
 SLOTS = [s + p for s in "wb" for p in "PNBRQK"]
 
@@ -9,13 +9,13 @@ _WINTER_CODES = [f"winter-{slot[0]}{slot[1].lower()}" for slot in SLOTS]
 _GENESIS_CODES = [f"genesis-{slot[0]}{slot[1].lower()}" for slot in SLOTS]
 _GENESIS_CODES += ["genesis-board-paper", "genesis-board-albion"]
 
-_BOARD_ASSET = {"type": "png", "image": seed_image_id("base-board")}
+_BOARD_ASSET = seed_asset("base-board")
 
 
 def pieces_body(rarity: str = "common", value: int = 20) -> list[dict]:
     return [
         {"side": s[0], "piece_type": s[1], "rarity": rarity, "value": value,
-         "asset": {"type": "png", "image": seed_image_id("base-wp")}}
+         "asset": seed_asset("base-wp")}
         for s in SLOTS
     ]
 
@@ -137,7 +137,7 @@ async def test_board_in_set(admin) -> None:
     # asset с картинкой фигуры → 422.
     resp = await admin.post(
         f"/api/v1/admin/sets/{set_id}/boards",
-        json={**board_body("winter-board-2"), "asset": {"type": "png", "image": seed_image_id("base-wp")}},
+        json={**board_body("winter-board-2"), "asset": seed_asset("base-wp")},
     )
     assert resp.status_code == 422
 
@@ -226,26 +226,26 @@ async def test_item_def_patch(admin) -> None:
 
     resp = await admin.patch(f"/api/v1/admin/item-defs/{piece_id}", json={
         "rarity": "mythic", "value": 999, "name": "X",
-        "asset": {"type": "png", "image": seed_image_id("genesis-wq")},
+        "asset": seed_asset("genesis-wq"),
     })
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["rarity"] == "mythic"
     assert body["value"] == 999
     assert body["name"] == "X"
-    assert body["asset"] == {"type": "png", "image": seed_image_id("genesis-wq")}
+    assert body["asset"] == seed_asset("genesis-wq")
 
     # Фигуре asset доски → 422.
     resp = await admin.patch(
         f"/api/v1/admin/item-defs/{piece_id}",
-        json={"asset": {"type": "png", "image": seed_image_id("base-board")}},
+        json={"asset": seed_asset("base-board")},
     )
     assert resp.status_code == 422
 
     # Доске asset фигуры → 422.
     resp = await admin.patch(
         f"/api/v1/admin/item-defs/{board['id']}",
-        json={"asset": {"type": "png", "image": seed_image_id("base-wp")}},
+        json={"asset": seed_asset("base-wp")},
     )
     assert resp.status_code == 422
 
