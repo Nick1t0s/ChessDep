@@ -3,25 +3,26 @@ import { h } from './dom.js';
 import { initLayout } from './layout.js';
 import { toast } from './toast.js';
 
-const me = await initLayout({ auth: 'optional', active: '' });
+const me = await initLayout({ auth: 'optional', active: 'sets' });
 
 const main = h('main', { class: 'wrap-wide collections' });
 const grid = h('div', { class: 'col-grid' });
-main.append(h('h1', { class: 'page-title' }, 'Коллекции'), grid);
+main.append(h('h1', { class: 'page-title' }, 'Наборы'), grid);
 document.body.appendChild(main);
 
 try {
-  const collections = await api('GET', '/collections');
-  for (const c of collections) {
-    const statusText = c.status === 'retired' ? 'Снята с выпуска' : 'В продаже';
-    const released = c.released_at ? new Date(c.released_at).toLocaleString('ru-RU') : '—';
+  const sets = await api('GET', '/sets');
+  if (sets.length === 0) {
+    grid.replaceWith(h('p', { class: 'col-desc' }, 'Наборов пока нет.'));
+  }
+  for (const s of sets) {
     grid.append(
       h('div', { class: 'card col-card' },
-        h('h3', { class: 'card-title' }, c.name),
-        h('span', { class: 'pill' }, statusText),
-        h('p', { class: 'col-desc' }, c.description),
-        h('p', { class: 'col-meta' }, 'Скинов: ' + c.items_count + ' · выпущена ' + released),
-        h('a', { href: '/collection.html?code=' + encodeURIComponent(c.code), class: 'btn btn-gold btn-sm' }, 'Смотреть'),
+        h('h3', { class: 'card-title' }, s.name),
+        s.status === 'retired' ? h('span', { class: 'pill' }, 'Снят с выпуска') : null,
+        h('p', { class: 'col-desc' }, s.description),
+        h('p', { class: 'col-meta' }, 'Коллекций: ' + s.collections_count + ' · Досок: ' + s.boards_count),
+        h('a', { href: '/collection.html?set=' + encodeURIComponent(s.code), class: 'btn btn-gold btn-sm' }, 'Смотреть'),
       ),
     );
   }
