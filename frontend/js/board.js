@@ -1,5 +1,5 @@
 import { h, clear } from './dom.js';
-import { glyph, pieceColor, boardColors } from './pieces.js';
+import { pieceNode, boardUrl } from './pieces.js';
 import { PIECE_NAME_RU } from './format.js';
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
@@ -23,7 +23,9 @@ export function createBoard(container, { orientation = 'white', onSquareClick } 
   const board = h('div', { class: 'board' });
   const ranksCol = h('div', { class: 'ranks' });
   const filesRow = h('div', { class: 'files' });
-  container.appendChild(h('div', { class: 'board-zone' }, ranksCol, board, filesRow));
+  const zone = h('div', { class: 'board-zone' }, ranksCol, board, filesRow);
+  container.appendChild(zone);
+  let lastState = null;
 
   const byIndex = new Array(64);
   for (let i = 0; i < 64; i += 1) {
@@ -73,28 +75,39 @@ export function createBoard(container, { orientation = 'white', onSquareClick } 
     return byIndex[squareIndex(name)] ?? null;
   }
 
+  // Узел фигуры с ключом: render не пересоздаёт его, если фигура и картинка не менялись.
+  function makePiece(piece, color, loadout) {
+    const node = pieceNode(loadout, piece, color, 'glyph');
+    node.dataset.key = piece + '|' + color + '|' + (node.tagName === 'IMG' ? node.src : '');
+    return node;
+  }
+
+  function pieceElement(piece, color) {
+    return makePiece(piece, color, lastState?.players?.[color]?.loadout);
+  }
+
   function setGlyph(btn, name, piece, color, loadout) {
-    let span = null;
+    let current = null;
     for (const child of btn.children) {
       if (child.classList.contains('glyph')) {
-        span = child;
+        current = child;
         break;
       }
     }
     if (piece === null) {
-      if (span !== null) span.remove();
+      if (current !== null) current.remove();
       btn.classList.remove('side-white', 'side-black');
       btn.setAttribute('aria-label', name + ', пусто');
       return;
     }
-    if (span === null) {
-      span = h('span', { class: ['glyph'] });
-      btn.appendChild(span);
+    const fresh = makePiece(piece, color, loadout);
+    if (current === null) {
+      btn.appendChild(fresh);
+    } else if (current.dataset.key !== fresh.dataset.key) {
+      current.replaceWith(fresh);
     }
-    span.textContent = glyph(piece, color);
     btn.classList.toggle('side-white', color === 'white');
     btn.classList.toggle('side-black', color === 'black');
-    span.style.setProperty('--piece-color', pieceColor(loadout, piece, color));
     btn.setAttribute(
       'aria-label',
       name + ', ' + (color === 'white' ? 'белый' : 'чёрный') + ' ' + (PIECE_NAME_RU[piece] ?? '').toLowerCase()
@@ -104,9 +117,11 @@ export function createBoard(container, { orientation = 'white', onSquareClick } 
   function render(state, opts = {}) {
     const { selected = null, hints = [], captures = [], depPickable = [] } = opts;
     // Доска рисуется скином смотрящего (зритель — доска белых).
-    const colors = boardColors(state?.players?.[state?.you]?.loadout ?? state?.players?.white?.loadout);
-    board.style.setProperty('--light', colors.light);
-    board.style.setProperty('--dark', colors.dark);
+    lastState = state;
+    const url = boardUrl(state?.players?.[state?.you]?.loadout ?? state?.players?.white?.loadout);
+    zone.classList.toggle('skinned', url !== null);
+    if (url !== null) board.style.setProperty('--board-image', 'url("' + url + '")');
+    else board.style.removeProperty('--board-image');
 
     const occupied = new Map();
     for (const cell of state?.board ?? []) {
@@ -143,5 +158,5 @@ export function createBoard(container, { orientation = 'white', onSquareClick } 
     }
   }
 
-  return { render, squareEl, setOrientation, element: board, orientation: () => currentOrientation };
+  return { render, squareEl, setOrientation, pieceElement, element: board, orientation: () => currentOrientation };
 }
