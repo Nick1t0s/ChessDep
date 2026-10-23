@@ -203,3 +203,9 @@
 .spectator-badge { padding: 6px 10px; border-radius: 10px; background: rgba(139,92,246,.15); color: var(--text); font-size: 13px; text-align: center; margin-bottom: 8px; }
 .view-banner { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 6px 10px; border-radius: 10px; background: color-mix(in srgb, var(--gold) 15%, transparent); font-size: 13px; margin-bottom: 8px; }
 .view-banner[hidden], .spectator-badge[hidden] { display: none; }
+
+/* PNG-скины фигур (docs/contracts-skins.md) */
+.p-king .piece-img { display: block; width: 28px; height: 28px; }
+.p-king-img { color: var(--piece-color, var(--text)); }
+.dep-row-glyph.piece-img { width: 28px; height: 28px; }
+.promo-btn .piece-img { width: 40px; height: 40px; }
