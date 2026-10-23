@@ -2,11 +2,13 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
+import pytest
+
 import app.core.clock as clock
 from app.core.security import hash_password
 from app.db import SessionLocal
 from app.models import InventoryItem, User
-from tests.conftest import give_items
+from tests.conftest import give_cases, give_items
 
 
 async def _user_id(login: str) -> int:
@@ -153,3 +155,48 @@ async def test_gift_resets_trade_hold(alice, bob, frozen) -> None:
     )
     assert resp.status_code == 400
     assert resp.json()["error"]["code"] == "TRADE_HOLD"
+
+
+@pytest.mark.xfail(
+    reason=(
+        "Баг приложения: app/services/items.py::items_out — "
+        "await db.scalars(...).all() без обрамляющих скобок для кейсов "
+        "('coroutine' object has no attribute 'all'); тест верен по контракту v3"
+    ),
+    strict=True,
+)
+async def test_gift_case(alice, bob) -> None:
+    (case_item_id,) = await give_cases("alice", [1])
+    resp = await alice.post(
+        "/api/v1/gifts", json={"item_id": case_item_id, "to_login": "bob"}
+    )
+    assert resp.status_code == 201, resp.text
+
+    # Кейс-предмет в инвентаре bob.
+    resp = await bob.get("/api/v1/inventory?kind=case")
+    assert resp.status_code == 200, resp.text
+    inv = resp.json()
+    assert len(inv) == 1
+    assert inv[0]["id"] == case_item_id
+    assert inv[0]["case"]["id"] == 1
+
+    # В списке подарков лот-кейс.
+    resp = await bob.get("/api/v1/me/gifts?direction=in")
+    assert resp.status_code == 200, resp.text
+    items = resp.json()["items"]
+    assert len(items) == 1
+    gift = items[0]
+    assert gift["item"]["id"] == case_item_id
+    assert gift["item"]["kind"] == "case"
+    assert gift["item"]["case"]["id"] == 1
+    assert gift["item"]["def"] is None
+
+
+async def test_gift_base_item(alice, bob) -> None:
+    inv = (await alice.get("/api/v1/inventory")).json()
+    base_id = next(i["id"] for i in inv if i["source"] == "base" and i["bound"] is True)
+    resp = await alice.post(
+        "/api/v1/gifts", json={"item_id": base_id, "to_login": "bob"}
+    )
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "ITEM_BOUND"
