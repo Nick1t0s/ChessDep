@@ -9,7 +9,8 @@ import app.core.clock as clock_module
 from app.db import SessionLocal
 from app.models import ActivePlayer, InventoryItem, ItemDef, Loadout, User
 from app.redis import redis_client
-from app.seed_data import BASE_COLORS, item_name
+from app.seed_data import item_name
+from app.seed_skins import seed_image_id
 from app.services import matchmaking
 from tests.conftest import (
     count_queries,
@@ -28,7 +29,7 @@ def _base_skin(slot: str) -> dict:
         "code": f"base-{side}{piece_type.lower()}",
         "name": item_name("Базовая", side, piece_type),
         "rarity": "common",
-        "asset": {"type": "stub", "color": BASE_COLORS[side]},
+        "asset": {"type": "png", "image": seed_image_id(f"base-{side}{piece_type.lower()}")},
     }
 
 
@@ -44,14 +45,14 @@ BASE_BOARD = {
     "code": "base-board",
     "name": "Базовая доска",
     "rarity": "common",
-    "asset": {"type": "stub", "light": "#454f77", "dark": "#262e4d"},
+    "asset": {"type": "png", "image": seed_image_id("base-board")},
 }
 
 GENESIS_BOARD_PAPER = {
     "code": "genesis-board-paper",
     "name": "Genesis | Бумага",
     "rarity": "uncommon",
-    "asset": {"type": "stub", "light": "#ffffff", "dark": "#e5e5e5"},
+    "asset": {"type": "png", "image": seed_image_id("genesis-board-paper")},
 }
 
 
@@ -304,13 +305,13 @@ async def test_loadout_snapshot_in_game(alice, bob, rng) -> None:
         "code": "genesis-wq",
         "name": "Genesis | Белый ферзь",
         "rarity": "epic",
-        "asset": {"type": "stub", "color": "#ffffff"},
+        "asset": {"type": "png", "image": seed_image_id("genesis-wq")},
     }
     genesis_q_black = {
         "code": "genesis-bq",
         "name": "Genesis | Чёрный ферзь",
         "rarity": "epic",
-        "asset": {"type": "stub", "color": "#ffc93c"},
+        "asset": {"type": "png", "image": seed_image_id("genesis-bq")},
     }
 
     game_id = await start_game(alice, bob, rng)
