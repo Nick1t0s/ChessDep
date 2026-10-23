@@ -15,11 +15,8 @@
 .item-card.selected { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 .skin-preview { display: grid; place-items: center; height: 84px; }
-.skin-glyph { font-size: 56px; line-height: 1; color: var(--piece-color, #f4f6ff); text-shadow: 0 0 2px #000, 0 0 1px #000; }
-.skin-board { display: grid; grid-template-columns: repeat(4, 16px); grid-template-rows: repeat(4, 16px);
-  border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
-.skin-board .cell.light { background: var(--light, #454f77); }
-.skin-board .cell.dark { background: var(--dark, #262e4d); }
+.skin-img { width: 72px; height: 72px; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .5)); }
+.skin-img-board { width: 76px; height: 76px; border-radius: 4px; filter: none; }
 
 .item-name { font-weight: 700; font-size: 13.5px; color: var(--text); }
 .item-meta { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; }
