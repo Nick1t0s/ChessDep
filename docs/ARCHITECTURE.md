@@ -44,7 +44,7 @@
 
 | Сервис | Что делает |
 |---|---|
-| `nginx` | Единственный, кто опубликован наружу (`HTTP_PORT` 8080 → 80, `HTTPS_PORT` 8443 → 443). Отдаёт `frontend/` (смонтирован, правки видны без пересборки), проксирует `/api/` и `/ws/` на `api:8000`, ставит заголовки безопасности, закрывает `admin.html` через `auth_request` |
+| `nginx` | Единственный, кто опубликован наружу (`HTTP_PORT` 8080 → 80, `HTTPS_PORT` 8443 → 443). Отдаёт `frontend/` (смонтирован, правки видны без пересборки; конфиг `nginx/conf/` вшит в образ — после правки `docker compose up -d --build nginx`), проксирует `/api/` и `/ws/` на `api:8000`, ставит заголовки безопасности, закрывает `admin.html` через `auth_request` |
 | `api` | FastAPI: весь REST и WebSocket |
 | `worker` | `python -m app.worker`: каждые 200 мс ставит флаги и аннулирует партии по дедлайнам, каждые 500 мс сводит пары в матчмейкинге. **Должен быть ровно один экземпляр** |
 | `migrate` | Одноразовый `alembic upgrade head` перед стартом `api` и `worker` |
@@ -280,7 +280,7 @@ docs/, tasks/, legacy/
   4. после коммита убрать его из очереди матчмейкинга.
 
   Нельзя забанить себя и другого админа.
-- `admin.html` дополнительно закрыт на nginx: `auth_request` к `/api/v1/internal/require-admin`. Снаружи этот путь отдаёт 404.
+- `admin.html` дополнительно закрыт на nginx: `auth_request` к `/api/v1/internal/require-admin`. Снаружи этот путь отдаёт 404. Гостя редиректит на `/login.html?next=/admin.html` относительным `Location` (`absolute_redirect off`), чтобы не терялся нестандартный порт.
 
 ---
 
@@ -329,9 +329,9 @@ docs/, tasks/, legacy/
 ### 12.2 Общие модули `frontend/js/`
 | Модуль | Что делает |
 |---|---|
-| `api.js` | `api(method, path, body, {redirectOn401})`, `ApiError`, `safeNext` |
+| `api.js` | `api(method, path, body, {redirectOn401})`, `ApiError`, `safeNext`; запрос, оборванный уходом со страницы, не отклоняется (промис просто не завершается) |
 | `dom.js` | `h()` (белый список атрибутов; `href` только относительный), `clear()` |
-| `layout.js` | `initLayout({auth, active})` — шапка, баланс, бейдж подарков, мобильный таб-бар; `setBalance` |
+| `layout.js` | `initLayout({auth, active})` — шапка, баланс, бейдж подарков, мобильный таб-бар (4 раздела + кнопка «Ещё» с остальными разделами, профилем и выходом); `setBalance` |
 | `toast.js`, `modal.js` | уведомления (не больше 4 одновременно), модалки, `confirmModal` |
 | `format.js` | `fmtCrystals`, `fmtClock`, словари русских названий |
 | `pieces.js` | `skinUrl`, `pieceNode` (картинка скина фигуры, без картинки — глиф), `boardUrl`; размеры PNG |
