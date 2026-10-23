@@ -2,7 +2,7 @@ import { api } from './api.js';
 import { h, clear } from './dom.js';
 import { initLayout } from './layout.js';
 import { toast } from './toast.js';
-import { itemCard } from './items.js';
+import { invItemCard } from './items.js';
 
 const me = await initLayout({ auth: 'required', active: '' });
 
@@ -66,7 +66,7 @@ async function loadPage() {
 }
 
 function giftCard(g) {
-  return itemCard(g.item.def, {
+  return invItemCard(g.item, {
     exterior: g.item.exterior,
     badge: dir === 'in' && !g.seen ? 'Новый' : undefined,
     extra: h('div', { class: 'sc-gift' },
