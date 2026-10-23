@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from typing import Annotated
 
 import app.core.clock as clock
@@ -8,14 +8,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import current_user
 from app.core.errors import AppError
+from app.core.ratelimit import hit
 from app.core.security import hash_password, verify_password
 from app.core.sessions import revoke_all
 from app.db import get_db
 from app.models import ActivePlayer, Game, Ledger, User
-from app.schemas.auth import DailyBonusOut, LedgerItemOut, MeOut, Page, PasswordIn
+from app.schemas.auth import LedgerItemOut, MeOut, Page, PasswordIn
 from app.schemas.games import GameHistoryItem, GamesHistoryOut
-from app.services.economy import apply_delta, lock_user
-from app.services.settings import get_setting
+from app.schemas.items import DailyRewardClaimOut, DailyRewardOut
+from app.services.daily_reward import claim as claim_daily_reward
+from app.services.daily_reward import get_status as get_daily_reward_status
+from app.services.economy import lock_user
 
 router = APIRouter(prefix="/api/v1", tags=["me"])
 
@@ -23,34 +26,30 @@ DbDep = Annotated[AsyncSession, Depends(get_db)]
 UserDep = Annotated[User, Depends(current_user)]
 
 
-def daily_bonus_available_at(
-    last_daily_bonus_at: datetime | None, cooldown_h: int
-) -> datetime | None:
-    if last_daily_bonus_at is None:
-        return None
-    available_at = last_daily_bonus_at + timedelta(hours=cooldown_h)
-    if available_at <= datetime.now(UTC):
-        return None
-    return available_at
-
-
-def me_out(user: User, cooldown_h: int) -> MeOut:
+def me_out(user: User) -> MeOut:
     return MeOut(
         id=user.id,
         login=user.login,
         role=user.role,
         balance=user.balance,
         elo=user.elo,
-        daily_bonus_available_at=daily_bonus_available_at(
-            user.last_daily_bonus_at, cooldown_h
-        ),
     )
 
 
 @router.get("/me", response_model=MeOut)
 async def read_me(user: UserDep, db: DbDep) -> MeOut:
-    cooldown_h = int(await get_setting(db, "daily_bonus_cooldown_h"))
-    return me_out(user, cooldown_h)
+    return me_out(user)
+
+
+@router.get("/me/daily-reward", response_model=DailyRewardOut)
+async def read_daily_reward(user: UserDep, db: DbDep) -> DailyRewardOut:
+    return await get_daily_reward_status(db, user, clock.now())
+
+
+@router.post("/me/daily-reward", response_model=DailyRewardClaimOut)
+async def claim_daily_reward_endpoint(user: UserDep, db: DbDep) -> DailyRewardClaimOut:
+    await hit(f"rl:items:{user.id}", 3, 1)
+    return await claim_daily_reward(db, user, clock.now())
 
 
 @router.post("/me/password", status_code=204)
@@ -62,21 +61,6 @@ async def change_password(
     user.password_hash = hash_password(body.new_password)
     session_id = getattr(request.state, "session_id", None)
     await revoke_all(db, user.id, except_session_id=session_id)
-
-
-@router.post("/me/daily-bonus", response_model=DailyBonusOut)
-async def daily_bonus(user: UserDep, db: DbDep) -> DailyBonusOut:
-    cooldown_h = int(await get_setting(db, "daily_bonus_cooldown_h"))
-    bonus = int(await get_setting(db, "daily_bonus"))
-    now = datetime.now(UTC)
-    locked = await lock_user(db, user.id)
-    if locked.last_daily_bonus_at is not None:
-        available_at = locked.last_daily_bonus_at + timedelta(hours=cooldown_h)
-        if available_at > now:
-            raise AppError(400, "BONUS_COOLDOWN", "Бонус ещё не готов")
-    new_balance = await apply_delta(db, locked.id, bonus, "daily_bonus")
-    locked.last_daily_bonus_at = now
-    return DailyBonusOut(balance=new_balance, next_available_at=now + timedelta(hours=cooldown_h))
 
 
 @router.get("/me/active-game")
