@@ -142,6 +142,14 @@ async def test_upgrade_validation(alice, bob, admin) -> None:
     )
     assert resp.json()["reason"] == "UPGRADE_TARGET_NOT_AVAILABLE"
 
+    # Цель с is_upgrade_target=false.
+    resp = await admin.patch("/api/v1/admin/item-defs/18", json={"is_upgrade_target": False})
+    assert resp.status_code == 200, resp.text
+    resp = await alice.post(
+        "/api/v1/upgrade/preview", json={"input_ids": inputs, "target_def_id": 18}
+    )
+    assert resp.json()["reason"] == "UPGRADE_TARGET_NOT_AVAILABLE"
+
 
 async def test_upgrade_restricted_inputs(alice) -> None:
     epic = await def_id_by_code("genesis-wq")
