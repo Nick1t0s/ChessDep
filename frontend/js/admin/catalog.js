@@ -20,7 +20,7 @@ function field(labelText, input) {
 }
 
 // Поле PNG скина: файл сразу грузится на сервер, picker.image — id картинки или null.
-function imagePicker(kind, initialImage, clearable = false) {
+function imagePicker(kind, initialImage) {
   const picker = { image: initialImage, el: null };
   const preview = h('span', { class: 'admin-skin-preview' });
   const input = h('input', { type: 'file' });
@@ -43,18 +43,25 @@ function imagePicker(kind, initialImage, clearable = false) {
   });
   showPreview();
   picker.el = h('div', { class: 'admin-skin-picker' }, input, preview);
-  if (clearable) {
-    picker.el.appendChild(h('button', {
-      type: 'button',
-      class: 'btn btn-ghost btn-sm',
-      onClick: () => {
-        picker.image = null;
-        input.value = '';
-        showPreview();
-      },
-    }, 'Убрать'));
-  }
   return picker;
+}
+
+// Пять обязательных картинок качеств; initial — asset.exteriors или null.
+function exteriorPickers(kind, initial) {
+  const pickers = {};
+  for (const ext of EXTERIORS) pickers[ext] = imagePicker(kind, initial?.[ext] ?? null);
+  return pickers;
+}
+
+// asset из основной картинки и картинок всех качеств; null, если чего-то не хватает.
+function buildAsset(picker, extPickers) {
+  if (picker.image === null) return null;
+  const exteriors = {};
+  for (const ext of EXTERIORS) {
+    if (extPickers[ext].image === null) return null;
+    exteriors[ext] = extPickers[ext].image;
+  }
+  return { type: 'png', image: picker.image, exteriors };
 }
 
 function setPill(status) {
@@ -313,6 +320,7 @@ function createCollectionForm(root, d) {
         h('th', {}, 'Редкость'),
         h('th', {}, 'Ценность'),
         h('th', {}, 'Картинка 128×128'),
+        ...EXTERIORS.map((ext) => h('th', {}, EXTERIOR_RU[ext])),
         h('th', {}, 'Цель апгрейда'),
       )),
       h('tbody', {}, ...rows.map((r) => r.tr)),
@@ -326,8 +334,8 @@ function createCollectionForm(root, d) {
     const pieces = [];
     for (const row of rows) {
       const value = Number(row.valIn.value);
-      if (!Number.isInteger(value) || value < 1 || row.picker.image === null) {
-        toast('Строка «' + SLOT_RU[row.slot] + '»: проверьте ценность и загрузите картинку', 'error');
+      if (!Number.isInteger(value) || value < 1 || buildAsset(row.picker, row.extPickers) === null) {
+        toast('Строка «' + SLOT_RU[row.slot] + '»: проверьте ценность и загрузите все картинки', 'error');
         return;
       }
       pieces.push({
@@ -335,7 +343,7 @@ function createCollectionForm(root, d) {
         piece_type: row.slot[1],
         rarity: row.rarSel.value,
         value,
-        asset: { type: 'png', image: row.picker.image },
+        asset: buildAsset(row.picker, row.extPickers),
         is_upgrade_target: row.upIn.checked,
       });
     }
@@ -371,6 +379,7 @@ function makePiecesRow(slot) {
   });
 
   const picker = imagePicker('piece', null);
+  const extPickers = exteriorPickers('piece', null);
   const upIn = h('input', { type: 'checkbox', name: 'target-' + slot, checked: true });
 
   const tr = h('tr', {},
@@ -378,10 +387,11 @@ function makePiecesRow(slot) {
     h('td', {}, rarSel),
     h('td', {}, valIn),
     h('td', {}, picker.el),
+    ...EXTERIORS.map((ext) => h('td', {}, extPickers[ext].el)),
     h('td', {}, upIn),
   );
 
-  return { slot, tr, rarSel, valIn, picker, upIn };
+  return { slot, tr, rarSel, valIn, picker, extPickers, upIn };
 }
 
 async function deleteCollection(root, d, c) {
@@ -464,6 +474,7 @@ function createBoardForm(root, d) {
     valIn.value = String(RARITY_VALUE[rarSel.value]);
   });
   const picker = imagePicker('board', null);
+  const extPickers = exteriorPickers('board', null);
   const upIn = h('input', { type: 'checkbox', name: 'target', checked: true });
 
   const form = h('form', { class: 'admin-form' },
@@ -472,6 +483,7 @@ function createBoardForm(root, d) {
     field('Редкость', rarSel),
     field('Ценность', valIn),
     field('Картинка 1088×1088', picker.el),
+    ...EXTERIORS.map((ext) => field('Картинка: ' + EXTERIOR_RU[ext], extPickers[ext].el)),
     field('Цель апгрейда', upIn),
     h('div', { class: 'admin-row' },
       h('button', { type: 'submit', class: 'btn btn-gold' }, 'Создать')),
@@ -484,8 +496,9 @@ function createBoardForm(root, d) {
       toast('Ценность должна быть целым числом ≥ 1', 'error');
       return;
     }
-    if (picker.image === null) {
-      toast('Загрузите картинку доски', 'error');
+    const asset = buildAsset(picker, extPickers);
+    if (asset === null) {
+      toast('Загрузите основную картинку и картинки всех качеств', 'error');
       return;
     }
     try {
@@ -494,7 +507,7 @@ function createBoardForm(root, d) {
         name: nameIn.value.trim(),
         rarity: rarSel.value,
         value,
-        asset: { type: 'png', image: picker.image },
+        asset,
         is_upgrade_target: upIn.checked,
       });
       toast('Готово', 'success');
@@ -531,10 +544,7 @@ function openEditModal(root, d, def) {
   const upIn = h('input', { type: 'checkbox', checked: def.is_upgrade_target });
 
   const picker = imagePicker(def.kind, def.asset.image);
-  const extPickers = {};
-  for (const ext of EXTERIORS) {
-    extPickers[ext] = imagePicker(def.kind, def.asset.exteriors?.[ext] ?? null, true);
-  }
+  const extPickers = exteriorPickers(def.kind, def.asset.exteriors);
 
   let rarField = null;
   let rarSel = null;
@@ -577,8 +587,13 @@ function openEditModal(root, d, def) {
             toast('Ценность должна быть целым числом ≥ 1', 'error');
             return false;
           }
+          const asset = buildAsset(picker, extPickers);
+          if (asset === null) {
+            toast('Загрузите основную картинку и картинки всех качеств', 'error');
+            return false;
+          }
           try {
-            await saveItemDef(d, def, { name, value, upIn, rarSel, picker, extPickers });
+            await saveItemDef(d, def, { name, value, upIn, rarSel, asset });
             toast('Готово', 'success');
             await renderDetail(root, d.id);
             return true;
@@ -592,13 +607,7 @@ function openEditModal(root, d, def) {
   });
 }
 
-async function saveItemDef(d, def, { name, value, upIn, rarSel, picker, extPickers }) {
-  const exteriors = {};
-  for (const ext of EXTERIORS) {
-    if (extPickers[ext].image !== null) exteriors[ext] = extPickers[ext].image;
-  }
-  const asset = { type: 'png', image: picker.image };
-  if (Object.keys(exteriors).length > 0) asset.exteriors = exteriors;
+async function saveItemDef(d, def, { name, value, upIn, rarSel, asset }) {
   const body = {
     name,
     value,
