@@ -254,6 +254,7 @@ async def _out_listings(
                 case=item_out.case,
                 wear=item_out.wear,
                 exterior=item_out.exterior,
+                image=item_out.image,
             )
     result = []
     for listing, seller_login in rows:

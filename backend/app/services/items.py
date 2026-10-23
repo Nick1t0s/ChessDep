@@ -13,6 +13,7 @@ from app.schemas.items import (
     ItemOut,
     SetRef,
     exterior,
+    resolve_image,
 )
 from app.seed_data import BASE_DEF_IDS, LOADOUT_SLOTS
 from app.services.rolls import get_rng
@@ -90,6 +91,7 @@ def _skin_out(item: InventoryItem, d: ItemDefOut, equipped_slot: str | None) -> 
         case=None,
         wear=wear,
         exterior=exterior(wear),
+        image=resolve_image(d.asset.model_dump(), exterior(wear)),
         status=item.status,
         equipped_slot=equipped_slot,
         source=item.source,
@@ -108,6 +110,7 @@ def _case_item_out(
         case=case_ref_out(case),
         wear=None,
         exterior=None,
+        image=None,
         status=item.status,
         equipped_slot=equipped_slot,
         source=item.source,
@@ -210,18 +213,18 @@ async def ensure_loadout_complete(db: AsyncSession, user_id: int) -> None:
 async def loadout_snapshot(db: AsyncSession, user_id: int, side: str) -> dict[str, dict]:
     """Слоты одной стороны (side = 'w'|'b') без префикса + 'board'."""
     rows = await db.execute(
-        select(Loadout, ItemDef)
+        select(Loadout, InventoryItem, ItemDef)
         .join(InventoryItem, InventoryItem.id == Loadout.inventory_item_id)
         .join(ItemDef, ItemDef.id == InventoryItem.item_def_id)
         .where(Loadout.user_id == user_id, Loadout.slot.startswith(side) | (Loadout.slot == "board"))
     )
     snapshot: dict[str, dict] = {}
-    for loadout, item_def in rows:
+    for loadout, item, item_def in rows:
         snapshot["board" if loadout.slot == "board" else loadout.slot[1:]] = {
             "code": item_def.code,
             "name": item_def.name,
             "rarity": item_def.rarity,
-            "asset": item_def.asset,
+            "asset": {"type": "png", "image": resolve_image(item_def.asset, exterior(float(item.wear or 0.0)))},
         }
     return snapshot
 

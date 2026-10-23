@@ -15,6 +15,7 @@ class ListingItemOut(BaseModel):
     case: CaseRefOut | None = None
     wear: float | None = None
     exterior: str | None = None
+    image: str | None = None
 
 
 class ListingOut(BaseModel):
