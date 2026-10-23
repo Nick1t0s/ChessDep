@@ -1,10 +1,11 @@
-"""Сид-данные v3: наборы, базовый набор + Genesis, один источник для миграции и conftest.
+"""Сид-данные v4: наборы, базовый набор + Genesis с PNG-скинами (docs/contracts-skins.md).
 
-Чистый модуль: без БД и I/O. Используют
-- alembic/versions/0007_sets.py (op.bulk_insert),
-- tests/conftest.py (TRUNCATE + вставка перед каждым тестом).
+Без БД; id картинок берутся из app/seed_skins.py (файлы app/seed_images/).
+Использует tests/conftest.py (TRUNCATE + вставка перед каждым тестом).
+Миграция 0007 использует замороженный seed_data_v3.py, 0008 переводит его на PNG.
 """
 import app.core.clock as clock
+from app.seed_skins import seed_image_id
 
 RARITY_VALUES: dict[str, int] = {
     "common": 20,
@@ -33,13 +34,11 @@ LOADOUT_SLOTS: tuple[str, ...] = CANONICAL_SLOTS + ("board",)
 BASE_SET_ID: int = 1
 # 13 базовых скинов в порядке слотов LOADOUT_SLOTS.
 BASE_DEF_IDS: tuple[int, ...] = tuple(range(1, 14))
-BASE_COLORS: dict[str, str] = {"w": "#f4f6ff", "b": "#ff5470"}
 
 GENESIS_RARITY: dict[str, str] = {
     "P": "common", "N": "uncommon", "B": "uncommon",
     "R": "rare", "Q": "epic", "K": "legendary",
 }
-GENESIS_COLORS: dict[str, str] = {"w": "#ffffff", "b": "#ffc93c"}
 # Результат auto_weights для Genesis при весах редкостей по умолчанию; сумма 10 000 000.
 GENESIS_WEIGHTS: dict[str, int] = {
     "common": 3996000, "uncommon": 319600, "rare": 160000, "epic": 32000,
@@ -96,7 +95,7 @@ def seed_rows() -> dict[str, list[dict]]:
             "piece_type": piece_type,
             "rarity": "common",
             "value": 1,
-            "asset": {"type": "stub", "color": BASE_COLORS[side]},
+            "asset": {"type": "png", "image": seed_image_id(item_code("base", side, piece_type))},
             "is_upgrade_target": False,
         })
     # Базовая доска (id 13).
@@ -111,7 +110,7 @@ def seed_rows() -> dict[str, list[dict]]:
         "piece_type": None,
         "rarity": "common",
         "value": 1,
-        "asset": {"type": "stub", "light": "#454f77", "dark": "#262e4d"},
+        "asset": {"type": "png", "image": seed_image_id("base-board")},
         "is_upgrade_target": False,
     })
     # Genesis: 12 фигур коллекции genesis (id 14–25).
@@ -131,7 +130,7 @@ def seed_rows() -> dict[str, list[dict]]:
                 "piece_type": piece_type,
                 "rarity": rarity,
                 "value": RARITY_VALUES[rarity],
-                "asset": {"type": "stub", "color": GENESIS_COLORS[side]},
+                "asset": {"type": "png", "image": seed_image_id(item_code("genesis", side, piece_type))},
                 "is_upgrade_target": True,
             })
     # Доски Genesis (id 26, 27).
@@ -146,7 +145,7 @@ def seed_rows() -> dict[str, list[dict]]:
         "piece_type": None,
         "rarity": "uncommon",
         "value": 60,
-        "asset": {"type": "stub", "light": "#ffffff", "dark": "#e5e5e5"},
+        "asset": {"type": "png", "image": seed_image_id("genesis-board-paper")},
         "is_upgrade_target": True,
     })
     item_defs.append({
@@ -160,7 +159,7 @@ def seed_rows() -> dict[str, list[dict]]:
         "piece_type": None,
         "rarity": "mythic",
         "value": 5000,
-        "asset": {"type": "stub", "light": "#ffffff", "dark": "#c9d1e0"},
+        "asset": {"type": "png", "image": seed_image_id("genesis-board-albion")},
         "is_upgrade_target": True,
     })
     cases = [

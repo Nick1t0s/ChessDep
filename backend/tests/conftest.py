@@ -23,10 +23,12 @@ from app.models import (
     ItemDef,
     ItemSet,
     Setting,
+    SkinImage,
     User,
 )
 from app.redis import redis_client as redis
 from app.seed_data import seed_rows
+from app.seed_skins import seed_image_rows
 from app.services import rolls
 import app.core.clock as clock
 from app.services.items import create_case_item, create_item
@@ -36,7 +38,7 @@ _TRUNCATE_SQL = text(
     "TRUNCATE users, sessions, ledger, admin_audit, games, game_events, "
     "active_players, invites, rolls, collections, item_defs, inventory_items, "
     "loadouts, cases, case_drops, market_listings, item_transfers, game_messages, "
-    "item_sets, daily_reward_pool "
+    "item_sets, daily_reward_pool, skin_images "
     "RESTART IDENTITY CASCADE"
 )
 
@@ -52,6 +54,7 @@ async def _seed_settings(db: AsyncSession) -> None:
 
 
 async def _seed_genesis(db: AsyncSession) -> None:
+    await db.execute(insert(SkinImage).values(seed_image_rows()))
     rows = seed_rows()
     await db.execute(insert(ItemSet).values(rows["item_sets"]))
     await db.execute(insert(Collection).values(rows["collections"]))
