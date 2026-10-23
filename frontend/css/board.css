@@ -71,6 +71,65 @@
   text-shadow: 0 0 2px #000, 0 0 1px #000;
 }
 
+.sq .piece-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Доска-картинка 1088×1088: рамка 32 px = 2.9412 % ширины (docs/contracts-skins.md). */
+.board-zone.skinned {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto;
+  gap: 0;
+}
+
+.board-zone.skinned .board {
+  grid-column: 1;
+  grid-row: 1;
+  box-sizing: border-box;
+  padding: 2.9412%;
+  border: none;
+  border-radius: 0;
+  background-image: var(--board-image);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+}
+
+.board-zone.skinned .sq,
+.board-zone.skinned .sq.light { background-color: transparent; }
+
+.board-zone.skinned .ranks {
+  position: absolute;
+  left: 0;
+  top: 2.9412%;
+  bottom: 2.9412%;
+  width: 2.9412%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.board-zone.skinned .files {
+  position: absolute;
+  left: 2.9412%;
+  right: 2.9412%;
+  bottom: 0;
+  height: 2.9412%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.board-zone.skinned .ranks span,
+.board-zone.skinned .files span {
+  font-size: 9px;
+  color: rgba(255, 255, 255, .85);
+  text-shadow: 0 0 2px #000, 0 0 1px #000;
+}
+
 .sq[target] { outline: none; }
 .sq:focus-visible { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .5); }
 
