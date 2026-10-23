@@ -20,7 +20,10 @@ if (idParam !== null && /^\d+$/.test(idParam)) {
 } else if (itemParam !== null && /^\d+$/.test(itemParam)) {
   await initOpen(itemParam);
 } else if (idParam !== null || itemParam !== null) {
-  main.appendChild(h('p', {}, 'Некорректная ссылка'));
+  main.appendChild(h('div', { class: 'card' },
+    h('p', {}, 'Некорректная ссылка'),
+    h('a', { href: '/index.html', class: 'btn btn-gold' }, 'В лобби'),
+  ));
 } else {
   main.appendChild(h('a', { href: '/cases.html', class: 'btn btn-ghost' }, 'В магазин'));
 }

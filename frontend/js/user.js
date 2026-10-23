@@ -12,7 +12,10 @@ document.body.appendChild(main);
 const login = new URLSearchParams(location.search).get('login');
 
 if (login === null || !/^[A-Za-z0-9_-]{3,16}$/.test(login)) {
-  main.appendChild(h('p', {}, 'Некорректная ссылка'));
+  main.appendChild(h('div', { class: 'card' },
+    h('p', {}, 'Некорректная ссылка'),
+    h('a', { href: '/index.html', class: 'btn btn-gold' }, 'В лобби'),
+  ));
 } else {
   let user;
   try {
