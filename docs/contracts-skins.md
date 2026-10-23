@@ -92,28 +92,31 @@ downgrade: всем `item_defs` и слотам снапшотов с `png` ве
 
 ## 8. Картинки по качеству (exterior)
 
-У скина (фигуры и доски) могут быть отдельные PNG для каждого качества. Это необязательно: если картинки для качества нет, используется основная `image`.
+У каждого скина (фигуры и доски) **обязательно** есть PNG для каждого из пяти качеств плюс основная картинка `image`. `image` — превью скина без экземпляра (дропы кейса, лента открытия, цели апгрейда, страница предмета маркета, админка); картинки качеств — то, что видно у конкретного экземпляра и в партии.
 
 ### Asset
-`SkinAsset {type: "png", image: ImageId, exteriors?: {FN?, MW?, FT?, WW?, BS?: ImageId}}` (`app/schemas/items.py`):
-- `Exterior = Literal["FN", "MW", "FT", "WW", "BS"]`;
-- поле `exteriors: dict[Exterior, ImageId] = {}`; неизвестный ключ → `422 VALIDATION_ERROR`;
-- при сериализации пустой `exteriors` **не выводится** (`model_serializer(mode="wrap")`), поэтому в БД, снапшотах и ответах asset без качеств остаётся `{"type": "png", "image": …}`. Миграция не нужна: старые asset валидны.
+`SkinAsset {type: "png", image: ImageId, exteriors: {FN, MW, FT, WW, BS: ImageId}}` (`app/schemas/items.py`):
+- `Exterior = Literal["FN", "MW", "FT", "WW", "BS"]`, `EXTERIORS: tuple[str, ...] = ("FN", "MW", "FT", "WW", "BS")`;
+- `exteriors: dict[Exterior, ImageId]` — обязательное поле, ключи ровно все пять. Нет поля или не хватает ключа → `422 VALIDATION_ERROR` «Нужны картинки для всех качеств: FN, MW, FT, WW, BS»; неизвестный ключ → `422 VALIDATION_ERROR`.
 
-`resolve_image(asset: dict, ext: str) -> str` (там же): `asset.get("exteriors", {}).get(ext)` или, если нет, `asset["image"]`.
+`resolve_image(asset: dict, ext: str) -> str` (там же) = `asset["exteriors"][ext]`.
+
+Хелпер сида `app/seed_skins.py::seed_asset(name) -> dict` = `{"type": "png", "image": seed_image_id(name), "exteriors": {ext: seed_image_id(name) for ext in EXTERIORS}}` — у скинов сида все качества совпадают с основной картинкой.
 
 ### Проверка (админка)
-При создании коллекции, доски и `PATCH /admin/item-defs/{id}` сервер проверяет `image` и **каждую** картинку из `exteriors` через `ensure_image(db, id, kind)` (те же ошибки `SKIN_IMAGE_NOT_FOUND` / `VALIDATION_ERROR`). Хелпер — `skin_images.ensure_asset(db, asset: SkinAsset, kind)`. `PATCH` заменяет asset целиком: чтобы убрать картинку качества, админ присылает asset без этого ключа.
+При создании коллекции, доски и `PATCH /admin/item-defs/{id}` сервер проверяет `image` и каждую из пяти картинок качеств через `skin_images.ensure_asset(db, asset, kind)` → `ensure_image` (`SKIN_IMAGE_NOT_FOUND` / `VALIDATION_ERROR`). `PATCH` заменяет asset целиком.
 
 ### Выдача экземпляра
-- `ItemOut.image: str | None` — картинка этого экземпляра: `resolve_image(def.asset, exterior)` для скина, `null` для предмета-кейса.
+- `ItemOut.image: str | None` — `resolve_image(def.asset, exterior)` для скина, `null` для предмета-кейса.
 - `ListingItemOut.image: str | None = None` — то же для лотов маркета и подарков.
-- `ItemDefOut.asset` — asset скина целиком (с `exteriors`, если есть).
+- `ItemDefOut.asset` — asset целиком, всегда с `exteriors`.
 
 ### Партия
-`loadout_snapshot` кладёт в слот `asset = {"type": "png", "image": resolve_image(def.asset, exterior(wear))}` — картинку конкретного надетого экземпляра. Фронт партии не меняется.
+`loadout_snapshot` кладёт в слот `asset = {"type": "png", "image": resolve_image(def.asset, exterior(wear))}`. Снапшоты уже сыгранных партий не меняются. Фронт партии не меняется.
+
+### Миграция 0009 (`0009_exterior_images.py`)
+upgrade: каждому `item_defs` asset получает `exteriors` со всеми пятью ключами; значение ключа — уже имеющаяся картинка этого качества, если есть, иначе `asset->>'image'`. downgrade: из всех asset удаляется ключ `exteriors`.
 
 ### Фронт
-- `skinPreview(def, image = null)` (`frontend/js/items.js`): если `image` задан — рисует `/api/v1/skins/<image>.png`, иначе `def.asset.image`.
-- `itemCard(def, opts)`: `opts.image` передаётся в `skinPreview`. Все места, где карточка строится для экземпляра (`invItemCard`, маркет, апгрейд, итог кейса/апгрейда), передают `image: item.image`. Карточки скина без экземпляра (дропы кейса, лента, цели апгрейда, страница предмета маркета) показывают основную картинку.
-- Админка, окно «Изменить скин»: кроме основной картинки — пять необязательных полей «Картинка: <качество>» (FN…BS, подписи из `EXTERIOR_RU`) с кнопкой «Убрать». При сохранении `asset.exteriors` содержит только заполненные качества. Формы создания коллекции и доски — только основная картинка.
+- `skinPreview(def, image = null)` (`frontend/js/items.js`): `image` задан → эта картинка, иначе `def.asset.image`. Экземплярные карточки (`invItemCard`, маркет, апгрейд, итог кейса/апгрейда) передают `image: item.image`.
+- Админка: в формах создания коллекции (в каждой строке фигуры), создания доски и в окне «Изменить скин» — основная картинка и пять обязательных полей «Картинка: <качество>» (подписи `EXTERIOR_RU`). Без всех шести картинок форма не отправляется (тост).
