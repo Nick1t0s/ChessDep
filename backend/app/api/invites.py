@@ -14,6 +14,7 @@ from app.db import get_db
 from app.models import ActivePlayer, Invite, User
 from app.schemas.games import TimeControlIn
 from app.services.games import create_game
+from app.services.items import ensure_loadout_complete
 from app.services.rolls import get_rng
 from app.services.settings import get_setting
 
@@ -35,6 +36,7 @@ async def create_invite(body: TimeControlIn, user: UserDep, db: DbDep) -> dict:
     active = await db.get(ActivePlayer, user.id)
     if active is not None:
         raise AppError(409, "ALREADY_IN_GAME", "У вас уже есть активная партия")
+    await ensure_loadout_complete(db, user.id)
     code = "".join(secrets.choice(_INVITE_ALPHABET) for _ in range(10))
     invite = Invite(
         code=code,
@@ -62,6 +64,7 @@ async def accept_invite(code: str, user: UserDep, db: DbDep) -> dict:
         raise AppError(400, "INVITE_EXPIRED", "Инвайт недействителен")
     if invite.creator_id == user.id:
         raise AppError(400, "INVITE_OWN", "Нельзя принять свой инвайт")
+    await ensure_loadout_complete(db, user.id)
     game = await create_game(db, invite.creator_id, user.id, invite.time_control, now)
     invite.game_id = game.id
     return {"game_id": str(game.id)}
