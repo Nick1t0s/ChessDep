@@ -22,6 +22,9 @@ from app.services.settings import get_setting
 _TOO_MANY_INPUTS = AppError(400, "TOO_MANY_INPUTS", "Слишком много предметов на входе")
 _DUPLICATE_INPUTS = AppError(400, "DUPLICATE_INPUTS", "Повторяющиеся предметы на входе")
 _TARGET_NOT_AVAILABLE = AppError(400, "UPGRADE_TARGET_NOT_AVAILABLE", "Цель апгрейда недоступна")
+_SET_MISMATCH = AppError(
+    400, "UPGRADE_SET_MISMATCH", "Апгрейд возможен только внутри одного набора"
+)
 
 
 async def compute(
@@ -58,6 +61,9 @@ async def compute(
         d.id: d
         for d in (await db.scalars(select(ItemDef).where(ItemDef.id.in_(def_ids)))).all()
     }
+    # Входы и цель — из одного набора.
+    if any(d.set_id != target.set_id for d in defs.values()):
+        raise _SET_MISMATCH
     input_value = sum(defs[item.item_def_id].value for item in items)
     chance = input_value / target.value * (1.0 - edge)
     if chance < min_chance or chance > max_chance:
