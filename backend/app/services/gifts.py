@@ -5,7 +5,13 @@ from app.core.errors import AppError
 from app.models import InventoryItem, ItemTransfer, User
 from app.schemas.gifts import GiftOut, GiftsPage
 from app.schemas.market import ListingItemOut
-from app.services.items import check_trade_hold, items_out, lock_items, unequip_items
+from app.services.items import (
+    check_trade_hold,
+    check_transferable,
+    items_out,
+    lock_items,
+    unequip_items,
+)
 from app.services.settings import get_setting
 
 _USER_NOT_FOUND = AppError(404, "USER_NOT_FOUND", "Пользователь не найден")
@@ -25,6 +31,7 @@ async def send_gift(
         raise _RECIPIENT_BANNED
     items = await lock_items(db, sender.id, [item_id])
     item = items[0]
+    check_transferable(item)
     hold = int(await get_setting(db, "trade_hold_hours"))
     check_trade_hold(item, hold, now)
     await unequip_items(db, [item.id])
@@ -61,7 +68,9 @@ async def _items_for(db: AsyncSession, rows: list[ItemTransfer]) -> list[Invento
 def _item_brief(item_out) -> ListingItemOut:
     return ListingItemOut(
         id=item_out.id,
+        kind=item_out.kind,
         item_def=item_out.item_def,
+        case=item_out.case,
         wear=item_out.wear,
         exterior=item_out.exterior,
     )
