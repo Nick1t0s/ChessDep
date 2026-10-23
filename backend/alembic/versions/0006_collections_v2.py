@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 import sqlalchemy.dialects.postgresql as pg
 
-from app.seed_data import genesis_rows
+from app.seed_data_v2 import genesis_rows_v2 as genesis_rows
 
 revision: str = "0006"
 down_revision: str | None = "0005"
