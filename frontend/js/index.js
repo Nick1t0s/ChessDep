@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { h, clear } from './dom.js';
-import { initLayout, setBalance } from './layout.js';
+import { initLayout } from './layout.js';
+import { openModal } from './modal.js';
 import { toast } from './toast.js';
 
 const me = await initLayout({ auth: 'required', active: 'play' });
@@ -35,17 +36,36 @@ const friendCard = h('div', { class: 'card lobby-card' },
   friendStates,
 );
 
-// 4. Ежедневный бонус
-const dailyBtn = h('button', { type: 'button', class: 'btn btn-gold btn-block' }, 'Забрать ежедневный бонус');
+// 4. Ежедневная награда
+const dailyWins = h('p', { class: 'note' }, '');
+const dailyBtn = h('button', { type: 'button', class: 'btn btn-gold btn-block' }, 'Забрать');
+const dailyNote = h('p', { class: 'note' }, '');
 const dailyCard = h('div', { class: 'card lobby-card' },
-  h('h3', { class: 'card-title' }, 'Ежедневный бонус'),
+  h('h3', { class: 'card-title' }, 'Ежедневная награда'),
+  dailyWins,
   dailyBtn,
+  dailyNote,
 );
 
 main.append(activeCard, playCard, friendCard, dailyCard);
 document.body.appendChild(main);
 
 // ---------- helpers ----------
+function showError(e) {
+  if (e?.code === 'LOADOUT_INCOMPLETE') {
+    toast(e.message + ' — откройте инвентарь', 'error');
+    openModal({
+      title: 'Неполная экипировка',
+      body: h('div', {}, h('p', {}, e.message)),
+      actions: [
+        { label: 'В инвентарь', kind: 'gold', onClick: () => { location.href = '/inventory.html'; } },
+      ],
+    });
+  } else {
+    toast(e.message, 'error');
+  }
+}
+
 function fmtRemaining(msLeft) {
   if (msLeft <= 0) return 'меньше минуты';
   const totalMin = Math.ceil(msLeft / 60000);
@@ -151,7 +171,7 @@ async function initPlayOnline() {
           const active = await api('GET', '/me/active-game');
           if (active?.game_id) location.href = '/game.html?id=' + encodeURIComponent(active.game_id);
         } else {
-          toast(e.message, 'error');
+          showError(e);
         }
       }
     });
@@ -183,7 +203,7 @@ async function initFriend() {
         const invite = await api('POST', '/invites', { time_control: tc });
         renderFriendInvite(invite);
       } catch (e) {
-        toast(e.message, 'error');
+        showError(e);
       }
     });
     friendControls.appendChild(btn);
@@ -271,38 +291,45 @@ function renderFriendInvite(invite) {
   );
 }
 
-// ---------- 4. ежедневный бонус ----------
-let bonusTimer = null;
-
-function renderDaily(meNow) {
-  const availableAt = meNow?.daily_bonus_available_at ?? null;
-  if (availableAt === null) {
-    if (bonusTimer !== null) {
-      clearInterval(bonusTimer);
-      bonusTimer = null;
-    }
-    dailyBtn.disabled = false;
-    dailyBtn.textContent = 'Забрать ежедневный бонус';
-    return;
+// ---------- 4. ежедневная награда ----------
+function renderDaily(reward) {
+  const status = reward ?? { wins_today: 0, wins_required: 0, claimed_today: false, available: false };
+  clear(dailyWins);
+  dailyWins.append('Побед сегодня: ' + status.wins_today + ' / ' + status.wins_required);
+  dailyBtn.disabled = !status.available;
+  clear(dailyNote);
+  if (status.claimed_today) {
+    dailyNote.append('Награда за сегодня получена');
+  } else if (!status.available) {
+    dailyNote.append('Победите ещё в ' + (status.wins_required - status.wins_today) + ' партиях');
   }
-  const deadline = Date.parse(availableAt);
-  const tick = () => {
-    dailyBtn.disabled = deadline > Date.now();
-    dailyBtn.textContent = 'Следующий бонус через ' + fmtRemaining(deadline - Date.now());
-  };
-  tick();
-  if (bonusTimer === null) bonusTimer = setInterval(tick, 60000);
 }
 
-dailyBtn.addEventListener('click', async () => {
+async function loadDaily() {
   try {
-    const out = await api('POST', '/me/daily-bonus');
-    setBalance(out.balance);
-    renderDaily({ daily_bonus_available_at: out.next_available_at });
-    toast('Бонус получен', 'success');
+    renderDaily(await api('GET', '/me/daily-reward'));
   } catch (e) {
     toast(e.message, 'error');
   }
+}
+
+dailyBtn.addEventListener('click', async () => {
+  dailyBtn.disabled = true;
+  try {
+    const out = await api('POST', '/me/daily-reward');
+    openModal({
+      title: 'Награда получена',
+      body: h('div', {}, h('p', {}, 'Вам выпал кейс «' + out.case.name + '»')),
+      actions: [
+        { label: 'Позже', kind: 'ghost' },
+        { label: 'Открыть', kind: 'gold', onClick: () => { location.href = '/case.html?item=' + encodeURIComponent(out.item.id); } },
+      ],
+    });
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    await loadDaily();
+  }
 });
 
-renderDaily({ daily_bonus_available_at: me?.daily_bonus_available_at ?? null });
+loadDaily();

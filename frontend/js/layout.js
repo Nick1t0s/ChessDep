@@ -4,7 +4,8 @@ import { h } from './dom.js';
 const SECTIONS = [
   ['Играть', '/index.html', 'play'],
   ['Смотреть', '/live.html', 'live'],
-  ['Кейсы', '/cases.html', 'cases'],
+  ['Магазин', '/cases.html', 'cases'],
+  ['Наборы', '/collections.html', 'sets'],
   ['Инвентарь', '/inventory.html', 'inventory'],
   ['Апгрейд', '/upgrade.html', 'upgrade'],
   ['Маркет', '/market.html', 'market'],
@@ -13,7 +14,7 @@ const SECTIONS = [
 
 const TABBAR = [
   ['Играть', '/index.html', 'play'],
-  ['Кейсы', '/cases.html', 'cases'],
+  ['Магазин', '/cases.html', 'cases'],
   ['Инвентарь', '/inventory.html', 'inventory'],
   ['Маркет', '/market.html', 'market'],
   ['Профиль', '/profile.html', 'profile'],
