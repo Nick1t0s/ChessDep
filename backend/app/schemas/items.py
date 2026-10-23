@@ -9,7 +9,9 @@ from app.chess_engine import format_chance
 Rarity = Literal["common", "uncommon", "rare", "epic", "legendary", "mythic"]
 PieceType = Literal["P", "N", "B", "R", "Q", "K"]
 Side = Literal["w", "b"]
-Slot = Literal["wP", "wN", "wB", "wR", "wQ", "wK", "bP", "bN", "bB", "bR", "bQ", "bK"]
+Slot = Literal["wP", "wN", "wB", "wR", "wQ", "wK", "bP", "bN", "bB", "bR", "bQ", "bK", "board"]
+DefKind = Literal["piece", "board"]
+CaseKind = Literal["set", "collection", "custom"]
 
 HexColor = constr(pattern=r"^#[0-9a-fA-F]{6}$")
 SlugCode = constr(pattern=r"^[a-z0-9-]{2,40}$")
@@ -47,7 +49,22 @@ class PieceAsset(BaseModel):
     color: HexColor
 
 
+class BoardAsset(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["stub"]
+    light: HexColor
+    dark: HexColor
+
+
 # --- Выходные схемы ---------------------------------------------------------
+
+
+class SetRef(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    name: str
 
 
 class CollectionRef(BaseModel):
@@ -63,24 +80,39 @@ class ItemDefOut(BaseModel):
     id: int
     code: str
     name: str
-    side: Side
-    piece_type: PieceType
+    kind: DefKind
+    side: Side | None
+    piece_type: PieceType | None
     rarity: str
     value: int
-    asset: PieceAsset
-    collection: CollectionRef
+    asset: PieceAsset | BoardAsset
+    set: SetRef
+    collection: CollectionRef | None
+
+
+class CaseRefOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    code: str
+    name: str
+    kind: str
+    price: int
 
 
 class ItemOut(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     id: int
-    item_def: ItemDefOut = Field(alias="def")
-    wear: float
-    exterior: str
+    kind: Literal["skin", "case"]
+    item_def: ItemDefOut | None = Field(alias="def")
+    case: CaseRefOut | None
+    wear: float | None
+    exterior: str | None
     status: str
     equipped_slot: Slot | None
     source: str
+    bound: bool
     acquired_at: datetime
 
 
@@ -99,9 +131,11 @@ class LoadoutOut(BaseModel):
     bR: ItemOut | None
     bQ: ItemOut | None
     bK: ItemOut | None
+    board: ItemOut | None
+    complete: bool
 
 
-class PublicCollectionOut(BaseModel):
+class PublicSetOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     code: str
@@ -109,7 +143,29 @@ class PublicCollectionOut(BaseModel):
     description: str
     status: str
     released_at: datetime | None
-    items_count: int
+    collections_count: int
+    boards_count: int
+
+
+class SetCollectionOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    name: str
+    description: str
+    items: list[ItemDefOut]
+
+
+class SetDetailOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    name: str
+    description: str
+    status: str
+    released_at: datetime | None
+    collections: list[SetCollectionOut]
+    boards: list[ItemDefOut]
 
 
 class CollectionDetailOut(BaseModel):
@@ -118,19 +174,24 @@ class CollectionDetailOut(BaseModel):
     code: str
     name: str
     description: str
-    status: str
-    released_at: datetime | None
+    set: SetRef
     items: list[ItemDefOut]
 
 
-class CaseOut(BaseModel):
+class ShopCaseOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: int
     code: str
     name: str
+    kind: str
+    set: SetRef | None
+    collection: CollectionRef | None
     price: int
-    collections: list[CollectionRef]
+    stock_limit: int | None
+    stock_left: int | None
+    sale_starts_at: datetime | None
+    sale_ends_at: datetime | None
 
 
 class CaseDropOut(BaseModel):
@@ -142,8 +203,16 @@ class CaseDropOut(BaseModel):
     chance_text: str
 
 
-class CaseDetailOut(CaseOut):
+class CaseDetailOut(ShopCaseOut):
+    on_sale_now: bool
     drops: list[CaseDropOut]
+
+
+class CaseBuyOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    item: ItemOut
+    balance: int
 
 
 class CaseOpenOut(BaseModel):
@@ -153,7 +222,23 @@ class CaseOpenOut(BaseModel):
     strip: list[int]
     win_index: int
     defs: dict[str, ItemDefOut]
-    balance: int
+
+
+class DailyRewardOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    wins_today: int
+    wins_required: int
+    claimed_today: bool
+    available: bool
+
+
+class DailyRewardClaimOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    case: CaseRefOut
+    item: ItemOut
+    roll_id: int
 
 
 class UpgradeIn(BaseModel):
@@ -230,14 +315,40 @@ class CollectionPatchIn(BaseModel):
     description: DescriptionStr | None = None
 
 
+class BoardCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: SlugCode
+    name: NameStr
+    rarity: Rarity
+    value: int = Field(ge=1, le=10_000_000)
+    asset: BoardAsset
+    is_upgrade_target: bool = True
+
+
 class ItemDefPatchIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: NameStr | None = None
     rarity: Rarity | None = None
     value: int | None = Field(default=None, ge=1, le=10_000_000)
-    asset: PieceAsset | None = None
+    asset: PieceAsset | BoardAsset | None = None
     is_upgrade_target: bool | None = None
+
+
+class SetCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: SlugCode
+    name: NameStr
+    description: DescriptionStr
+
+
+class SetPatchIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: NameStr | None = None
+    description: DescriptionStr | None = None
 
 
 class CaseCreateIn(BaseModel):
@@ -247,6 +358,30 @@ class CaseCreateIn(BaseModel):
     name: NameStr
     price: int = Field(ge=1, le=10_000_000)
     sort: int = 0
+    kind: CaseKind
+    set_id: int | None = None
+    collection_id: int | None = None
+    stock_limit: int | None = Field(default=None, ge=1)
+    sale_starts_at: datetime | None = None
+    sale_ends_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def check_refs_and_window(self) -> "CaseCreateIn":
+        if self.kind == "set":
+            if self.set_id is None or self.collection_id is not None:
+                raise ValueError("Для kind='set' требуется set_id, а collection_id должен отсутствовать")
+        elif self.kind == "collection":
+            if self.collection_id is None or self.set_id is not None:
+                raise ValueError("Для kind='collection' требуется collection_id, а set_id должен отсутствовать")
+        elif self.set_id is not None or self.collection_id is not None:
+            raise ValueError("Для kind='custom' нельзя указывать set_id и collection_id")
+        if (
+            self.sale_starts_at is not None
+            and self.sale_ends_at is not None
+            and self.sale_starts_at >= self.sale_ends_at
+        ):
+            raise ValueError("sale_starts_at должна быть раньше sale_ends_at")
+        return self
 
 
 class CasePatchIn(BaseModel):
@@ -255,6 +390,9 @@ class CasePatchIn(BaseModel):
     name: NameStr | None = None
     price: int | None = Field(default=None, ge=1, le=10_000_000)
     sort: int | None = None
+    stock_limit: int | None = Field(default=None, ge=1)
+    sale_starts_at: datetime | None = None
+    sale_ends_at: datetime | None = None
 
 
 class DropIn(BaseModel):
@@ -276,25 +414,53 @@ class DropsIn(RootModel[list[DropIn]]):
 class AutoDropsIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    collection_ids: conlist(int, min_length=1, max_length=20)  # type: ignore[valid-type]
+    set_ids: conlist(int, max_length=20) = []  # type: ignore[valid-type]
+    collection_ids: conlist(int, max_length=20) = []  # type: ignore[valid-type]
 
     @model_validator(mode="after")
     def no_duplicates(self) -> "AutoDropsIn":
+        if len(set(self.set_ids)) != len(self.set_ids):
+            raise ValueError("Повторяющиеся set_ids")
         if len(set(self.collection_ids)) != len(self.collection_ids):
             raise ValueError("Повторяющиеся collection_ids")
+        return self
+
+
+class DailyPoolEntryIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    case_id: int
+    weight: int = Field(ge=1)
+
+
+class DailyPoolIn(RootModel[list[DailyPoolEntryIn]]):
+    @model_validator(mode="after")
+    def no_duplicates(self) -> "DailyPoolIn":
+        if len(self.root) > 50:
+            raise ValueError("В пуле награды не может быть больше 50 кейсов")
+        ids = [e.case_id for e in self.root]
+        if len(set(ids)) != len(ids):
+            raise ValueError("Повторяющиеся case_id в пуле награды")
         return self
 
 
 class GrantItemIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    item_def_id: int
+    item_def_id: int | None = None
+    case_id: int | None = None
+
+    @model_validator(mode="after")
+    def exactly_one(self) -> "GrantItemIn":
+        if (self.item_def_id is None) == (self.case_id is None):
+            raise ValueError("Нужно ровно одно: item_def_id или case_id")
+        return self
 
 
-# --- Админка каталога (выходы) -----------------------------------------------
+# --- Админка каталога (выходы) ------------------------------------------------
 
 
-class AdminCollectionOut(BaseModel):
+class AdminSetOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: int
@@ -302,10 +468,27 @@ class AdminCollectionOut(BaseModel):
     name: str
     description: str
     status: str
+    is_base: bool
     created_at: datetime
     released_at: datetime | None
     retired_at: datetime | None
-    items_count: int
+    collections_count: int
+    boards_count: int
+
+
+class AdminSetCollectionOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    code: str
+    name: str
+    description: str
+    items: list[ItemDefOut]
+
+
+class AdminSetDetailOut(AdminSetOut):
+    collections: list[AdminSetCollectionOut]
+    boards: list[ItemDefOut]
 
 
 class AdminDropOut(BaseModel):
@@ -321,12 +504,22 @@ class AdminCaseOut(BaseModel):
     id: int
     code: str
     name: str
+    kind: str
+    set: SetRef | None
+    collection: CollectionRef | None
     price: int
-    status: str
     sort: int
-    collections: list[CollectionRef]
+    status: str
+    stock_limit: int | None
+    sold_count: int
+    sale_starts_at: datetime | None
+    sale_ends_at: datetime | None
+    on_sale_now: bool
     drops: list[AdminDropOut]
 
 
-class AdminCollectionDetailOut(AdminCollectionOut):
-    items: list[ItemDefOut]
+class DailyPoolEntryOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    case: CaseRefOut
+    weight: int
