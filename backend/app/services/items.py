@@ -291,8 +291,8 @@ async def items_out(db: AsyncSession, items: list[InventoryItem]) -> list[ItemOu
         cases = {
             c.id: c
             for c in (
-                await db.scalars(select(Case).where(Case.id.in_(case_ids))).all()
-            )
+                await db.scalars(select(Case).where(Case.id.in_(case_ids)))
+            ).all()
         }
     result: list[ItemOut] = []
     for item in items:
