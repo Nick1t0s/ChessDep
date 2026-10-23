@@ -17,7 +17,7 @@
 
     # Загрузка PNG скинов (до 2 МБ, docs/contracts-skins.md §4).
     location = /api/v1/admin/skin-images {
-        client_max_body_size 3m;
+        client_max_body_size 9m;
         proxy_pass $api_upstream;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;

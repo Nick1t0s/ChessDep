@@ -63,7 +63,7 @@ def test_not_png():
 def test_too_big():
     with pytest.raises(AppError) as exc:
         normalize_png("piece", b"0" * (MAX_UPLOAD_BYTES + 1))
-    _expect(exc, "Файл больше 2 МБ", TOO_BIG)
+    _expect(exc, "Файл больше 8 МБ", TOO_BIG)
 
 
 def test_bad_sizes():

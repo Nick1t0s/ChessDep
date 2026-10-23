@@ -10,7 +10,7 @@
 | Доска (`board`) | ровно 1088×1088 px | PNG; рамка 32 px с каждой стороны, игровое поле 1024×1024 начинается с (32, 32), клетка 128×128; клетка a8 (у белых) — левый верхний угол поля |
 
 Константы (бэк `app/services/skin_images.py`, фронт `frontend/js/pieces.js`):
-`PIECE_PX = 128`, `BOARD_PX = 1088`, `BOARD_FRAME_PX = 32`, `MAX_UPLOAD_BYTES = 2 * 1024 * 1024`.
+`PIECE_PX = 128`, `BOARD_PX = 1088`, `BOARD_FRAME_PX = 32`, `MAX_UPLOAD_BYTES = 8 * 1024 * 1024`.
 
 Сервер перекодирует картинку через Pillow (`img.convert("RGBA")`, `save(format="PNG", optimize=True)`) и хранит результат. Идентификатор картинки — sha256 (hex, 64 символа) **перекодированных** байт.
 
@@ -42,14 +42,14 @@ URL картинки фронт строит сам: `/api/v1/skins/<image>.png`
 
 Ошибки (все `422 SKIN_IMAGE_INVALID`):
 - `Content-Type` не `image/png`, тело пустое или Pillow не открывает его как PNG → «Нужен файл PNG»;
-- тело больше `MAX_UPLOAD_BYTES` → «Файл больше 2 МБ»;
+- тело больше `MAX_UPLOAD_BYTES` → «Файл больше 8 МБ»;
 - фигура не 128×128 → «Фигура должна быть PNG 128×128»;
 - доска не 1088×1088 → «Доска должна быть PNG 1088×1088»;
 - у фигуры хотя бы один угловой пиксель с альфой > 0 → «У фигуры должен быть прозрачный фон».
 
 `kind` не из списка → `422 VALIDATION_ERROR` (обычная валидация query FastAPI). Аудит: `admin_audit` action `skin_image.upload`, target `skin_image:<sha>`, payload `{"kind": kind}`.
 
-nginx: для `location = /api/v1/admin/skin-images` `client_max_body_size 3m` (во всём остальном 64k).
+nginx: для `location = /api/v1/admin/skin-images` `client_max_body_size 9m` (во всём остальном 64k).
 
 ### `GET /api/v1/skins/{image}.png` (публично, без сессии)
 `200`, `Content-Type: image/png`, `Cache-Control: public, max-age=31536000, immutable`, тело — байты из `skin_images.data`. Нет такой картинки или `image` не 64 hex → `404 SKIN_IMAGE_NOT_FOUND`.

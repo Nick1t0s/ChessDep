@@ -13,14 +13,14 @@ from app.schemas.items import SkinAsset
 PIECE_PX = 128
 BOARD_PX = 1088
 BOARD_FRAME_PX = 32
-MAX_UPLOAD_BYTES = 2 * 1024 * 1024
+MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 
 SKIN_IMAGE_NOT_FOUND = AppError(404, "SKIN_IMAGE_NOT_FOUND", "Картинка скина не найдена")
 ASSET_KIND_MISMATCH = AppError(422, "VALIDATION_ERROR", "asset не соответствует виду скина")
 
 _IMAGE_ID_RE = re.compile(r"[0-9a-f]{64}")
 NOT_PNG = AppError(422, "SKIN_IMAGE_INVALID", "Нужен файл PNG")
-TOO_BIG = AppError(422, "SKIN_IMAGE_INVALID", "Файл больше 2 МБ")
+TOO_BIG = AppError(422, "SKIN_IMAGE_INVALID", "Файл больше 8 МБ")
 BAD_PIECE_SIZE = AppError(422, "SKIN_IMAGE_INVALID", "Фигура должна быть PNG 128×128")
 BAD_BOARD_SIZE = AppError(422, "SKIN_IMAGE_INVALID", "Доска должна быть PNG 1088×1088")
 NOT_TRANSPARENT = AppError(422, "SKIN_IMAGE_INVALID", "У фигуры должен быть прозрачный фон")
