@@ -63,7 +63,8 @@ async def test_admin_users_search(alice, bob, admin) -> None:
     assert resp.status_code == 200, resp.text
     detail = resp.json()
     assert "ledger" in detail
-    assert detail["items_owned"] == 0
+    # 13 базовых предметов при регистрации.
+    assert detail["items_owned"] == 13
     assert detail["active_listings"] == 0
 
 

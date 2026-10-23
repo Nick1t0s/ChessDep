@@ -4,7 +4,13 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 
 from app.main import app
-from app.models import Ledger, Session as SessionModel, User
+from app.models import (
+    InventoryItem,
+    Ledger,
+    Loadout,
+    Session as SessionModel,
+    User,
+)
 from app.core.security import hash_token
 from app.services.settings import DEFAULTS
 from tests.conftest import register
@@ -30,8 +36,21 @@ async def test_register_sets_httponly_cookie_and_signup_bonus(client, db) -> Non
         signup = await db.scalar(
             select(func.count()).select_from(Ledger).where(Ledger.reason == "signup_bonus")
         )
+        items = (
+            await db.scalars(select(InventoryItem).where(InventoryItem.source == "base"))
+        ).all()
+        loadout_rows = (await db.scalars(select(Loadout))).all()
     assert total == 1
     assert signup == 1
+    # После регистрации — 13 базовых предметов и 13 строк loadouts (все экипированы).
+    assert len(items) == 13
+    assert {item.item_def_id for item in items} == set(range(1, 14))
+    assert len(loadout_rows) == 13
+    assert {row.slot for row in loadout_rows} == {
+        "wP", "wN", "wB", "wR", "wQ", "wK",
+        "bP", "bN", "bB", "bR", "bQ", "bK", "board",
+    }
+    assert len({row.inventory_item_id for row in loadout_rows}) == 13
 
 
 async def test_session_token_stored_hashed(client, db) -> None:
