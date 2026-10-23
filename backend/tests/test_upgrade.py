@@ -270,3 +270,67 @@ async def test_upgrade_concurrent_same_inputs(alice, rng, db) -> None:
     assert len(ok) == 1
     assert len(failed) == 1
     assert failed[0].json()["error"]["code"] == "ITEM_NOT_OWNED"
+
+
+async def test_upgrade_set_mismatch(alice, admin) -> None:
+    # Второй выпущенный набор Winter (12 фигур).
+    resp = await admin.post(
+        "/api/v1/admin/sets",
+        json={"code": "winter", "name": "Winter", "description": "Зимний набор"},
+    )
+    assert resp.status_code == 201, resp.text
+    set_id = resp.json()["id"]
+    resp = await admin.post(
+        f"/api/v1/admin/sets/{set_id}/collections",
+        json={
+            "code": "winter",
+            "name": "Winter",
+            "description": "Зимняя коллекция",
+            "pieces": [
+                {
+                    "side": side,
+                    "piece_type": piece_type,
+                    "rarity": "epic",
+                    "value": 500,
+                    "asset": {"type": "stub", "color": "#ffffff"},
+                }
+                for side in ("w", "b")
+                for piece_type in ("P", "N", "B", "R", "Q", "K")
+            ],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    resp = await admin.post(f"/api/v1/admin/sets/{set_id}/release")
+    assert resp.status_code == 200, resp.text
+    winter_wq = await def_id_by_code("winter-wq")
+    genesis_wk = await def_id_by_code("genesis-wk")
+
+    # Входы Genesis -> цель Winter: preview запрещает.
+    inputs = await give_items("alice", ["genesis-wr", "genesis-br"])
+    resp = await alice.post(
+        "/api/v1/upgrade/preview",
+        json={"input_ids": inputs, "target_def_id": winter_wq},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["allowed"] is False
+    assert resp.json()["reason"] == "UPGRADE_SET_MISMATCH"
+
+    # То же через /upgrade — 400, предметы не сгорают.
+    resp = await alice.post(
+        "/api/v1/upgrade", json={"input_ids": inputs, "target_def_id": winter_wq}
+    )
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["error"]["code"] == "UPGRADE_SET_MISMATCH"
+    async with SessionLocal() as db:
+        statuses = (
+            await db.scalars(select(InventoryItem.status).where(InventoryItem.id.in_(inputs)))
+        ).all()
+    assert sorted(statuses) == ["owned", "owned"]
+
+    # Смешанные входы (Genesis + Winter) -> цель Genesis: тоже запрещено.
+    mixed = await give_items("alice", ["genesis-wr", "winter-wr"])
+    resp = await alice.post(
+        "/api/v1/upgrade/preview",
+        json={"input_ids": mixed, "target_def_id": genesis_wk},
+    )
+    assert resp.json()["reason"] == "UPGRADE_SET_MISMATCH"
