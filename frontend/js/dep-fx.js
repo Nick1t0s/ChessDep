@@ -1,6 +1,5 @@
 import { h } from './dom.js';
 import { PIECE_NAME_RU } from './format.js';
-import { glyph } from './pieces.js';
 
 const CURSOR_MS = 1800;
 const CURSOR_FALLBACK_MS = 2000;
@@ -69,8 +68,9 @@ export async function playDep(boardApi, event, { mine }) {
     let ring = null;
     if (glyphEl !== null) glyphEl.classList.remove('newpop', 'crack', 'burn-out');
     if (event.success && glyphEl !== null) {
-      glyphEl.textContent = glyph(event.to, side);
-      glyphEl.classList.add('newpop');
+      const fresh = boardApi.pieceElement(event.to, side);
+      fresh.classList.add('newpop');
+      glyphEl.replaceWith(fresh);
       ring = h('span', { class: 'dep-ring burst' });
       sqEl.appendChild(ring);
     } else if (!event.success && glyphEl !== null) {

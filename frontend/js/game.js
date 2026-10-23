@@ -5,7 +5,7 @@ import { createBoard } from './board.js';
 import { connectGame } from './ws.js';
 import { playDep } from './dep-fx.js';
 import { fmtClock, END_REASON_RU, PIECE_NAME_RU, DEP_REASON_RU } from './format.js';
-import { glyph, pieceColor } from './pieces.js';
+import { glyph, pieceNode } from './pieces.js';
 import { toast } from './toast.js';
 import { openModal, confirmModal } from './modal.js';
 import { createMoveList } from './game-moves.js';
@@ -352,8 +352,7 @@ async function main() {
       const info = state.players?.[color];
       const loadout = info?.loadout ?? {};
       const king = panel.querySelector('.p-king');
-      king.textContent = glyph('K', color);
-      king.style.setProperty('--piece-color', pieceColor(loadout, 'K', color));
+      king.replaceChildren(pieceNode(loadout, 'K', color, 'p-king-img'));
       panel.querySelector('.p-login').textContent = info?.login ?? '—';
       panel.querySelector('.p-elo').textContent = 'Elo ' + (info?.elo ?? '—');
       const used = color === 'white' ? state.deps.white_used : state.deps.black_used;
@@ -485,8 +484,7 @@ async function main() {
       depPanel.appendChild(title);
       for (const target of depPiece.targets) {
         const row = h('button', { type: 'button', class: 'dep-row' });
-        const g = h('span', { class: 'dep-row-glyph ' + (state.you === 'white' ? 'side-white' : 'side-black') }, glyph(target.piece, state.you));
-        g.style.setProperty('--piece-color', pieceColor(state.players[state.you].loadout, target.piece, state.you));
+        const g = pieceNode(state.players[state.you].loadout, target.piece, state.you, 'dep-row-glyph');
         row.appendChild(g);
         row.appendChild(h('b', { class: 'dep-row-name' }, PIECE_NAME_RU[target.piece]));
         if (target.allowed) {
@@ -613,8 +611,7 @@ async function main() {
       if (uci === undefined) continue;
       const upper = suffix.toUpperCase();
       const btn = h('button', { type: 'button', class: 'promo-btn', title: PIECE_NAME_RU[upper] });
-      const g = h('span', { class: 'glyph ' + (state.you === 'white' ? 'side-white' : 'side-black') }, glyph(upper, state.you));
-      g.style.setProperty('--piece-color', pieceColor(state.players[state.you].loadout, upper, state.you));
+      const g = pieceNode(state.players[state.you].loadout, upper, state.you, 'glyph');
       btn.appendChild(g);
       btn.appendChild(h('span', { class: 'promo-name' }, PIECE_NAME_RU[upper]));
       btn.addEventListener('click', () => {
