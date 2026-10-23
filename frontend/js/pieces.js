@@ -17,5 +17,8 @@ export function pieceColor(loadout, piece, color) {
 }
 
 export function boardColors(loadout) {
-  return { ...DEFAULT_BOARD };
+  const asset = loadout?.board?.asset;
+  return asset != null && asset.type === 'stub'
+    ? { light: asset.light, dark: asset.dark }
+    : { ...DEFAULT_BOARD };
 }

@@ -14,15 +14,31 @@ export const EXTERIOR_RU = {
 export const SLOT_RU = {
   wP: 'Белая пешка', wN: 'Белый конь', wB: 'Белый слон', wR: 'Белая ладья', wQ: 'Белый ферзь', wK: 'Белый король',
   bP: 'Чёрная пешка', bN: 'Чёрный конь', bB: 'Чёрный слон', bR: 'Чёрная ладья', bQ: 'Чёрный ферзь', bK: 'Чёрный король',
+  board: 'Доска',
 };
 export const WHITE_SLOTS = ['wP', 'wN', 'wB', 'wR', 'wQ', 'wK'];
 export const BLACK_SLOTS = ['bP', 'bN', 'bB', 'bR', 'bQ', 'bK'];
+export const LOADOUT_SLOTS = [...WHITE_SLOTS, ...BLACK_SLOTS, 'board'];
 export const SIDE_RU = { w: 'Белые', b: 'Чёрные' };
 
 export function skinPreview(def) {
+  if (def.kind === 'board') {
+    const grid = h('div', { class: 'skin-board' });
+    for (let i = 0; i < 16; i += 1) {
+      const cellClass = (Math.floor(i / 4) + i) % 2 === 1 ? 'cell dark' : 'cell light';
+      grid.appendChild(h('span', { class: cellClass }));
+    }
+    grid.style.setProperty('--light', def.asset.light);
+    grid.style.setProperty('--dark', def.asset.dark);
+    return h('div', { class: 'skin-preview' }, grid);
+  }
   const glyphSpan = h('span', { class: 'skin-glyph' }, glyph(def.piece_type, def.side === 'b' ? 'black' : 'white'));
   glyphSpan.style.setProperty('--piece-color', def.asset.color);
   return h('div', { class: 'skin-preview' }, glyphSpan);
+}
+
+export function casePreview(caseRef) {
+  return h('div', { class: 'skin-preview case-preview' }, h('span', { class: 'case-glyph' }, '▣'));
 }
 
 export function itemCard(def, opts = {}) {
@@ -45,4 +61,27 @@ export function itemCard(def, opts = {}) {
   }
   if (opts.extra) root.appendChild(opts.extra);
   return root;
+}
+
+export function invItemCard(item, opts = {}) {
+  if (item.kind === 'case') {
+    const card = h('div', { class: 'item-card r-case' + (opts.onClick ? ' clickable' : '') },
+      casePreview(item.case),
+      h('div', { class: 'item-name' }, item.case.name),
+      h('div', { class: 'item-meta' }, h('span', { class: 'item-rarity' }, 'Кейс')),
+      opts.badge ? h('span', { class: 'item-badge' }, opts.badge) : null,
+    );
+    if (opts.onClick) {
+      card.addEventListener('click', opts.onClick);
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', '0');
+    }
+    if (opts.extra) card.appendChild(opts.extra);
+    return card;
+  }
+  return itemCard(item.def, {
+    ...opts,
+    exterior: item.exterior,
+    badge: opts.badge ?? (item.bound ? 'Базовый' : null),
+  });
 }

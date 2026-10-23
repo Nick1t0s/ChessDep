@@ -103,8 +103,8 @@ export function createBoard(container, { orientation = 'white', onSquareClick } 
 
   function render(state, opts = {}) {
     const { selected = null, hints = [], captures = [], depPickable = [] } = opts;
-    // Доска рисуется скином смотрящего.
-    const colors = boardColors(state?.players?.[state?.you]?.loadout);
+    // Доска рисуется скином смотрящего (зритель — доска белых).
+    const colors = boardColors(state?.players?.[state?.you]?.loadout ?? state?.players?.white?.loadout);
     board.style.setProperty('--light', colors.light);
     board.style.setProperty('--dark', colors.dark);
 
