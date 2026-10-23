@@ -1,17 +1,20 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.items import ItemDefOut
+from app.schemas.items import CaseRefOut, ItemDefOut
 
 
 class ListingItemOut(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     id: int
-    item_def: ItemDefOut = Field(alias="def")
-    wear: float
-    exterior: str
+    kind: Literal["skin", "case"]
+    item_def: ItemDefOut | None = Field(default=None, alias="def")
+    case: CaseRefOut | None = None
+    wear: float | None = None
+    exterior: str | None = None
 
 
 class ListingOut(BaseModel):
@@ -46,6 +49,15 @@ class DefMarketOut(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     item_def: ItemDefOut = Field(alias="def")
+    stats: MarketStatsOut
+    listings: list[ListingOut]
+    sales: list[DefSaleOut]
+
+
+class CaseMarketOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    case: CaseRefOut
     stats: MarketStatsOut
     listings: list[ListingOut]
     sales: list[DefSaleOut]

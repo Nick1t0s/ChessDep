@@ -38,7 +38,6 @@ class MeOut(BaseModel):
     role: str
     balance: int
     elo: int
-    daily_bonus_available_at: datetime | None
 
 
 class LedgerItemOut(BaseModel):
@@ -57,10 +56,3 @@ class Page(BaseModel, Generic[T]):
 
     items: list[T]
     next_cursor: int | None
-
-
-class DailyBonusOut(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    balance: int
-    next_available_at: datetime
