@@ -1,17 +1,27 @@
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.chess_engine import format_chance
 from app.core.errors import AppError
-from app.models import Case, CaseDrop, Collection, ItemDef, User
-from app.schemas.items import CaseOpenOut, CollectionRef, ItemDefOut
+from app.models import Case, CaseDrop, Collection, ItemDef, ItemSet, User
+from app.schemas.items import (
+    CaseBuyOut,
+    CaseDetailOut,
+    CaseDropOut,
+    CaseOpenOut,
+    CollectionRef,
+    ItemDefOut,
+    SetRef,
+    ShopCaseOut,
+)
 from app.services.economy import apply_delta
-from app.services.items import create_item, item_def_out, item_out
+from app.services.items import create_case_item, create_item, defs_out, item_out, lock_items
 from app.services.rolls import get_rng, record_roll
 
 _CASE_NOT_FOUND = AppError(404, "CASE_NOT_FOUND", "Кейс не найден")
-_CASE_NOT_AVAILABLE = AppError(400, "CASE_NOT_AVAILABLE", "Кейс недоступен")
+_CASE_NOT_AVAILABLE = AppError(400, "CASE_NOT_AVAILABLE", "Кейс сейчас не продаётся")
 
 STRIP_LENGTH = 60
 WIN_INDEX_MIN = 45
@@ -50,42 +60,68 @@ def weighted_pick(drops: list[CaseDrop], r: float) -> CaseDrop:
     return drops[-1]
 
 
-async def case_collections(
-    db: AsyncSession, case_ids: list[int]
-) -> dict[int, list[CollectionRef]]:
-    """Различные коллекции дропов каждого кейса, по возрастанию collection.id."""
-    if not case_ids:
-        return {}
-    rows = (
-        await db.execute(
-            select(
-                CaseDrop.case_id,
-                Collection.id,
-                Collection.code,
-                Collection.name,
+def on_sale_now(case: Case, now: datetime) -> bool:
+    return (
+        case.status == "on_sale"
+        and (case.sale_starts_at is None or now >= case.sale_starts_at)
+        and (case.sale_ends_at is None or now < case.sale_ends_at)
+        and (case.stock_limit is None or case.sold_count < case.stock_limit)
+    )
+
+
+async def shop_case_outs(db: AsyncSession, cases_list: list[Case]) -> list[ShopCaseOut]:
+    if not cases_list:
+        return []
+    set_ids = {c.set_id for c in cases_list if c.set_id is not None}
+    collection_ids = {c.collection_id for c in cases_list if c.collection_id is not None}
+    sets: dict[int, ItemSet] = {}
+    if set_ids:
+        sets = {
+            s.id: s
+            for s in (await db.scalars(select(ItemSet).where(ItemSet.id.in_(set_ids)))).all()
+        }
+    collections: dict[int, Collection] = {}
+    if collection_ids:
+        collections = {
+            c.id: c
+            for c in (await db.scalars(select(Collection).where(Collection.id.in_(collection_ids)))).all()
+        }
+    result: list[ShopCaseOut] = []
+    for case in cases_list:
+        case_set = sets.get(case.set_id)
+        collection = collections.get(case.collection_id)
+        result.append(
+            ShopCaseOut(
+                id=case.id,
+                code=case.code,
+                name=case.name,
+                kind=case.kind,
+                set=(
+                    SetRef(code=case_set.code, name=case_set.name)
+                    if case_set is not None
+                    else None
+                ),
+                collection=(
+                    CollectionRef(code=collection.code, name=collection.name)
+                    if collection is not None
+                    else None
+                ),
+                price=case.price,
+                stock_limit=case.stock_limit,
+                stock_left=(
+                    None if case.stock_limit is None else case.stock_limit - case.sold_count
+                ),
+                sale_starts_at=case.sale_starts_at,
+                sale_ends_at=case.sale_ends_at,
             )
-            .join(ItemDef, ItemDef.id == CaseDrop.item_def_id)
-            .join(Collection, Collection.id == ItemDef.collection_id)
-            .where(CaseDrop.case_id.in_(case_ids))
-            .distinct()
-            .order_by(CaseDrop.case_id, Collection.id)
         )
-    ).all()
-    result: dict[int, list[CollectionRef]] = {cid: [] for cid in case_ids}
-    for case_id, _collection_id, code, name in rows:
-        result[case_id].append(CollectionRef(code=code, name=name))
     return result
 
 
-async def openable_case(
-    db: AsyncSession, case_id: int
-) -> tuple[Case, list[CaseDrop]]:
+async def case_detail(db: AsyncSession, case_id: int, now: datetime) -> CaseDetailOut:
     case = await db.get(Case, case_id)
     if case is None or case.status == "draft":
-        # Черновики публично не существуют.
         raise _CASE_NOT_FOUND
-    if case.status == "closed":
-        raise _CASE_NOT_AVAILABLE
     drops = list(
         (
             await db.scalars(
@@ -95,15 +131,79 @@ async def openable_case(
             )
         ).all()
     )
+    total = sum(d.weight for d in drops)
+    defs = await defs_out(db, [d.item_def_id for d in drops])
+    drop_outs = [
+        CaseDropOut(
+            item_def=defs[d.item_def_id],
+            weight=d.weight,
+            chance=d.weight / total,
+            chance_text=format_chance(d.weight / total),
+        )
+        for d in drops
+    ]
+    base = (await shop_case_outs(db, [case]))[0]
+    return CaseDetailOut(
+        **base.model_dump(),
+        on_sale_now=on_sale_now(case, now),
+        drops=drop_outs,
+    )
+
+
+async def buy_case(db: AsyncSession, user: User, case_id: int, now: datetime) -> CaseBuyOut:
+    case = await db.get(Case, case_id)
+    if case is None or case.status == "draft":
+        raise _CASE_NOT_FOUND
+    if not on_sale_now(case, now):
+        raise _CASE_NOT_AVAILABLE
+    row = (
+        await db.execute(
+            update(Case)
+            .where(
+                Case.id == case_id,
+                Case.status == "on_sale",
+                or_(Case.stock_limit.is_(None), Case.sold_count < Case.stock_limit),
+            )
+            .values(sold_count=Case.sold_count + 1)
+            .returning(Case.sold_count, Case.stock_limit)
+        )
+    ).one_or_none()
+    if row is None:
+        raise _CASE_NOT_AVAILABLE
+    sold_count, stock_limit = row
+    if stock_limit is not None and sold_count >= stock_limit:
+        await db.execute(update(Case).where(Case.id == case_id).values(status="off_sale"))
+    balance = await apply_delta(db, user.id, -case.price, "case_purchase", ref=str(case.id))
+    item = await create_case_item(
+        db,
+        user_id=user.id,
+        case_id=case.id,
+        source="shop",
+        source_ref=str(case.id),
+        now=now,
+    )
+    return CaseBuyOut(item=await item_out(db, item), balance=balance)
+
+
+async def open_case_item(db: AsyncSession, user: User, item_id: int, now: datetime) -> CaseOpenOut:
+    items = await lock_items(db, user.id, [item_id])
+    item = items[0]
+    if item.case_id is None:
+        raise AppError(400, "ITEM_NOT_CASE", "Это не кейс")
+    case = await db.get(Case, item.case_id)
+    drops = list(
+        (
+            await db.scalars(
+                select(CaseDrop)
+                .where(CaseDrop.case_id == case.id)
+                .order_by(CaseDrop.item_def_id)
+            )
+        ).all()
+    )
     if not drops:
         raise _CASE_NOT_AVAILABLE
-    return case, drops
-
-
-async def open_case(db: AsyncSession, user: User, case_id: int, now: datetime) -> CaseOpenOut:
-    case, drops = await openable_case(db, case_id)
-    # 2. Списание (порядок блокировок: пользователь последний и единственный).
-    balance = await apply_delta(db, user.id, -case.price, "case_purchase", ref=str(case.id))
+    item.status = "burned"
+    item.burned_at = now
     # Порядок вызовов rng.random() фиксирован, на нём держатся тесты.
     rng = get_rng()
     r_win = rng.random()
@@ -115,8 +215,8 @@ async def open_case(db: AsyncSession, user: User, case_id: int, now: datetime) -
             strip.append(winner.item_def_id)
         else:
             strip.append(weighted_pick(drops, rng.random()).item_def_id)
-    # 6. create_item расходует следующий rng.random() на wear.
-    item = await create_item(
+    # create_item расходует следующий rng.random() на wear.
+    new_item = await create_item(
         db,
         user_id=user.id,
         def_id=winner.item_def_id,
@@ -132,31 +232,14 @@ async def open_case(db: AsyncSession, user: User, case_id: int, now: datetime) -
         ref=str(case.id),
         chance=winner.weight / total,
         roll_value=r_win,
-        input={"case_id": case.id, "price": case.price},
-        outcome={"item_def_id": winner.item_def_id, "item_id": item.id},
+        input={"case_id": case.id, "inventory_item_id": item.id},
+        outcome={"item_def_id": winner.item_def_id, "item_id": new_item.id},
     )
-    # 8. defs — все def, встречающиеся в ленте.
-    defs: dict[str, ItemDefOut] = {}
-    by_id: dict[int, ItemDefOut] = {}
-    if strip:
-        rows = (
-            await db.execute(
-                select(ItemDef, Collection)
-                .join(Collection, Collection.id == ItemDef.collection_id)
-                .where(ItemDef.id.in_(set(strip)))
-            )
-        ).all()
-        for d, collection in rows:
-            by_id[d.id] = item_def_out(d, collection)
-        for def_id in strip:
-            key = str(def_id)
-            if key in defs:
-                continue
-            defs[key] = by_id[def_id]
+    # defs — все def, встречающиеся в ленте.
+    defs = await defs_out(db, set(strip))
     return CaseOpenOut(
-        item=await item_out(db, item),
+        item=await item_out(db, new_item),
         strip=strip,
         win_index=win_index,
-        defs=defs,
-        balance=balance,
+        defs={str(def_id): out for def_id, out in defs.items()},
     )
