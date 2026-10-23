@@ -358,7 +358,7 @@ docs/, tasks/, legacy/
 - Самоподписанный сертификат для разработки: `bash scripts/gen-dev-cert.sh`.
 
 ## 14. Тесты
-- `make test` — весь pytest в контейнерах профиля `test` (~1.5–2 мин, 170 тестов на момент написания).
+- `make test` — весь pytest в контейнерах профиля `test` (~1.5–2 мин, 223 теста на момент написания).
 - `bash scripts/test_isolated.sh` — то же, но в отдельном compose-проекте (`-p t<хеш пути>`). Можно запускать параллельно из нескольких git worktree.
 - Фикстуры `backend/tests/conftest.py`:
   - перед каждым тестом `TRUNCATE` всех таблиц, заново настройки по умолчанию и Genesis, `flushdb` Redis;
