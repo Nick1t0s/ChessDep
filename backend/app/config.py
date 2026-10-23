@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     redis_url: str
     cookie_secure: bool = True
     allowed_origins: Annotated[list[str], NoDecode] = []
+    # false — OriginMiddleware пропускает всё (локальная сеть с меняющимся IP); защита от CSRF остаётся только на SameSite=Strict
+    origin_check: bool = True
     session_ttl_days: int = 30
     testing: bool = False
     frontend_dir: str = "/frontend"

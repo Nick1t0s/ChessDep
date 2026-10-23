@@ -93,6 +93,7 @@ docs/, tasks/, legacy/
 | `REDIS_URL` | Redis |
 | `COOKIE_SECURE` | `false` для http; `true` для HTTPS (cookie тогда называется `__Host-sid` и имеет флаг `Secure`) |
 | `ALLOWED_ORIGINS` | Через запятую — адреса, с которых открывают сайт, **точно со схемой и портом** (`http://localhost:8080`, `http://10.208.33.16:8080`, `https://localhost:8443`). Иначе любой POST получит 403 `BAD_ORIGIN` «Запрос с недопустимого источника» |
+| `ORIGIN_CHECK` | `true` по умолчанию. `false` выключает `OriginMiddleware` целиком: `ALLOWED_ORIGINS` игнорируется, от CSRF защищает только `SameSite=Strict`. Для локальной сети, где IP меняется |
 | `SESSION_TTL_DAYS` | Срок жизни сессии (30) |
 | `HTTP_PORT`, `HTTPS_PORT` | Внешние порты nginx (8080, 8443) |
 
@@ -104,7 +105,7 @@ docs/, tasks/, legacy/
 
 ### 5.1 Путь запроса
 1. **nginx** → `api`.
-2. **`OriginMiddleware`** (`core/origin.py`). Для всех методов, кроме GET/HEAD/OPTIONS, и для WebSocket заголовок `Origin` обязан быть в `ALLOWED_ORIGINS`, иначе 403 `BAD_ORIGIN`. Это защита от CSRF вместе с `SameSite=Strict`.
+2. **`OriginMiddleware`** (`core/origin.py`). Для всех методов, кроме GET/HEAD/OPTIONS, и для WebSocket заголовок `Origin` обязан быть в `ALLOWED_ORIGINS`, иначе 403 `BAD_ORIGIN`. Это защита от CSRF вместе с `SameSite=Strict`. При `ORIGIN_CHECK=false` middleware пропускает всё без проверки.
 3. **Зависимости FastAPI:**
    - `get_db` открывает **одну транзакцию на запрос**: коммит при успехе, откат при исключении;
    - `current_user` проверяет cookie сессии (401 `UNAUTHENTICATED`, 403 `USER_BANNED`);
@@ -384,7 +385,7 @@ docs/, tasks/, legacy/
 - HTTPS-сертификаты нужно продлевать вручную (Let's Encrypt не автоматизирован).
 
 ## 17. Рецепты
-- **Сайт с другой машины:** добавить её адрес со схемой и портом в `ALLOWED_ORIGINS` → `make up`. Симптом, если забыть: «Запрос с недопустимого источника» на любой форме.
+- **Сайт с другой машины:** добавить её адрес со схемой и портом в `ALLOWED_ORIGINS` → `make up`. Симптом, если забыть: «Запрос с недопустимого источника» на любой форме. Если IP меняется — `ORIGIN_CHECK=false` → `make up`.
 - **Админ:** зарегистрироваться на сайте → `make make-admin LOGIN=<логин>` → обновить страницу.
 - **Новая настройка:** `DEFAULTS` и `SETTINGS_SCHEMA` в `services/settings.py` + вставка значения в новой миграции.
 - **Новая таблица:** модель в `models/`, импорт в `models/__init__.py`, миграция руками с `downgrade`, таблица в `_TRUNCATE_SQL` в `conftest.py`.

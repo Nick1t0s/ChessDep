@@ -33,6 +33,16 @@ async def test_post_with_foreign_origin_forbidden(client) -> None:
     assert resp.json()["error"]["code"] == "BAD_ORIGIN"
 
 
+async def test_origin_check_disabled_allows_post_without_origin(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "origin_check", False)
+    async with await _fresh_client() as client:
+        resp = await client.post(
+            "/api/v1/auth/register",
+            json={"login": "alice", "email": "alice@example.com", "password": "password123"},
+        )
+    assert resp.status_code != 403
+
+
 async def test_get_without_origin_allowed() -> None:
     async with await _fresh_client() as client:
         resp = await client.get("/api/v1/health")
