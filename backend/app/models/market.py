@@ -52,6 +52,10 @@ class MarketListing(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # False — продавец ещё не видел уведомление о продаже (GET /me/sales/unseen).
+    seller_seen: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
 
 
 class ItemTransfer(Base):

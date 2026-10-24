@@ -76,3 +76,21 @@ class ListingCreateIn(BaseModel):
 
     item_id: int
     price: int = Field(ge=1, le=10_000_000)
+
+
+class SaleNoticeOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    listing_id: int
+    name: str
+    price: int
+    payout: int
+    buyer_login: str
+    closed_at: datetime
+
+
+class SalesUnseenOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sales: list[SaleNoticeOut]
+    balance: int
