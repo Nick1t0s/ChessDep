@@ -1,8 +1,9 @@
 import math
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.errors import AppError
 from app.models import (
@@ -153,6 +154,7 @@ async def buy_listing(db: AsyncSession, buyer: User, listing_id: int, now) -> Ma
     listing.buyer_id = buyer.id
     listing.fee = fee
     listing.closed_at = now
+    listing.seller_seen = False
     db.add(
         ItemTransfer(
             item_id=item.id,
@@ -436,3 +438,42 @@ async def my_listings(
         query = query.where(MarketListing.status == status)
     rows = (await db.execute(query.order_by(MarketListing.id.desc()))).all()
     return await _out_listings(db, [tuple(row) for row in rows], user.id)
+
+
+async def take_unseen_sales(db: AsyncSession, user: User) -> list[dict]:
+    """Проданные лоты продавца, о которых он ещё не знает; помечает их увиденными."""
+    ids = list(
+        await db.scalars(
+            update(MarketListing)
+            .where(
+                MarketListing.seller_id == user.id,
+                MarketListing.status == "sold",
+                MarketListing.seller_seen.is_(False),
+            )
+            .values(seller_seen=True)
+            .returning(MarketListing.id)
+            .execution_options(synchronize_session=False)
+        )
+    )
+    if not ids:
+        return []
+    buyer = aliased(User)
+    rows = await db.execute(
+        select(MarketListing, ItemDef.name, Case.name, buyer.login)
+        .outerjoin(ItemDef, ItemDef.id == MarketListing.item_def_id)
+        .outerjoin(Case, Case.id == MarketListing.case_id)
+        .join(buyer, buyer.id == MarketListing.buyer_id)
+        .where(MarketListing.id.in_(ids))
+        .order_by(MarketListing.closed_at, MarketListing.id)
+    )
+    return [
+        {
+            "listing_id": listing.id,
+            "name": def_name if def_name is not None else case_name,
+            "price": listing.price,
+            "payout": listing.price - (listing.fee or 0),
+            "buyer_login": buyer_login,
+            "closed_at": listing.closed_at,
+        }
+        for listing, def_name, case_name, buyer_login in rows
+    ]

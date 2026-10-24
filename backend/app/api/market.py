@@ -9,7 +9,15 @@ from app.core.deps import current_user, optional_user
 from app.core.ratelimit import hit
 from app.db import get_db
 from app.models import User
-from app.schemas.market import BrowseOut, CaseMarketOut, DefMarketOut, ListingCreateIn, ListingOut
+from app.schemas.market import (
+    BrowseOut,
+    CaseMarketOut,
+    DefMarketOut,
+    ListingCreateIn,
+    ListingOut,
+    SaleNoticeOut,
+    SalesUnseenOut,
+)
 from app.services import market as market_service
 
 router = APIRouter(prefix="/api/v1", tags=["market"])
@@ -98,3 +106,9 @@ async def my_listings(
     status: Literal["active", "sold", "cancelled"] = "active",
 ) -> list[ListingOut]:
     return await market_service.my_listings(db, user, status)
+
+
+@router.get("/me/sales/unseen", response_model=SalesUnseenOut)
+async def sales_unseen(user: UserDep, db: DbDep) -> SalesUnseenOut:
+    sales = await market_service.take_unseen_sales(db, user)
+    return SalesUnseenOut(sales=[SaleNoticeOut(**s) for s in sales], balance=user.balance)
