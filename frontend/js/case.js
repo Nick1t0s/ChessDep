@@ -4,6 +4,7 @@ import { initLayout, setBalance } from './layout.js';
 import { toast } from './toast.js';
 import { openModal } from './modal.js';
 import { itemCard } from './items.js';
+import { playSound } from './sound.js';
 import { fmtCrystals } from './format.js';
 
 await initLayout({ auth: 'optional', active: 'cases' });
@@ -117,11 +118,27 @@ function playStrip(windowEl, track, res) {
   track.style.setProperty('transition', 'transform 5.5s cubic-bezier(.12,.8,.18,1)');
   track.style.setProperty('transform', 'translateX(' + String(-offset) + 'px)');
 
+  // Щелчок, когда под маркер приезжает новая ячейка (ячейка с зазором — 132 px), как в CS.
+  const half = windowEl.clientWidth / 2;
+  let lastCell = null;
+  let raf = 0;
+  const step = () => {
+    const t = getComputedStyle(track).transform;
+    if (t !== 'none') {
+      const cell = Math.floor((half - new DOMMatrix(t).m41) / 132);
+      if (lastCell !== null && cell !== lastCell) playSound('tick', 0.5);
+      lastCell = cell;
+    }
+    raf = requestAnimationFrame(step);
+  };
+  raf = requestAnimationFrame(step);
+
   return new Promise((resolve) => {
     let done = false;
     const finish = () => {
       if (done) return;
       done = true;
+      cancelAnimationFrame(raf);
       resolve();
     };
     track.addEventListener('transitionend', finish, { once: true });
@@ -180,6 +197,7 @@ async function openItemCase(itemId, openBtn, windowEl, track) {
   }
 
   await playStrip(windowEl, track, res);
+  playSound('win');
 
   openModal({
     title: 'Выпало!',
