@@ -455,3 +455,15 @@ async def test_inventory_query_count(alice) -> None:
     assert resp.status_code == 200
     queries = [q for q in log if not q.lstrip().upper().startswith("COMMIT")]
     assert len(queries) <= 12, len(queries)
+
+
+async def test_lost_item_slot_gets_base_skin(alice) -> None:
+    ids = await give_items("alice", ["genesis-wp"])
+    resp = await alice.put("/api/v1/loadout/wP", json={"inventory_item_id": ids[0]})
+    assert resp.status_code == 200, resp.text
+    resp = await alice.post("/api/v1/market/listings", json={"item_id": ids[0], "price": 100})
+    assert resp.status_code == 201, resp.text
+    loadout = (await alice.get("/api/v1/loadout")).json()
+    assert loadout["wP"]["bound"] is True
+    assert loadout["wP"]["id"] != ids[0]
+    assert loadout["complete"] is True

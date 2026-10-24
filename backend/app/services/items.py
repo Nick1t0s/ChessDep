@@ -1,7 +1,7 @@
 from collections.abc import Iterable
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
@@ -320,5 +320,29 @@ async def load_items(db: AsyncSession, user_id: int, ids: list[int]) -> list[Inv
 
 
 async def unequip_items(db: AsyncSession, item_ids: list[int]) -> None:
-    if item_ids:
-        await db.execute(delete(Loadout).where(Loadout.inventory_item_id.in_(item_ids)))
+    """Снять предметы с экипировки; в их слоты надеть базовые скины владельца."""
+    if not item_ids:
+        return
+    rows = (
+        await db.execute(
+            select(Loadout.user_id, Loadout.slot).where(Loadout.inventory_item_id.in_(item_ids))
+        )
+    ).all()
+    await db.execute(delete(Loadout).where(Loadout.inventory_item_id.in_(item_ids)))
+    for user_id, slot in rows:
+        base_def_id = BASE_DEF_IDS[LOADOUT_SLOTS.index(slot)]
+        base_id = await db.scalar(
+            select(InventoryItem.id)
+            .where(
+                InventoryItem.user_id == user_id,
+                InventoryItem.source == "base",
+                InventoryItem.item_def_id == base_def_id,
+                InventoryItem.status == "owned",
+            )
+            .order_by(InventoryItem.id)
+            .limit(1)
+        )
+        if base_id is not None:
+            await db.execute(
+                insert(Loadout).values(user_id=user_id, slot=slot, inventory_item_id=base_id)
+            )

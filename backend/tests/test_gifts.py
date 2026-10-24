@@ -39,7 +39,7 @@ async def test_gift_flow(alice, bob) -> None:
 
     # Слот пуст.
     loadout = (await alice.get("/api/v1/loadout")).json()
-    assert loadout["wN"] is None
+    assert loadout["wN"]["bound"] is True
 
     # Предмет у bob, acquired_at обновлён.
     bob_id = await _user_id("bob")
