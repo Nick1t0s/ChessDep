@@ -1,5 +1,6 @@
 import { h } from './dom.js';
 import { PIECE_NAME_RU } from './format.js';
+import { playSound } from './sound.js';
 
 const CURSOR_MS = 1800;
 const CURSOR_FALLBACK_MS = 2000;
@@ -55,6 +56,7 @@ export async function playDep(boardApi, event, { mine }) {
   cursor.style.setProperty('transition', 'left ' + CURSOR_MS + 'ms cubic-bezier(.15,.85,.25,1)');
   cursor.style.setProperty('left', String(event.roll_value * 100) + '%');
   await transitionDone(cursor, CURSOR_FALLBACK_MS);
+  playSound(event.success ? 'dep-success' : 'dep-fail');
 
   if (sqEl && event.square) {
     const side = sqEl.classList.contains('side-white') ? 'white' : 'black';
