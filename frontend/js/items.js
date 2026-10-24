@@ -48,7 +48,7 @@ export function itemCard(def, opts = {}) {
   if (opts.onClick) classes.push('clickable');
   const root = h('div', { class: classes.join(' ') },
     skinPreview(def, opts.image ?? null),
-    h('div', { class: 'item-name' }, def.name),
+    h('div', { class: 'item-name', title: def.name }, def.name),
     setLine(def) ? h('div', { class: 'item-set' }, setLine(def)) : null,
     h('div', { class: 'item-meta' },
       h('span', { class: 'item-rarity' }, RARITY_RU[def.rarity]),
