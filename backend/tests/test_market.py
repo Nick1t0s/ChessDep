@@ -38,9 +38,10 @@ async def test_list_and_cancel(alice, bob, rng) -> None:
     listing = await _create_listing(alice, item_id, 1000)
     listing_id = listing["id"]
 
-    # Слот освободился, предмет listed.
+    # В слот вернулся базовый скин, предмет listed.
     loadout = (await alice.get("/api/v1/loadout")).json()
-    assert loadout["wP"] is None
+    assert loadout["wP"]["bound"] is True
+    assert loadout["complete"] is True
     inv = (await alice.get("/api/v1/inventory")).json()
     entry = next(i for i in inv if i["id"] == item_id)
     assert entry["status"] == "listed"

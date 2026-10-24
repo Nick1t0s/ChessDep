@@ -196,7 +196,7 @@ async def test_upgrade_to_board(alice, rng) -> None:
     assert body["item"]["def"]["code"] == "genesis-board-albion"
 
     loadout = (await alice.get("/api/v1/loadout")).json()
-    assert loadout["bR"] is None
+    assert loadout["bR"]["bound"] is True
 
 
 async def test_upgrade_success(alice, rng) -> None:
@@ -220,7 +220,7 @@ async def test_upgrade_success(alice, rng) -> None:
     assert body["item"]["def"]["code"] == "genesis-wq"
 
     loadout = (await alice.get("/api/v1/loadout")).json()
-    assert loadout["bR"] is None
+    assert loadout["bR"]["bound"] is True
 
     async with SessionLocal() as check:
         for item_id in ids:
