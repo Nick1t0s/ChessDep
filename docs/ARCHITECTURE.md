@@ -74,9 +74,9 @@ backend/
     schemas/           Pydantic-схемы входа/выхода
     services/          вся бизнес-логика
     api/               роутеры (тонкие: валидация, rate-limit, вызов сервиса)
-  alembic/versions/    0001…0005 — миграции, написаны руками
+  alembic/versions/    0001…0010 — миграции, написаны руками
   tests/               pytest
-frontend/              HTML-страницы, css/, js/ (ES-модули), js/admin/
+frontend/              HTML-страницы, css/, js/ (ES-модули), js/admin/, sounds/
 nginx/                 Dockerfile, 40-chessdep-conf.sh (выбор режима), conf/
 scripts/               check_frontend.sh, test_isolated.sh, gen-dev-cert.sh
 certs/                 сюда кладутся fullchain.pem/privkey.pem для HTTPS (в git — только .gitkeep)
@@ -215,6 +215,7 @@ docs/, tasks/, legacy/
 Хранятся `white_ms`, `black_ms` — остаток на момент `turn_started_at`. Остаток ходящего = `ms − (now − turn_started_at)`.
 - Часы запускаются после **первого хода чёрных** (`clock_running = True`). До этого действует `abort_deadline`: 30 с на первый ход каждой стороны, иначе партия аннулируется (`abort_no_first_move`).
 - На ходе: `ms = остаток + инкремент`.
+- **Пауза после депа:** пока на фронте идёт анимация депа, часы депающего стоят. `do_dep` фиксирует остаток и ставит `turn_started_at = now + DEP_CLOCK_PAUSE_MS` (3000 мс, `game_clock.py`); `remaining_ms` считает отрицательное прошедшее время нулём. До запуска часов вместо этого сдвигается `abort_deadline`. Фронт не тикает часы, пока `fxRunning`.
 - `game_clock.deadline(game)` — момент флага или аннулирования. После каждого изменения `schedule_deadline` кладёт его в Redis ZSET `clock:deadlines`.
 - **Worker** каждые 200 мс забирает просроченные id:
   - блокирует партию, **перепроверяет по БД** (Redis — только подсказка) и вызывает `check_timeout`;
@@ -251,7 +252,8 @@ docs/, tasks/, legacy/
 - **Скин** (`item_defs`): `kind` (`piece`/`board`), `set_id`, у фигур — `collection_id`, `side`, `piece_type`; редкость задаётся вручную; `asset` — `{"type": "png", "image": "<sha256>", "exteriors": {FN…BS: "<sha256>"}}` (ссылки на `skin_images`, см. ниже). `image` — превью скина, `exteriors` — обязательные картинки всех пяти качеств (`schemas/items.py::resolve_image`). Экземпляр отдаёт свою картинку в `ItemOut.image` / `ListingItemOut.image`, в снапшот партии кладётся `image` надетого экземпляра (`docs/contracts-skins.md` §8).
 - **Базовый набор** (`is_base`, id 1): 12 фигур + доска, выдаются при регистрации (`source = 'base'`, `wear = 0`) и сразу надеты. Базовый предмет (`bound`) нельзя продать, подарить, апгрейдить (`ITEM_BOUND`).
 - **Экземпляр** (`inventory_items`): `wear` в [0, 1) (exterior FN/MW/FT/WW/BS — косметика: подпись и, если у скина задана, своя картинка), статус `owned` | `listed` | `burned`, `acquired_at`. Экипировать, апгрейдить, выставлять и дарить можно только `owned`.
-- **Экипировка:** 13 слотов (`wP…bK` + `board`). Слот можно очистить, но **в бой нельзя без всех 13** (`LOADOUT_INCOMPLETE`): проверки в очереди, инвайтах и `create_game`; воркер выкидывает из очереди игрока с неполной экипировкой. Снапшот в партию — слоты своей стороны без префикса + `board`; каждый видит свою доску, зритель — доску белых.
+- **Экипировка:** 13 слотов (`wP…bK` + `board`). Слот можно очистить вручную, но **в бой нельзя без всех 13** (`LOADOUT_INCOMPLETE`): проверки в очереди, инвайтах и `create_game`; воркер выкидывает из очереди игрока с неполной экипировкой. Снапшот в партию — слоты своей стороны без префикса + `board`; каждый видит свою доску, зритель — доску белых.
+- **Автовозврат базового скина:** когда надетый предмет уходит (лот на маркете, подарок, сгорание в апгрейде), `services/items.py::unequip_items` сразу надевает в этот слот базовый скин владельца. Миграция 0010 заполнила базовыми скинами все пустые слоты.
 - **Кейс** — товар магазина: `kind` `set` / `collection` / `custom`, статусы `draft` → `on_sale` ⇄ `off_sale`, лимиты — тираж (`stock_limit`, по исчерпании сам `off_sale`; атомарный `UPDATE … sold_count + 1`, `cases` блокируется раньше `users`) и окно продаж (`sale_starts_at/ends_at`). Покупка (`/cases/{id}/buy`) кладёт **предмет-кейс** в инвентарь (`inventory_items.case_id`); его можно открыть, продать, подарить. Дропы заморожены после выхода из черновика, поэтому купленный кейс открывается всегда.
 - **Открытие** (`services/cases.py::open_case_item`, `POST /inventory/{id}/open`). Порядок вызовов RNG **зафиксирован**, на нём держатся тесты:
   1. предмет-кейс → `burned`;
@@ -262,14 +264,15 @@ docs/, tasks/, legacy/
 
   Ответ содержит ленту для анимации.
 - **Автовеса:** вес скина = `rarity_weights[редкость] × 1000 // число скинов этой редкости в кейсе`.
-- **Апгрейд:** 1–10 разных `owned` предметов → цель **из того же набора** (входы из чужого набора — `UPGRADE_SET_MISMATCH`). `chance = Σvalue / target.value × (1 − upgrade_edge)`, допустимо только в `[min, max]`. Входы сгорают при любом исходе. Колесо на фронте останавливается на `roll_value`. Проверка набора — в `services/upgrade.py::compute` до расчёта шанса, поэтому preview отдаёт её как `reason`. Следствие: скины `retired`-набора апгрейдить не во что (цель только из `released`). Страница `upgrade.js` показывает цели только из набора первого выбранного входа и не даёт добавить вход из другого набора.
+- **Апгрейд:** 1–10 разных `owned` предметов → цель **из того же набора** (входы из чужого набора — `UPGRADE_SET_MISMATCH`). `chance = Σvalue / target.value × (1 − upgrade_edge)`, допустимо только в `[min, max]`. Входы сгорают при любом исходе. Колесо на фронте — кольцо со шкалой, дуга шанса по центру снизу `[180° − chance·180°, 180° + chance·180°)`; стрелка останавливается в `180° − chance·180° + roll_value·360°`. Проверка набора — в `services/upgrade.py::compute` до расчёта шанса, поэтому preview отдаёт её как `reason`. Следствие: скины `retired`-набора апгрейдить не во что (цель только из `released`). Страница `upgrade.js` показывает цели только из набора первого выбранного входа и не даёт добавить вход из другого набора.
 - **Ежедневная награда** (`services/daily_reward.py`): после `daily_reward_wins` (3) побед за сутки UTC (`ply ≥ reward_min_plies`) — кнопка «Забрать»: один предмет-кейс по весам из `daily_reward_pool` (админка), бросок в `rolls` (`daily_reward`), раз в сутки (`users.last_daily_reward_on`).
 - **Картинки скинов** (`services/skin_images.py`, `docs/contracts-skins.md`): PNG хранится в таблице `skin_images` (`id` = sha256 перекодированных байт, `kind`, `data`). Фигура — ровно 128×128, четыре угловых пикселя прозрачные; доска — ровно 1088×1088, рамка 32 px, клетка 128 px, a8 в левом верхнем углу поля. Админ грузит файл `POST /admin/skin-images?kind=…` (сырые байты `image/png`, до 8 МБ; Pillow проверяет и перекодирует в RGBA). Раздача — `GET /skins/<sha>.png` публично с `Cache-Control: immutable`. При создании коллекции/доски и правке asset сервер проверяет, что картинка есть и её вид совпадает со скином.
 - **Сид** (`app/seed_data.py::seed_rows`): базовый набор (скины 1–13) и Genesis (коллекция — скины 14–25, доски 26–27, кейс 1 по набору), пул награды; asset — `seed_skins.seed_asset(code)`: картинка из `app/seed_images/<code>.png` основной и во всех качествах. Использует `conftest.py` (вместе с `seed_image_rows()` для `skin_images`). Сиды миграций заморожены: `seed_data_v1.py` (0003), `seed_data_v2.py` (0006), `seed_data_v3.py` (0007, цветные заглушки) — не менять.
 
 ## 8. Маркет и подарки
-- **Лот:** предмет переходит в `listed`, с экипировки снимается. Лимит активных лотов — `market_max_listings`. Задержка передачи `trade_hold_hours` считается по `acquired_at`.
+- **Лот:** предмет переходит в `listed`, с экипировки снимается (в слот встаёт базовый скин). Лимит активных лотов — `market_max_listings`. Задержка передачи `trade_hold_hours` считается по `acquired_at`.
 - **Покупка:** блокировки лот → предмет → оба пользователя по возрастанию id. Покупатель платит `price`, продавец получает `price − ceil(price × market_fee)` (через `Decimal`; если 0 — строки в `ledger` нет). Предмет переходит покупателю с новым `acquired_at`, пишется строка в `item_transfers`.
+- **Уведомление о продаже:** покупка ставит лоту `seller_seen = false`. `GET /me/sales/unseen` (`market.take_unseen_sales`) отдаёт такие продажи (`name`, `price`, `payout`, `buyer_login`, `closed_at`) и текущий `balance`, сразу помечая их увиденными. `layout.js` опрашивает его раз в 15 с (пока вкладка видна) и показывает тост справа сверху со звуком `sale`.
 - **Подарок:** мгновенная передача по логину, записка до 140 символов, флаг `seen` (просмотренные помечаются при чтении входящих). Подарок сбрасывает `trade_hold` получателю.
 
 ## 9. Админка и аудит
@@ -298,6 +301,7 @@ docs/, tasks/, legacy/
 | 0007 | наборы v3: **удаляет все предметы**; `item_sets`, `daily_reward_pool`, доски, предметы-кейсы (`inventory_items.case_id`, лоты кейсов), виды и лимиты кейсов, `users.last_daily_reward_on`; сид; выдача базовых скинов всем пользователям |
 | 0008 | `skin_images` + PNG сида; все asset `stub` (в `item_defs` и снапшотах `games.*_loadout`) → `png`: скины сида по своему коду, прочие — базовая картинка того же слота |
 | 0009 | asset всех скинов получает обязательные `exteriors` (FN…BS); недостающие качества — основная картинка `image` |
+| 0010 | `market_listings.seller_seen` (уведомления о продажах; старые продажи — `true`); пустые слоты экипировки получают базовые скины |
 
 Поля таблиц — в моделях `backend/app/models/*.py` и в `docs/TZ.md` §8. Миграции пишутся **руками** (не autogenerate), у каждой есть `downgrade`.
 
@@ -306,7 +310,7 @@ docs/, tasks/, legacy/
 | Группа | Эндпоинты | Доступ |
 |---|---|---|
 | Служебное | `GET /health`, `GET /config` (`time_controls`, `dep_limit`), `GET /internal/require-admin` | публично / для nginx |
-| Аккаунт | `POST /auth/register`, `/auth/login`, `/auth/logout`; `GET /me`, `POST /me/password`, `GET/POST /me/daily-reward`, `GET /me/ledger`, `/me/games`, `/me/active-game`, `/me/listings`, `/me/gifts`, `/me/gifts/unseen-count` | залогиненный (кроме register/login) |
+| Аккаунт | `POST /auth/register`, `/auth/login`, `/auth/logout`; `GET /me`, `POST /me/password`, `GET/POST /me/daily-reward`, `GET /me/ledger`, `/me/games`, `/me/active-game`, `/me/listings`, `/me/sales/unseen`, `/me/gifts`, `/me/gifts/unseen-count` | залогиненный (кроме register/login) |
 | Игра | `POST/DELETE /matchmaking/queue`, `GET /matchmaking/status`; `POST /invites`, `POST /invites/{code}/accept`, `DELETE /invites/{code}` | залогиненный |
 | Партия | `GET /games/live`, `GET /games/{id}`, `GET /games/{id}/events`, `GET/POST /games/{id}/chat` | любой залогиненный |
 | Действия в партии | `GET /games/{id}/dep-options`, `POST /games/{id}/move`, `/dep`, `/resign`, `/draw/offer`, `/draw/accept`, `/draw/decline`, `/abort` | только игроки |
@@ -342,6 +346,7 @@ docs/, tasks/, legacy/
 | `ws.js` | WebSocket с ping и переподключением 1/2/5/10 с |
 | `dep-fx.js` | анимация депа: бар до `roll_value`, затем превращение или сгорание |
 | `game-moves.js`, `game-chat.js` | список ходов с выбором позиции; чат |
+| `sound.js` | `playSound(name, volume)`: `move`, `capture` (ход со взятием — по `x` в SAN), `dep-success`, `dep-fail`, `tick` (лента кейса, стрелка апгрейда), `win`, `fail` (итог апгрейда), `sale`. Файлы — `frontend/sounds/*.mp3`, временно CC0-звуки Kenney.nl; заменить можно, положив mp3 под тем же именем |
 
 ### 12.3 Игровой экран (`js/game.js`) — главное
 - **Правило версий:** `applyState(s)` применяет состояние только при `s.version > текущей`. HTTP-ответы и WS-сообщения могут приходить в любом порядке.
