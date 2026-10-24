@@ -341,7 +341,7 @@ docs/, tasks/, legacy/
 | `toast.js`, `modal.js` | уведомления (не больше 4 одновременно), модалки, `confirmModal` |
 | `format.js` | `fmtCrystals`, `fmtClock`, словари русских названий |
 | `pieces.js` | `skinUrl`, `pieceNode` (картинка скина фигуры, без картинки — глиф), `boardUrl`; размеры PNG |
-| `items.js` | `itemCard` (с подписью «Набор · Коллекция»), `skinPreview`, названия редкостей, износа и видов кейсов (`CASE_KIND_RU`) |
+| `items.js` | `itemCard` (с подписью «Набор · Коллекция»; название «Коллекция | Фигура» — две строки, каждая обрезается многоточием, поэтому высота карточки фиксирована), `skinPreview`, названия редкостей, износа и видов кейсов (`CASE_KIND_RU`) |
 | `board.js` | доска: 64 кнопки, создаются один раз; ориентация; подсветки; доска-картинка (`.board-zone.skinned`, отступ рамки 2.9412 %, подписи a–h/1–8 поверх рамки); `pieceElement` для анимации депа |
 | `ws.js` | WebSocket с ping и переподключением 1/2/5/10 с |
 | `dep-fx.js` | анимация депа: бар до `roll_value`, затем превращение или сгорание |
@@ -356,11 +356,11 @@ docs/, tasks/, legacy/
 - Просмотр позиции: клик по ходу показывает `events[].board`. Живые обновления продолжают приходить, но доску не перерисовывают до «К текущей позиции».
 
 ### 12.4 Страницы
-`index` (лобби: поиск, приглашение, ежедневная награда), `game`, `live`, `replay`, `user`, `invite`, `login`, `register`, `inventory`, `cases` (магазин; «Содержимое» кейса — модалка поверх магазина), `case` (открытие кейса из инвентаря `?item=`; карточка кейса по прямой ссылке `?id=`), `upgrade`, `market`, `market-item`, `gifts`, `profile`, `leaderboard`, `admin` (вкладки грузятся динамически из `js/admin/*.js`: catalog = наборы, cases = кейсы и пул награды, users, settings, misc = маркет + журнал).
+`index` (лобби: поиск, приглашение, ежедневная награда), `game`, `live`, `replay`, `user`, `invite`, `login`, `register`, `inventory`, `cases` (магазин; «Содержимое» кейса — модалка поверх магазина), `case` (открытие кейса из инвентаря `?item=`; после открытия кнопка переключается на следующий такой же кейс из инвентаря — «Открыть ещё (N)»; карточка кейса по прямой ссылке `?id=`), `upgrade`, `market`, `market-item`, `gifts`, `profile`, `leaderboard`, `admin` (вкладки грузятся динамически из `js/admin/*.js`: catalog = наборы, cases = кейсы и пул награды, users, settings, misc = маркет + журнал).
 
 ## 13. nginx и HTTPS
 - `nginx/40-chessdep-conf.sh` при старте контейнера выбирает шаблон: есть `/etc/nginx/certs/fullchain.pem` и `privkey.pem` — `https.conf.template` (443 + 301 с 80 на `https://$host:${HTTPS_PORT}`, HSTS), иначе `http.conf.template`. Общая часть — `nginx/conf/app.locations`.
-- Заголовки: CSP `default-src 'self'…`, `X-Content-Type-Options`, `Referrer-Policy`. В `location` нельзя добавлять свои `add_header`, иначе пропадут общие.
+- Заголовки: CSP `default-src 'self'…`, `X-Content-Type-Options`, `Referrer-Policy`. Статика (`location /`) отдаётся с `expires -1` (`Cache-Control: no-cache`): браузер сверяет ETag, и правки фронта видны без Ctrl+F5. В `location` нельзя добавлять свои `add_header`, иначе пропадут общие.
 - Адрес `api` переспрашивается у DNS Docker каждые 10 с (`resolver 127.0.0.11` + переменная в `proxy_pass`). Поэтому пересоздание контейнера `api` не роняет сайт в 502.
 - Самоподписанный сертификат для разработки: `bash scripts/gen-dev-cert.sh`.
 

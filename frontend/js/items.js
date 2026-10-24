@@ -27,6 +27,14 @@ function setLine(def) {
   return def.collection ? def.set.name + ' · ' + def.collection.name : def.set.name;
 }
 
+// «Коллекция | Фигура» — по строке на часть, каждая обрезается многоточием:
+// высота карточки не зависит от длины названия.
+function nameNode(name) {
+  const cut = name.indexOf(' | ');
+  const parts = cut < 0 ? [name] : [name.slice(0, cut), name.slice(cut + 3)];
+  return h('div', { class: 'item-name', title: name }, ...parts.map((part) => h('span', null, part)));
+}
+
 export function skinPreview(def, image = null) {
   const url = image ? skinUrl({ type: 'png', image }) : skinUrl(def.asset);
   if (url === null) return h('div', { class: 'skin-preview' });
@@ -48,7 +56,7 @@ export function itemCard(def, opts = {}) {
   if (opts.onClick) classes.push('clickable');
   const root = h('div', { class: classes.join(' ') },
     skinPreview(def, opts.image ?? null),
-    h('div', { class: 'item-name', title: def.name }, def.name),
+    nameNode(def.name),
     setLine(def) ? h('div', { class: 'item-set' }, setLine(def)) : null,
     h('div', { class: 'item-meta' },
       h('span', { class: 'item-rarity' }, RARITY_RU[def.rarity]),
@@ -69,7 +77,7 @@ export function invItemCard(item, opts = {}) {
   if (item.kind === 'case') {
     const card = h('div', { class: 'item-card r-case' + (opts.onClick ? ' clickable' : '') },
       casePreview(item.case),
-      h('div', { class: 'item-name' }, item.case.name),
+      nameNode(item.case.name),
       h('div', { class: 'item-meta' }, h('span', { class: 'item-rarity' }, 'Кейс')),
       opts.badge ? h('span', { class: 'item-badge' }, opts.badge) : null,
     );

@@ -55,4 +55,5 @@
     }
     location @to_login { return 302 /login.html?next=/admin.html; }
 
-    location / { try_files $uri $uri/ =404; }
+    # Статика всегда сверяется с сервером (ETag → 304): правки фронта видны без Ctrl+F5.
+    location / { expires -1; try_files $uri $uri/ =404; }

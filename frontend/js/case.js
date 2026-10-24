@@ -156,7 +156,7 @@ async function initOpen(itemId) {
     return;
   }
   const item = Array.isArray(items)
-    ? items.find((it) => String(it.id) === itemId && it.status === 'owned')
+    ? items.find((it) => String(it.id) === itemId && it.status === 'owned') ?? null
     : null;
   if (item === null) {
     main.appendChild(h('p', {}, 'Кейс не найден'));
@@ -174,7 +174,8 @@ async function initOpen(itemId) {
 
   const [windowEl, track] = stripWindow();
   const openBtn = h('button', { type: 'button', class: 'btn btn-gold' }, 'Открыть');
-  openBtn.addEventListener('click', () => openItemCase(String(item.id), openBtn, windowEl, track));
+  const current = { id: String(item.id), caseId: item.case.id };
+  openBtn.addEventListener('click', () => openItemCase(current, openBtn, windowEl, track));
 
   const stripCard = h('div', { class: 'card' }, windowEl, openBtn);
 
@@ -185,11 +186,21 @@ async function initOpen(itemId) {
   }
 }
 
-async function openItemCase(itemId, openBtn, windowEl, track) {
+// Неоткрытые кейсы того же вида из инвентаря (пусто — таких больше нет).
+async function nextCaseItems(caseId) {
+  try {
+    const items = await api('GET', '/inventory?kind=case');
+    return (items ?? []).filter((it) => it.case?.id === caseId && it.status === 'owned');
+  } catch {
+    return [];
+  }
+}
+
+async function openItemCase(current, openBtn, windowEl, track) {
   openBtn.disabled = true;
   let res = null;
   try {
-    res = await api('POST', '/inventory/' + itemId + '/open');
+    res = await api('POST', '/inventory/' + current.id + '/open');
   } catch (e) {
     toast(e.message, 'error');
     openBtn.disabled = false;
@@ -209,5 +220,14 @@ async function openItemCase(itemId, openBtn, windowEl, track) {
     ],
   });
 
+  // Открытый кейс сгорел: кнопка переходит на следующий такой же, если он есть.
+  const rest = await nextCaseItems(current.caseId);
+  if (rest.length === 0) {
+    openBtn.textContent = 'Таких кейсов больше нет';
+    return;
+  }
+  current.id = String(rest[0].id);
+  history.replaceState(null, '', '/case.html?item=' + current.id);
+  openBtn.textContent = 'Открыть ещё (' + rest.length + ')';
   openBtn.disabled = false;
 }
