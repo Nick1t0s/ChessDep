@@ -5,6 +5,7 @@ import { toast } from './toast.js';
 import { openModal, confirmModal } from './modal.js';
 import { fmtCrystals } from './format.js';
 import { itemCard } from './items.js';
+import { playSound } from './sound.js';
 
 const me = await initLayout({ auth: 'required', active: 'upgrade' });
 
@@ -19,7 +20,7 @@ const REASON_RU = {
 let items = [];
 const selected = new Set();
 let target = null;
-let rotation = 0;
+let rotation = 180; // стрелка в покое — внизу, в центре дуги
 let previewSeq = 0;
 
 const main = h('main', { class: 'wrap-wide upgrade' });
@@ -32,16 +33,19 @@ const invCard = h('div', { class: 'card' },
   invGrid,
 );
 
-const wheel = h('div', { class: 'wheel' });
-const chanceEl = h('div', { class: 'upg-chance mono' }, '—');
+const arrow = h('div', { class: 'gauge-arrow' }, h('div', { class: 'gauge-needle' }));
+const gaugeArc = h('div', { class: 'gauge-arc' });
+const chanceEl = h('div', { class: 'gauge-chance mono' }, '—');
+const levelEl = h('div', { class: 'gauge-level' }, '');
+const gauge = h('div', { class: 'gauge' },
+  h('div', { class: 'gauge-ticks' }),
+  gaugeArc,
+  h('div', { class: 'gauge-inner' }, chanceEl, levelEl),
+  arrow,
+);
 const reasonEl = h('p', { class: 'upg-reason' }, '');
 const goBtn = h('button', { type: 'button', class: 'btn btn-gold btn-block', disabled: true }, 'Апгрейд');
-const centerCard = h('div', { class: 'card upg-center' },
-  h('div', { class: 'wheel-wrap' }, h('div', { class: 'wheel-pointer' }), wheel),
-  chanceEl,
-  reasonEl,
-  goBtn,
-);
+const centerCard = h('div', { class: 'card upg-center' }, gauge, reasonEl, goBtn);
 
 const targetGrid = h('div', { class: 'item-grid' });
 const targetCard = h('div', { class: 'card' },
@@ -125,9 +129,16 @@ function toggleItem(id) {
   refreshPreview();
 }
 
+function chanceLevel(chance) {
+  if (chance < 0.3) return 'низкий шанс';
+  if (chance < 0.6) return 'средний шанс';
+  return 'высокий шанс';
+}
+
 function resetPreview() {
-  wheel.style.setProperty('--win', '0deg');
+  gaugeArc.style.setProperty('--half', '0deg');
   chanceEl.textContent = '—';
+  levelEl.textContent = '';
   reasonEl.textContent = '';
   goBtn.disabled = true;
 }
@@ -144,8 +155,9 @@ async function refreshPreview() {
       target_def_id: target.id,
     });
     if (seq !== previewSeq) return;
-    wheel.style.setProperty('--win', (p.chance * 360) + 'deg');
+    gaugeArc.style.setProperty('--half', (p.chance * 180) + 'deg');
     chanceEl.textContent = p.chance_text;
+    levelEl.textContent = chanceLevel(p.chance);
     reasonEl.textContent = REASON_RU[p.reason] ?? '';
     goBtn.disabled = !p.allowed;
   } catch (e) {
@@ -162,12 +174,43 @@ function waitSpin() {
       if (done) return;
       done = true;
       clearTimeout(timer);
-      wheel.removeEventListener('transitionend', finish);
+      arrow.removeEventListener('transitionend', finish);
       resolve();
     };
     const timer = setTimeout(finish, 4500);
-    wheel.addEventListener('transitionend', finish);
+    arrow.addEventListener('transitionend', finish);
   });
+}
+
+// Щелчок каждые 15° поворота стрелки, но не чаще раза в 45 мс.
+function tickWhileSpinning() {
+  let last = null;
+  let unwrapped = 0;
+  let lastTickAt = 0;
+  let raf = 0;
+  const step = () => {
+    const t = getComputedStyle(arrow).transform;
+    if (t !== 'none') {
+      const m = new DOMMatrix(t);
+      const angle = Math.atan2(m.b, m.a) * 180 / Math.PI;
+      if (last !== null) {
+        let d = angle - last;
+        if (d < -180) d += 360;
+        if (d > 180) d -= 360;
+        const before = Math.floor(unwrapped / 15);
+        unwrapped += d;
+        const now = performance.now();
+        if (Math.floor(unwrapped / 15) !== before && now - lastTickAt > 45) {
+          lastTickAt = now;
+          playSound('tick', 0.35);
+        }
+      }
+      last = angle;
+    }
+    raf = requestAnimationFrame(step);
+  };
+  raf = requestAnimationFrame(step);
+  return () => cancelAnimationFrame(raf);
 }
 
 goBtn.addEventListener('click', async () => {
@@ -193,11 +236,16 @@ goBtn.addEventListener('click', async () => {
     return;
   }
 
-  const base = Math.ceil(rotation / 360) * 360 + 1800;
-  rotation = base + (360 - res.roll_value * 360);
-  wheel.style.setProperty('transition', 'transform 4s cubic-bezier(.15,.85,.25,1)');
-  wheel.style.setProperty('transform', 'rotate(' + rotation + 'deg)');
+  // Дуга шанса — по центру снизу: [180° − chance·180°, 180° + chance·180°).
+  // Успех ⇔ roll_value < chance, поэтому стрелка встаёт в 180° − chance·180° + roll·360°.
+  const stop = 180 - res.chance * 180 + res.roll_value * 360;
+  rotation = Math.ceil(rotation / 360) * 360 + 1800 + stop;
+  const stopTicks = tickWhileSpinning();
+  arrow.style.setProperty('transition', 'transform 4s cubic-bezier(.15,.85,.25,1)');
+  arrow.style.setProperty('transform', 'rotate(' + rotation + 'deg)');
   await waitSpin();
+  stopTicks();
+  playSound(res.success ? 'win' : 'fail');
 
   if (res.success && res.item) {
     openModal({
