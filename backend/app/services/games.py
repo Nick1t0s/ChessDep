@@ -26,7 +26,14 @@ from app.schemas.games import DepEvent, EloDelta, GameOver, Rewards
 from app.services import pubsub
 from app.services.economy import apply_delta, lock_user
 from app.services.elo import elo_update
-from app.services.game_clock import deadline, is_expired, parse_time_control, remaining_ms, turn_color
+from app.services.game_clock import (
+    DEP_CLOCK_PAUSE_MS,
+    deadline,
+    is_expired,
+    parse_time_control,
+    remaining_ms,
+    turn_color,
+)
 from app.services.items import ensure_loadout_complete, loadout_snapshot
 from app.services.rolls import get_rng, record_roll
 from app.services.settings import get_setting
@@ -337,6 +344,17 @@ async def do_dep(
             kind="game_over",
             payload={"result": outcome.result, "end_reason": outcome.end_reason},
         )
+    if game.status == "active":
+        pause = timedelta(milliseconds=DEP_CLOCK_PAUSE_MS)
+        if game.clock_running:
+            left = remaining_ms(game, color, now)
+            if color == "white":
+                game.white_ms = left
+            else:
+                game.black_ms = left
+            game.turn_started_at = now + pause
+        elif game.abort_deadline is not None:
+            game.abort_deadline = game.abort_deadline + pause
     schedule_deadline(db, game)
     dep_event = DepEvent(
         by=color,
