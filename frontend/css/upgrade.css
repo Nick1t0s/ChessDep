@@ -1,11 +1,31 @@
-.upg-layout { display: grid; grid-template-columns: 1fr 300px 1fr; gap: 14px; align-items: start; }
+.upg-layout { display: grid; grid-template-columns: 1fr 340px 1fr; gap: 14px; align-items: start; }
 @media (max-width: 900px) { .upg-layout { grid-template-columns: 1fr; } }
 .upg-sum { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
 .upg-center { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.wheel-wrap { position: relative; width: 220px; height: 220px; }
-.wheel { --win: 0deg; width: 220px; height: 220px; border-radius: 50%; border: 3px solid var(--line);
-  background: conic-gradient(var(--gold) 0deg var(--win), rgba(255,255,255,.07) var(--win) 360deg); }
-.wheel-pointer { position: absolute; top: -6px; left: 50%; width: 0; height: 0; margin-left: -10px; z-index: 2;
-  border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 18px solid var(--text); }
-.upg-chance { font-size: 28px; font-weight: 800; color: var(--gold); }
+.gauge { position: relative; width: 260px; height: 260px; margin: 18px auto 8px; }
+.gauge-ticks { position: absolute; inset: -16px; border-radius: 50%;
+  background: repeating-conic-gradient(rgba(255, 255, 255, .35) 0deg .8deg, transparent .8deg 7.5deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7px)); }
+.gauge-arc { --half: 0deg; position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from calc(180deg - var(--half)),
+    #ff7a1a 0deg, #ffd23c calc(var(--half) * .6), #fff6d8 var(--half), #ffd23c calc(var(--half) * 1.4),
+    #ff7a1a calc(var(--half) * 2), rgba(255, 255, 255, .07) calc(var(--half) * 2) 360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 20px), #000 calc(100% - 19px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 20px), #000 calc(100% - 19px));
+  filter: drop-shadow(0 0 10px rgba(255, 170, 40, .45)); }
+.gauge-inner { position: absolute; inset: 30px; border-radius: 50%; display: grid; place-content: center; gap: 2px;
+  text-align: center; background: radial-gradient(circle at 50% 30%, #2b3144, #141925 70%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06), inset 0 0 40px rgba(0, 0, 0, .7), 0 0 0 6px rgba(0, 0, 0, .25); }
+.gauge-inner::before { content: ''; position: absolute; inset: 8px; border-radius: 50%; pointer-events: none;
+  background: repeating-conic-gradient(rgba(255, 255, 255, .10) 0deg 7deg, transparent 7deg 10deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 9px), #000 calc(100% - 8px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 9px), #000 calc(100% - 8px)); }
+.gauge-chance { position: relative; font-size: 34px; font-weight: 800; color: var(--text);
+  text-shadow: 0 0 18px rgba(255, 210, 60, .35); }
+.gauge-level { position: relative; min-height: 16px; font-size: 13px; color: var(--gold); }
+.gauge-arrow { position: absolute; inset: -10px; pointer-events: none; transform: rotate(180deg); }
+.gauge-needle { position: absolute; left: 50%; top: 0; width: 0; height: 0; margin-left: -8px;
+  border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 26px solid #fff;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, .9)); }
 .upg-reason { min-height: 18px; color: var(--muted); font-size: 12.5px; text-align: center; }
