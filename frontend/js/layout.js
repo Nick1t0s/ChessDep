@@ -1,5 +1,7 @@
 import { api } from './api.js';
 import { h } from './dom.js';
+import { toast } from './toast.js';
+import { playSound } from './sound.js';
 
 const SECTIONS = [
   ['Играть', '/index.html', 'play'],
@@ -63,6 +65,8 @@ export async function initLayout({ auth = 'required', active = '' } = {}) {
       out.addEventListener('click', logout);
       right.appendChild(out);
       loadGiftBadge();
+      pollSales();
+      setInterval(pollSales, 15000);
     } else {
       right.appendChild(h('a', { class: 'pill', href: '/login.html' }, 'Войти'));
     }
@@ -120,6 +124,22 @@ async function loadGiftBadge() {
     }
   } catch {
     /* бейдж не критичен */
+  }
+}
+
+// Уведомления о продажах на маркете: тост справа сверху, звук, свежий баланс.
+async function pollSales() {
+  if (document.hidden) return;
+  try {
+    const out = await api('GET', '/me/sales/unseen', undefined, { redirectOn401: false });
+    if (!out || !Array.isArray(out.sales) || out.sales.length === 0) return;
+    for (const sale of out.sales) {
+      toast('Продано: ' + sale.name + ' за ' + fmtBalance(sale.price) + ' · вам +' + fmtBalance(sale.payout), 'success');
+    }
+    playSound('sale');
+    setBalance(out.balance);
+  } catch {
+    /* уведомления не критичны */
   }
 }
 
