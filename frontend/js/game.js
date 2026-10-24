@@ -4,6 +4,7 @@ import { initLayout, setBalance } from './layout.js';
 import { createBoard } from './board.js';
 import { connectGame } from './ws.js';
 import { playDep } from './dep-fx.js';
+import { playSound } from './sound.js';
 import { fmtClock, END_REASON_RU, PIECE_NAME_RU, DEP_REASON_RU } from './format.js';
 import { glyph, pieceNode } from './pieces.js';
 import { toast } from './toast.js';
@@ -144,6 +145,10 @@ async function main() {
     receivedAt = performance.now();
     const spectator = isSpectator();
     const versionGrew = prevState !== null;
+    // Звук хода: ply растёт только от ходов (деп, ничья, чат его не меняют).
+    if (prevState !== null && state.ply > prevState.ply && state.last_action?.kind === 'move') {
+      playSound(state.last_action.san?.includes('x') ? 'capture' : 'move');
+    }
 
     // Игрок, чей сейчас ход, всегда смотрит актуальную позицию.
     if (viewing !== null && versionGrew && !spectator && state.turn === state.you) exitView();
@@ -365,6 +370,8 @@ async function main() {
   // Часы: локальный тик от момента получения состояния.
   function clockTick() {
     if (state === null) return;
+    // Во время анимации депа часы стоят: сервер даёт депающему паузу (DEP_CLOCK_PAUSE_MS).
+    if (fxRunning) return;
     const clocks = state.clocks;
     const delta = performance.now() - receivedAt;
     for (const color of ['white', 'black']) {
