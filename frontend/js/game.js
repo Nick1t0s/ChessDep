@@ -536,7 +536,7 @@ async function main() {
         const name = h('b', { class: 'dep-card-name' }, PIECE_NAME_RU[p.piece] ?? p.piece);
         const sq = h('span', { class: 'dep-card-square mono' }, p.square);
         const allowedCount = (p.targets ?? []).filter((t) => t.allowed).length;
-        const sub = h('span', { class: 'dep-card-sub' }, allowedCount > 0 ? (allowedCount + ' вариантов') : 'нет целей');
+        const sub = h('span', { class: 'dep-card-sub' }, allowedCount > 0 ? (allowedCount + (allowedCount === 1 ? ' вариант' : ' варианта')) : 'нет целей');
 
         card.appendChild(g);
         card.appendChild(name);
