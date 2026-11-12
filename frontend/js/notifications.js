@@ -2,6 +2,7 @@ import { api } from './api.js';
 import { h, clear } from './dom.js';
 import { initLayout } from './layout.js';
 import { toast } from './toast.js';
+import { createNotificationActions } from './notification-actions.js';
 
 await initLayout({ auth: 'required', active: '' });
 
@@ -92,8 +93,8 @@ async function loadInitial() {
 
   try {
     const res = await api('GET', '/notifications?limit=20');
-    items = res?.items || [];
-    nextCursor = res?.next_cursor || null;
+    items = (res && res.items) || [];
+    nextCursor = (res && res.next_cursor) || null;
     unreadCount =
       typeof res?.unread_count === 'number'
         ? res.unread_count
@@ -104,7 +105,7 @@ async function loadInitial() {
       new CustomEvent('chessdep:notifications-updated', { detail: { count: unreadCount } }),
     );
   } catch (err) {
-    toast(err.message || 'Ошибка загрузки уведомлений', 'error');
+    toast((err && err.message) || 'Ошибка загрузки уведомлений', 'error');
     clear(listContainer);
     const errBox = h(
       'div',
@@ -131,8 +132,8 @@ async function onLoadMore() {
       'GET',
       `/notifications?before_id=${encodeURIComponent(nextCursor)}&limit=20`,
     );
-    const newItems = res?.items || [];
-    nextCursor = res?.next_cursor || null;
+    const newItems = (res && res.items) || [];
+    nextCursor = (res && res.next_cursor) || null;
     if (typeof res?.unread_count === 'number') {
       unreadCount = res.unread_count;
     }
@@ -144,7 +145,7 @@ async function onLoadMore() {
 
     updateHeaderState();
   } catch (err) {
-    toast(err.message || 'Ошибка загрузки следующей страницы', 'error');
+    toast((err && err.message) || 'Ошибка загрузки следующей страницы', 'error');
   } finally {
     loading = false;
     loadMoreBtn.disabled = false;
@@ -215,15 +216,33 @@ function renderNotificationItem(item) {
     content.appendChild(h('p', { class: 'notif-card-body' }, item.body));
   }
 
-  // Actions
+  // Actions row
   const actions = h('div', { class: 'notif-card-actions' });
 
+  // Actionable notification buttons (accept/decline/status/open game)
+  const actionControls = createNotificationActions(item, {
+    onUpdate: () => {
+      unreadCount = Math.max(0, unreadCount - 1);
+      updateHeaderState();
+      renderList();
+    },
+  });
+  actions.appendChild(actionControls);
+
+  const allowed = Array.isArray(item.allowed_actions) ? item.allowed_actions : [];
+  const gameId = item.game_id || (item.data && item.data.game_id) || null;
+
+  // Review fix 4: Accepted notification game_id shows game link rather than original stale invite href
   let targetHref = item.href;
-  if (item.kind === 'friend_request' && (!targetHref || !isSafeHref(targetHref))) {
+  if (item.action_state === 'accepted' && gameId) {
+    targetHref = `/game.html?id=${encodeURIComponent(gameId)}`;
+  } else if (item.kind === 'friend_request' && (!targetHref || !isSafeHref(targetHref))) {
     targetHref = '/friends.html';
   }
 
-  if (isSafeHref(targetHref)) {
+  // Show "Перейти" only if safe href exists and not already showing action buttons or open game link
+  const hasDedicatedActionBtn = allowed.length > 0 || (item.action_state === 'accepted' && gameId);
+  if (isSafeHref(targetHref) && !hasDedicatedActionBtn) {
     actions.appendChild(
       h(
         'a',
@@ -254,8 +273,7 @@ function renderNotificationItem(item) {
           new CustomEvent('chessdep:notifications-updated', { detail: { count: unreadCount } }),
         );
       } catch (err) {
-        // Preserve unread state on failure
-        toast(err.message || 'Ошибка обновления статуса', 'error');
+        toast((err && err.message) || 'Ошибка обновления статуса', 'error');
         markBtn.disabled = false;
       } finally {
         busyIds.delete(item.id);
@@ -289,8 +307,7 @@ async function onMarkAllRead() {
       new CustomEvent('chessdep:notifications-updated', { detail: { count: 0 } }),
     );
   } catch (err) {
-    // Preserve unread state on failure and show visible toast
-    toast(err.message || 'Ошибка отметки всех прочитанными', 'error');
+    toast((err && err.message) || 'Ошибка отметки всех прочитанными', 'error');
     if (unreadCount > 0) {
       markAllBtn.disabled = false;
     }
