@@ -2,7 +2,7 @@ import { api } from './api.js';
 import { h, clear } from './dom.js';
 import { initLayout } from './layout.js';
 import { toast } from './toast.js';
-import { openModal, confirmModal } from './modal.js';
+import { openModal } from './modal.js';
 import { fmtCrystals } from './format.js';
 import { itemCard } from './items.js';
 
@@ -20,6 +20,7 @@ const selected = new Set();
 let target = null;
 let rotation = 0;
 let previewSeq = 0;
+let busy = false;
 
 const main = h('main', { class: 'wrap-wide upgrade' });
 
@@ -82,6 +83,7 @@ function renderTargets() {
     targetGrid.appendChild(itemCard(def, {
       selected: target?.id === def.id,
       onClick: () => {
+        if (busy) return;
         target = target?.id === def.id ? null : def;
         renderTargets();
         refreshPreview();
@@ -91,6 +93,7 @@ function renderTargets() {
 }
 
 function toggleItem(id) {
+  if (busy) return;
   if (selected.has(id)) {
     selected.delete(id);
   } else {
@@ -107,6 +110,7 @@ function toggleItem(id) {
 }
 
 function resetPreview() {
+  previewSeq++;
   wheel.style.setProperty('--win', '0deg');
   chanceEl.textContent = '—';
   reasonEl.textContent = '';
@@ -114,23 +118,26 @@ function resetPreview() {
 }
 
 async function refreshPreview() {
+  if (busy) return;
   if (selected.size === 0 || target === null) {
     resetPreview();
     return;
   }
   const seq = ++previewSeq;
+  goBtn.disabled = true;
+  chanceEl.textContent = '…';
   try {
     const p = await api('POST', '/upgrade/preview', {
       input_ids: [...selected],
       target_def_id: target.id,
     });
-    if (seq !== previewSeq) return;
+    if (seq !== previewSeq || busy || selected.size === 0 || target === null) return;
     wheel.style.setProperty('--win', (p.chance * 360) + 'deg');
     chanceEl.textContent = p.chance_text;
     reasonEl.textContent = REASON_RU[p.reason] ?? '';
     goBtn.disabled = !p.allowed;
   } catch (e) {
-    if (seq !== previewSeq) return;
+    if (seq !== previewSeq || busy || selected.size === 0 || target === null) return;
     resetPreview();
     toast(e.message, 'error');
   }
@@ -152,16 +159,11 @@ function waitSpin() {
 }
 
 goBtn.addEventListener('click', async () => {
-  if (selected.size === 0 || target === null || goBtn.disabled) return;
-  const chanceText = chanceEl.textContent;
-  const ok = await confirmModal(
-    'Апгрейд',
-    'Все выбранные предметы сгорят при любом исходе. Шанс ' + chanceText + '.',
-    'Рискнуть',
-    'gold',
-  );
-  if (!ok) return;
+  if (busy || selected.size === 0 || target === null || goBtn.disabled) return;
+  busy = true;
   goBtn.disabled = true;
+  previewSeq++;
+
   let res;
   try {
     res = await api('POST', '/upgrade', {
@@ -169,39 +171,47 @@ goBtn.addEventListener('click', async () => {
       target_def_id: target.id,
     });
   } catch (e) {
+    busy = false;
     toast(e.message, 'error');
     refreshPreview();
     return;
   }
 
-  const base = Math.ceil(rotation / 360) * 360 + 1800;
-  rotation = base + (360 - res.roll_value * 360);
-  wheel.style.setProperty('transition', 'transform 4s cubic-bezier(.15,.85,.25,1)');
-  wheel.style.setProperty('transform', 'rotate(' + rotation + 'deg)');
-  await waitSpin();
+  try {
+    const base = Math.ceil(rotation / 360) * 360 + 1800;
+    rotation = base + (360 - res.roll_value * 360);
+    wheel.style.setProperty('transition', 'transform 4s cubic-bezier(.15,.85,.25,1)');
+    wheel.style.setProperty('transform', 'rotate(' + rotation + 'deg)');
+    await waitSpin();
 
-  if (res.success && res.item) {
-    openModal({
-      title: 'Апгрейд удался!',
-      titleAnim: 'pop',
-      body: itemCard(res.item.def, { exterior: res.item.exterior }),
-      actions: [{ label: 'Отлично', kind: 'gold' }],
-    });
-  } else {
-    openModal({
-      title: 'Не повезло',
-      titleAnim: 'shake',
-      body: h('p', { class: 'm-text' }, 'Предметы сгорели.'),
-      actions: [{ label: 'Ок', kind: 'ghost' }],
-    });
+    if (res.success && res.item) {
+      openModal({
+        title: 'Апгрейд удался!',
+        titleAnim: 'pop',
+        body: itemCard(res.item.def, { exterior: res.item.exterior }),
+        actions: [{ label: 'Отлично', kind: 'gold' }],
+      });
+    } else {
+      openModal({
+        title: 'Не повезло',
+        titleAnim: 'shake',
+        body: h('p', { class: 'm-text' }, 'Предметы сгорели.'),
+        actions: [{ label: 'Ок', kind: 'ghost' }],
+      });
+    }
+  } finally {
+    selected.clear();
+    target = null;
+    try {
+      await loadInventory();
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+    renderInventory();
+    renderTargets();
+    resetPreview();
+    busy = false;
   }
-
-  selected.clear();
-  target = null;
-  await loadInventory();
-  renderInventory();
-  renderTargets();
-  resetPreview();
 });
 
 async function loadInventory() {
