@@ -270,6 +270,7 @@ function renderFriendInvite(invite) {
   }, 2000);
 
   const expires = Date.parse(invite.expires_at);
+  countdown.textContent = 'истекает через ' + fmtRemaining(expires - Date.now());
   inviteCountdown = setInterval(() => {
     const left = expires - Date.now();
     if (left <= 0) {

@@ -79,7 +79,7 @@ async def test_rematch_and_targeted_invite_lifecycle(
 async def test_rematch_acceptance_copies_time_control_and_opponent(
     alice: AsyncClient, bob: AsyncClient, db, rng, frozen
 ):
-    game_id = await start_game(alice, bob, rng, "5+3")
+    game_id = await start_game(alice, bob, rng, "5+0")
     await alice.post(f"/api/v1/games/{game_id}/resign")
 
     resp = await bob.post(f"/api/v1/games/{game_id}/rematch")
@@ -95,7 +95,7 @@ async def test_rematch_acceptance_copies_time_control_and_opponent(
     new_game_id = resp_acc.json()["game_id"]
 
     new_game = await db.get(Game, uuid.UUID(new_game_id))
-    assert new_game.time_control == "5+3"
+    assert new_game.time_control == "5+0"
     assert set([new_game.white_id, new_game.black_id]) == set([alice_user.id, bob_user.id])
 
 
@@ -201,8 +201,8 @@ async def test_rematch_rollback_on_notify_failure(
 
     monkeypatch.setattr(social_matches, "notify", fail_notify)
 
-    resp = await alice.post(f"/api/v1/games/{game_id}/rematch")
-    assert resp.status_code >= 500
+    with pytest.raises(RuntimeError, match="Notify broker unavailable"):
+        await alice.post(f"/api/v1/games/{game_id}/rematch")
 
     # Ensure transaction rolled back
     invites = (
@@ -228,3 +228,16 @@ async def test_rematch_muted_notifications_succeeds(
     resp = await alice.post(f"/api/v1/games/{game_id}/rematch")
     assert resp.status_code == 200
     assert resp.json()["status"] == "sent"
+
+
+async def test_old_friend_notification_cannot_accept_recreated_request(alice, bob):
+    await alice.post('/api/v1/friends/requests', json={'login': 'bob'})
+    old = (await bob.get('/api/v1/notifications')).json()['items'][0]
+    actor_id = old['data']['actor_id']
+    await bob.delete(f'/api/v1/friends/requests/{actor_id}')
+    await alice.post('/api/v1/friends/requests', json={'login': 'bob'})
+    response = await bob.post(f"/api/v1/notifications/{old['id']}/action", json={'action': 'accept'})
+    assert response.status_code == 400, response.text
+    assert response.json()['error']['code'] == 'ACTION_NOT_ALLOWED'
+    assert (await bob.get('/api/v1/friends')).json()['items'] == []
+    assert len((await bob.get('/api/v1/friends/requests')).json()['incoming']) == 1

@@ -76,6 +76,8 @@ async def send_invite(
 
     if invite.game_id is not None or invite.expires_at <= now:
         raise AppError(400, "INVITE_EXPIRED", "Инвайт недействителен")
+    if invite.target_user_id is not None and invite.target_user_id != body.friend_id:
+        raise AppError(403, "FORBIDDEN", "Это приглашение предназначено другому игроку")
 
     # 2. Проверяем, что создатель инвайта сам не находится в активной партии
     active_creator = await db.get(ActivePlayer, user.id)

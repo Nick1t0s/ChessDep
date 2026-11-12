@@ -21,7 +21,7 @@ def upgrade() -> None:
         sa.Column(
             "target_user_id",
             sa.BigInteger(),
-            sa.ForeignKey("users.id", ondelete="SET NULL"),
+            sa.ForeignKey("users.id"),
             nullable=True,
         ),
     )
@@ -30,7 +30,7 @@ def upgrade() -> None:
         sa.Column(
             "source_game_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("games.id", ondelete="SET NULL"),
+            sa.ForeignKey("games.id"),
             nullable=True,
         ),
     )

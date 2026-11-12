@@ -25,6 +25,7 @@ import json
 import os
 import sys
 import threading
+import time
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, List, Optional
@@ -273,7 +274,7 @@ class SocialTestContext:
                 self.post_invites.append(data)
                 route.fulfill(status=200, content_type='application/json', body=json.dumps({
                     'code': 'testinvite123',
-                    'expires_at': '2026-11-12T19:00:00Z',
+                    'expires_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() + 600)),
                 }))
             elif method == 'POST' and path.endswith('/send'):
                 data = json.loads(request.post_data or '{}')

@@ -76,6 +76,18 @@ class Social2TestContext:
         self.notification_action_called = False
         self.friend_add_called = False
         self.trade_requests: List[Dict[str, Any]] = []
+        self.relationship = 'none'
+        self.blocks = []
+        self.settings = {'presence_mode': 'online', 'match_invites': 'all',
+                         'notifications': {k: True for k in ('friend_request', 'friend_accepted', 'match_invite', 'market_sale', 'gift')}}
+        self.notifications = [dict(id=101, kind='match_invite', title='Вызов на матч', body='bob приглашает сыграть',
+                                   read=False, action_state='pending', allowed_actions=['accept', 'decline'],
+                                   created_at='2026-01-01T10:00:00Z'),
+                              dict(id=102, kind='friend_request', title='Заявка bob', body='bob хочет дружить',
+                                   read=False, action_state='pending', allowed_actions=['accept', 'decline'],
+                                   created_at='2026-01-01T10:00:00Z'),
+                              dict(id=103, kind='match_invite', title='Старое предложение', body='',
+                                   read=True, action_state='expired', allowed_actions=[], created_at='2026-01-01T10:00:00Z')]
         self._setup_routes()
 
     def _setup_routes(self) -> None:
@@ -124,7 +136,7 @@ class Social2TestContext:
 
             if path.startswith('/api/v1/games/') and not path.endswith('/events') and not path.endswith('/chat'):
                 # State mock
-                is_spec = 'spec' in parsed.query or 'spectator' in url
+                is_spec = 'spec=1' in self.page.url
                 you_role = 'spectator' if is_spec else 'white'
                 route.fulfill(status=200, content_type='application/json', body=json.dumps({
                     'id': '11111111-1111-1111-1111-111111111111',
@@ -161,7 +173,7 @@ class Social2TestContext:
                     route.fulfill(status=200, content_type='application/json', body=json.dumps({
                         'id': 2,
                         'login': 'bob',
-                        'relationship': 'none',
+                        'relationship': self.relationship,
                         'blocked_by_me': False,
                         'presence': 'online',
                         'game_id': None,
@@ -203,76 +215,55 @@ class Social2TestContext:
                 }))
                 return
 
-            if path == '/api/v1/me/friends':
+            if path == '/api/v1/friends':
+                route.fulfill(json={'items': [{'id': 2, 'login': 'bob', 'elo': 1200, 'presence': 'in_game',
+                                              'game_id': '22222222-2222-2222-2222-222222222222'}]})
+                return
+            if path == '/api/v1/friends/requests':
                 if method == 'POST':
                     self.friend_add_called = True
-                    route.fulfill(status=204, body='')
-                    return
-                route.fulfill(status=200, content_type='application/json', body=json.dumps([
-                    {
-                        'id': 2,
-                        'login': 'bob',
-                        'elo': 1200,
-                        'presence': 'in_game',
-                        'game_id': '22222222-2222-2222-2222-222222222222',
-                    }
-                ]))
+                    self.relationship = 'outgoing'
+                    route.fulfill(json={'status': 'pending'})
+                else:
+                    route.fulfill(json={'incoming': [], 'outgoing': []})
                 return
-
             if path == '/api/v1/me/social-settings':
                 if method == 'PATCH':
                     self.settings_patch_called = True
-                    route.fulfill(status=200, content_type='application/json', body=json.dumps({
-                        'presence_mode': 'dnd',
-                        'match_invites': 'friends',
-                        'notifications': {'match_invite': True},
-                    }))
-                    return
-                route.fulfill(status=200, content_type='application/json', body=json.dumps({
-                    'presence_mode': 'online',
-                    'match_invites': 'all',
-                    'notifications': {
-                        'friend_request': True,
-                        'friend_accepted': True,
-                        'match_invite': True,
-                        'market_sale': True,
-                        'gift': True,
-                    },
-                }))
+                    patch = request.post_data_json
+                    for key, value in patch.items():
+                        if key == 'notifications': self.settings[key].update(value)
+                        else: self.settings[key] = value
+                route.fulfill(json=self.settings)
                 return
-
             if path == '/api/v1/me/blocks':
-                route.fulfill(status=200, content_type='application/json', body=json.dumps({
-                    'items': [],
-                }))
+                if method == 'POST':
+                    self.blocks = [{'id': 2, 'login': request.post_data_json['login'], 'elo': 1200}]
+                    route.fulfill(status=204)
+                else: route.fulfill(json={'items': self.blocks})
                 return
-
+            if path.startswith('/api/v1/me/blocks/') and method == 'DELETE':
+                self.blocks = []
+                route.fulfill(status=204)
+                return
             if path.startswith('/api/v1/notifications/') and path.endswith('/action'):
                 self.notification_action_called = True
-                route.fulfill(status=200, content_type='application/json', body=json.dumps({
-                    'status': 'accepted',
-                    'game_id': '33333333-3333-3333-3333-333333333333',
-                }))
+                item = next(n for n in self.notifications if n['id'] == int(path.split('/')[-2]))
+                accepted = request.post_data_json['action'] == 'accept'
+                item.update(action_state='accepted' if accepted else 'declined', allowed_actions=[], read=True)
+                route.fulfill(json={'status': item['action_state'],
+                                    'game_id': '33333333-3333-3333-3333-333333333333' if accepted and item['kind'] == 'match_invite' else None})
                 return
-
             if path == '/api/v1/notifications':
-                route.fulfill(status=200, content_type='application/json', body=json.dumps({
-                    'items': [
-                        {
-                            'id': 101,
-                            'kind': 'match_invite',
-                            'title': 'Вызов на матч',
-                            'text': 'Игрок bob пригласил вас на матч',
-                            'action_state': 'pending',
-                            'allowed_actions': ['accept', 'decline'],
-                            'game_id': None,
-                            'created_at': '2026-01-01T10:00:00Z',
-                        }
-                    ],
-                    'next_cursor': None,
-                }))
+                route.fulfill(json={'items': self.notifications, 'next_cursor': None,
+                                    'unread_count': sum(not n['read'] for n in self.notifications)})
                 return
-
+            if path == '/api/v1/notifications/unread-count':
+                route.fulfill(json={'count': sum(not n['read'] for n in self.notifications)})
+                return
+            if path == '/api/v1/item-defs':
+                route.fulfill(json=[{'id': 42, 'name': 'Пешка Золото'}, {'id': 10, 'name': 'Ладья Рубин'}])
+                return
             if path == '/api/v1/me/trades':
                 self.trade_requests.append({'query': query})
                 before_id = query.get('before_id', [None])[0]
@@ -362,8 +353,11 @@ def run_tests(root_dir: str, artifacts_dir: str, executable_path: Optional[str] 
             print(f'\n[TEST] {name}...')
             page = browser.new_page()
             ctx = Social2TestContext(page, base_url)
+            errors = []
+            page.on('pageerror', lambda error: errors.append(str(error)))
             try:
                 fn(ctx, page)
+                assert not errors, errors
                 print(f'[PASS] {name}')
                 passed += 1
             except Exception as e:
@@ -396,7 +390,7 @@ def run_tests(root_dir: str, artifacts_dir: str, executable_path: Optional[str] 
             assert page.is_visible('.modal'), "Modal must stay open after rematch click"
 
             # 1b. Duplicate click guard
-            rematch_btn.click(force=True)
+            rematch_btn.dispatch_event('click')
             assert ctx.rematch_post_count == 1, "Duplicate click should be blocked"
 
             # 1c. Spectator
@@ -474,14 +468,11 @@ def run_tests(root_dir: str, artifacts_dir: str, executable_path: Optional[str] 
             page.select_option('#th-dir-select', 'sell')
             page.wait_for_timeout(300)
 
-            # Test skin def filter with positive integer validation
-            page.fill('#th-def-input', '-5')
-            page.click('button:has-text("Применить")')
-            page.wait_for_selector('.toast', timeout=3000)
-
-            page.fill('#th-def-input', '42')
+            # Select by skin name; database ids stay out of the product UI.
+            page.select_option('#th-def-input', label='Пешка Золото')
             page.click('button:has-text("Применить")')
             page.wait_for_timeout(300)
+            assert ctx.trade_requests[-1]['query']['item_def_id'] == ['42']
 
             # Test pagination click
             more_btn = page.wait_for_selector('button:has-text("Загрузить ещё")', timeout=3000)
@@ -499,12 +490,69 @@ def run_tests(root_dir: str, artifacts_dir: str, executable_path: Optional[str] 
             # Check mobile responsive: no horizontal overflow
             overflow = page.evaluate('document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1')
             assert overflow, "Page must not have horizontal overflow on 390px viewport"
+            page.screenshot(path=os.path.join(artifacts_dir, "mobile_trade_history.png"))
+
+        def t_friend_profile(ctx, page):
+            page.goto(f'{base_url}/user.html?login=bob')
+            page.get_by_role('button', name='Добавить в друзья', exact=True).click()
+            page.locator('.social-controls').get_by_text('Заявка отправлена', exact=True).wait_for()
+            assert ctx.friend_add_called
+            page.goto(f'{base_url}/user.html?login=alice')
+            page.locator('main h1').wait_for()
+            assert page.get_by_role('button', name='Добавить в друзья', exact=True).count() == 0
+
+        def t_settings_blocks_watch(ctx, page):
+            page.set_viewport_size({'width': 390, 'height': 844})
+            page.goto(f'{base_url}/social-settings.html')
+            page.locator('input[name=presence_mode][value=dnd]').check()
+            page.wait_for_function("() => !document.querySelector('input[name=presence_mode]').disabled")
+            assert ctx.settings['presence_mode'] == 'dnd'
+            page.locator('input[name=match_invites][value=friends]').check()
+            page.wait_for_function("() => !document.querySelector('input[name=match_invites]').disabled")
+            assert ctx.settings['match_invites'] == 'friends'
+            page.locator('input[name=gift]').uncheck()
+            page.wait_for_function("() => !document.querySelector('input[name=gift]').disabled")
+            assert ctx.settings['notifications']['gift'] is False
+            page.locator('.settings-block-input').fill('bob')
+            page.get_by_role('button', name='Заблокировать', exact=True).click()
+            page.get_by_role('button', name='Разблокировать', exact=True).wait_for()
+            assert len(ctx.blocks) == 1
+            page.get_by_role('button', name='Разблокировать', exact=True).click()
+            page.get_by_text('В чёрном списке пока никого нет.', exact=True).wait_for()
+            assert not ctx.blocks
+            assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+            page.screenshot(path=os.path.join(artifacts_dir, 'mobile_settings.png'))
+            page.goto(f'{base_url}/friends.html')
+            page.get_by_role('link', name='Смотреть', exact=True).wait_for()
+            assert page.locator('.social-content').get_by_role('link', name='Позвать в игру').count() == 0
+            page.screenshot(path=os.path.join(artifacts_dir, 'mobile_friends.png'))
+
+        def t_notification_actions(ctx, page):
+            page.goto(f'{base_url}/notifications.html')
+            expired = page.locator('.notif-card').filter(has_text='Старое предложение')
+            expired.get_by_text('Истекло', exact=True).wait_for()
+            assert expired.get_by_role('button', name='Принять', exact=True).count() == 0
+            friend = page.locator('.notif-card').filter(has_text='Заявка bob')
+            friend.get_by_role('button', name='Принять', exact=True).click()
+            friend.get_by_text('Принято', exact=True).wait_for()
+            match = page.locator('.notif-card').filter(has_text='Вызов на матч')
+            match.get_by_role('button', name='Отклонить', exact=True).click()
+            match.get_by_text('Отклонено', exact=True).wait_for()
+            ctx.notifications[0].update(action_state='pending', allowed_actions=['accept', 'decline'], read=False)
+            page.reload()
+            page.locator('.notif-card').filter(has_text='Вызов на матч').get_by_role('button', name='Принять', exact=True).click()
+            page.wait_for_url('**/game.html?id=33333333-3333-3333-3333-333333333333')
+            assert ctx.notification_action_called
 
         run_test('rematch_vs_spectator', t_rematch_vs_spectator)
         run_test('rematch_error_and_expiry', t_rematch_error_and_expiry)
         run_test('rematch_activegame_redirect', t_rematch_activegame_redirect)
         run_test('profile_and_market_links', t_profile_and_market_links)
         run_test('trade_history_features', t_trade_history_features)
+
+        run_test('friend_profile', t_friend_profile)
+        run_test('settings_blocks_watch', t_settings_blocks_watch)
+        run_test('notification_actions', t_notification_actions)
 
         browser.close()
 

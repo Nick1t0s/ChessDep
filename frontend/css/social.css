@@ -762,6 +762,13 @@
 
 .settings-block-input {
   flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
 }
 
 .settings-empty-blocks {

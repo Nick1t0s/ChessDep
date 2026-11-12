@@ -13,7 +13,7 @@ from app.core.errors import AppError
 from app.core.ratelimit import hit
 from app.models import ActivePlayer, Game, Invite, User
 from app.models.social import Friendship, InviteDelivery, Notification
-from app.services.friends import accept_friend_request, delete_friend_request
+from app.services.friends import _lock_user_pair, accept_friend_request, delete_friend_request
 from app.services.games import create_game, lock_game
 from app.services.notifications import notify
 from app.services.social_settings import ensure_invitation_allowed, ensure_not_blocked
@@ -280,9 +280,12 @@ async def notification_action_info(
         friendship = await db.scalar(
             select(Friendship).where(
                 Friendship.user_low_id == low_id, Friendship.user_high_id == high_id
-            )
+            ).execution_options(populate_existing=True)
         )
         if friendship is None:
+            return {"action_state": "unavailable", "allowed_actions": [], "game_id": None}
+        request_id = (notification.data or {}).get("friendship_id")
+        if request_id is not None and request_id != friendship.id:
             return {"action_state": "unavailable", "allowed_actions": [], "game_id": None}
         if friendship.status == "accepted":
             return {"action_state": "accepted", "allowed_actions": [], "game_id": None}
@@ -339,12 +342,6 @@ async def notification_action_info(
         if creator is None or creator.is_banned:
             return {"action_state": "unavailable", "allowed_actions": [], "game_id": None}
 
-        # Check active players for match invites: if creator or recipient is in active game -> unavailable
-        active_creator = await db.get(ActivePlayer, invite.creator_id)
-        active_user = await db.get(ActivePlayer, user_id)
-        if active_creator is not None or active_user is not None:
-            return {"action_state": "unavailable", "allowed_actions": [], "game_id": None}
-
         if invite.game_id is not None:
             game = await db.get(Game, invite.game_id)
             if game and user_id in (game.white_id, game.black_id):
@@ -362,6 +359,9 @@ async def notification_action_info(
             return {"action_state": "expired", "allowed_actions": [], "game_id": None}
 
         if invite.target_user_id is not None and invite.target_user_id != user_id:
+            return {"action_state": "unavailable", "allowed_actions": [], "game_id": None}
+
+        if await db.get(ActivePlayer, invite.creator_id) or await db.get(ActivePlayer, user_id):
             return {"action_state": "unavailable", "allowed_actions": [], "game_id": None}
 
         return {
@@ -394,6 +394,11 @@ async def handle_notification_action(
         actor_id = await _resolve_friend_actor_id(db, notification)
         if not actor_id:
             raise AppError(400, "ACTION_NOT_ALLOWED", "Запрос в друзья не найден или недействителен")
+
+        await _lock_user_pair(db, user.id, actor_id)
+        info = await notification_action_info(db, user.id, notification)
+        if action not in info["allowed_actions"]:
+            raise AppError(400, "ACTION_NOT_ALLOWED", "Действие недоступно")
 
         if action == "accept":
             await accept_friend_request(db, user, actor_id, now=now)

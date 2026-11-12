@@ -61,17 +61,23 @@ const dirSelect = h('select', { id: 'th-dir-select', class: 'th-dir-select', 'ar
 );
 dirSelect.value = currentDirection;
 
-const defLabel = h('label', { for: 'th-def-input', class: 'th-label' }, 'ID скина');
-const defInput = h('input', {
-  id: 'th-def-input',
-  type: 'number',
-  class: 'th-def-input',
-  placeholder: 'ID скина',
-  'aria-label': 'Фильтр по ID скина',
-  value: currentDefId,
-  min: '1',
-  step: '1',
-});
+const defLabel = h('label', { for: 'th-def-input', class: 'th-label' }, 'Скин');
+const defInput = h('select', {
+  id: 'th-def-input', class: 'th-def-input', 'aria-label': 'Фильтр по скину',
+}, h('option', { value: '' }, 'Все скины'));
+if (currentDefId) {
+  defInput.appendChild(h('option', { value: currentDefId }, 'Выбранный скин'));
+  defInput.value = currentDefId;
+}
+api('GET', '/item-defs').then((defs) => {
+  const selectedId = currentDefId;
+  for (const def of defs) {
+    const option = [...defInput.options].find((el) => el.value === String(def.id));
+    if (option) option.textContent = def.name;
+    else defInput.appendChild(h('option', { value: String(def.id) }, def.name));
+  }
+  defInput.value = selectedId;
+}).catch(() => { /* Фильтрация остаётся доступной через названия в истории. */ });
 
 const filterBtn = h('button', { type: 'button', class: 'btn btn-gold btn-sm' }, 'Применить');
 const resetBtn = h('button', { type: 'button', class: 'btn btn-ghost btn-sm' }, 'Сбросить');
@@ -135,6 +141,9 @@ function validateSkinId(val) {
 }
 
 function setSkinFilter(defId) {
+  if (![...defInput.options].some((el) => el.value === String(defId))) {
+    defInput.appendChild(h('option', { value: String(defId) }, 'Выбранный скин'));
+  }
   defInput.value = String(defId);
   currentDefId = String(defId);
   syncUrl();
@@ -190,7 +199,7 @@ function tradeRow(item) {
   const skinBtn = h('button', {
     type: 'button',
     class: 'th-skin-btn',
-    title: 'Фильтровать по скину #' + item.item_def_id,
+    title: 'Показать сделки с этим скином',
   }, item.item_name || ('Скин #' + item.item_def_id));
   skinBtn.addEventListener('click', () => setSkinFilter(item.item_def_id));
 
@@ -210,7 +219,7 @@ function tradeRow(item) {
 
 async function loadTrades(append = false) {
   if (append && pagingInFlight) return;
-  if (append) pagingInFlight = true;
+  pagingInFlight = append;
 
   const seq = ++activeReqSeq;
   lastFailedAppend = false;
