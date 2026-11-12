@@ -137,7 +137,7 @@ def make_dep_options() -> Dict[str, Any]:
                 'piece': 'P',
                 'targets': [
                     {'piece': 'N', 'allowed': True, 'chance': 0.5, 'chance_text': '50%', 'reason': None},
-                    {'piece': 'Q', 'allowed': False, 'chance': 0.1, 'chance_text': '10%', 'reason': 'DEP_TARGET_NOT_ALLOWED'},
+                    {'piece': 'Q', 'allowed': False, 'chance': 0.1, 'chance_text': '10%', 'reason': 'WOULD_CHECK_OPPONENT'},
                 ],
             }
         ],
@@ -557,7 +557,7 @@ def run_tests(root_dir: str, artifacts_dir: str, headless: bool, chromium_path: 
               const sq = document.querySelector('.sq[data-square="e2"]');
               if (!sq) return;
               const r = sq.getBoundingClientRect();
-              sq.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, clientX: r.x + 10, clientY: r.y + 10, pointerId: 1}));
+              sq.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, isPrimary: true, clientX: r.x + 10, clientY: r.y + 10, pointerId: 1}));
               window.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, clientX: r.x + 40, clientY: r.y + 40, pointerId: 1}));
             }""")
             page.wait_for_timeout(100)
@@ -572,7 +572,7 @@ def run_tests(root_dir: str, artifacts_dir: str, headless: bool, chromium_path: 
         check('Pointercancel cleans up drag ghost', t_pointer_cancel)
 
         # Mobile Context (390x844)
-        ctx_mobile = browser.new_context(viewport={'width': 390, 'height': 844})
+        ctx_mobile = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True)
         m_page = ctx_mobile.new_page()
         m_tc = TestContext(m_page, artifacts_dir, game_id)
 
@@ -595,6 +595,26 @@ def run_tests(root_dir: str, artifacts_dir: str, headless: bool, chromium_path: 
             m_page.screenshot(path=os.path.join(artifacts_dir, 'mobile_dep_panel.png'))
             m_tc.assert_no_errors()
         check('Mobile viewport screenshots (check & dep)', t_mobile_screenshots)
+
+        def t_touch_move() -> None:
+            m_tc.current_state = make_game_state(game_id=game_id)
+            m_tc.post_moves.clear()
+            m_page.goto(game_url)
+            m_tc.wait_board()
+            client = ctx_mobile.new_cdp_session(m_page)
+            for kind, square in [('touchStart', 'e2'), ('touchMove', 'e4')]:
+                rect = m_page.locator(f'.sq[data-square="{square}"]').bounding_box()
+                assert rect
+                client.send('Input.dispatchTouchEvent', {'type': kind, 'touchPoints': [
+                    {'x': rect['x'] + rect['width'] / 2, 'y': rect['y'] + rect['height'] / 2},
+                ]})
+            client.send('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []})
+            m_page.wait_for_timeout(200)
+            assert len(m_tc.post_moves) == 1 and m_tc.post_moves[0]['uci'] == 'e2e4'
+            assert m_page.locator('.drag-ghost').count() == 0
+            m_tc.assert_no_errors()
+            client.detach()
+        check('Touch drag e2->e4', t_touch_move)
 
         # 10. Upgrade smoke test (immediate POST without confirm modal)
         def t_upgrade_smoke() -> None:
