@@ -33,7 +33,7 @@ async function main() {
 
   // ---- переменные партии ----
   let state = null;          // последнее применённое GameState
-  let mode = 'idle';         // idle | dep_piece | dep_target | dep_confirm
+  let mode = 'idle';         // idle | dep_piece | dep_target
   let selected = null;       // выбранная клетка
   let depOptions = null;
   let depPiece = null;
@@ -72,8 +72,22 @@ async function main() {
   viewBannerBtn.addEventListener('click', () => exitView());
   const viewBanner = h('div', { class: 'view-banner', hidden: true }, viewBannerText, viewBannerBtn);
 
+  const checkBannerTitle = h('span', { class: 'check-banner-title' }, 'Вам шах');
+  const checkBannerHint = h('span', { class: 'check-banner-hint' }, 'Король под боем — защитите его или отступите');
+  const checkBanner = h('div', {
+    class: 'check-banner',
+    role: 'status',
+    'aria-live': 'polite',
+    hidden: true,
+  }, checkBannerTitle, checkBannerHint);
+
   const boardBox = h('div', { class: 'board-box' });
-  const boardApi = createBoard(boardBox, { onSquareClick });
+  const boardApi = createBoard(boardBox, {
+    onSquareClick,
+    canDrag,
+    onDragStart,
+    onPieceDrop,
+  });
 
   const drawBannerTitle = h('span', { class: 'banner-text' }, 'Соперник предлагает ничью');
   const drawAccept = h('button', { type: 'button', class: 'btn btn-gold btn-sm' }, 'Принять');
@@ -112,7 +126,7 @@ async function main() {
 
   const gameMain = h('main', { class: 'game-main' },
     h('div', { class: 'match-grid' },
-      h('div', { class: 'board-side' }, spectatorBadge, viewBanner, oppPanel, depHint, boardBox, youPanel),
+      h('div', { class: 'board-side' }, spectatorBadge, viewBanner, oppPanel, checkBanner, depHint, boardBox, youPanel),
       sideCol,
     ),
   );
@@ -134,6 +148,19 @@ async function main() {
   // ---- состояние ----
   function isSpectator() {
     return state !== null && state.you === 'spectator';
+  }
+
+  function isOwnKingInCheck() {
+    if (state === null || state.status !== 'active') return false;
+    if (isSpectator() || viewing !== null) return false;
+    if (!state.check_square) return false;
+    if (state.turn !== state.you) return false;
+    const cell = pieceAt(state.check_square);
+    return cell !== null && cell.piece === 'K' && cell.color === state.you;
+  }
+
+  function updateCheckBanner() {
+    checkBanner.hidden = !isOwnKingInCheck();
   }
 
   function applyState(s) {
@@ -161,10 +188,11 @@ async function main() {
     boardRender();
     renderPanels();
     updateButtons();
+    updateCheckBanner();
     spectatorBadge.hidden = !spectator;
     actionsCard.hidden = spectator;
-    depHint.hidden = spectator;
-    depPanel.hidden = spectator;
+    depHint.hidden = spectator || mode !== 'dep_piece';
+    depPanel.hidden = spectator || mode === 'idle';
     drawBanner.hidden = spectator
       || !(state.draw_offer_by !== null && state.draw_offer_by !== state.you && state.status === 'active');
     btnAbort.hidden = spectator || !(state.status === 'active' && state.ply < 2);
@@ -240,6 +268,7 @@ async function main() {
     if (info === null && gameOverInfo !== null) info = gameOverInfo;
     endShown = true;
     clearEndTimer();
+    updateCheckBanner();
     const aborted = state?.status === 'aborted';
     const res = state?.result;
 
@@ -335,6 +364,9 @@ async function main() {
     if (mode === 'dep_piece' && depOptions !== null) {
       opts.depPickable = depOptions.pieces.map((p) => p.square);
     }
+    if (mode === 'dep_target' && depPiece !== null) {
+      opts.selected = depPiece.square;
+    }
     boardApi.render(state, opts);
   }
 
@@ -395,6 +427,7 @@ async function main() {
   }
 
   function depClickable() {
+    if (viewing !== null || isSpectator()) return false;
     if (state === null || mode !== 'idle' || busy || fxRunning || forbidden) return false;
     return depBlockedReason() === null;
   }
@@ -419,6 +452,7 @@ async function main() {
     else btnDraw.textContent = 'Предложить ничью';
     btnResign.disabled = !actionClickable();
     btnAbort.disabled = !actionClickable();
+    boardRender();
   }
 
   function onDepClick() {
@@ -465,7 +499,7 @@ async function main() {
   }
 
   function chooseDepPiece(square) {
-    depPiece = depOptions.pieces.find((p) => p.square === square) ?? null;
+    depPiece = depOptions?.pieces?.find((p) => p.square === square) ?? null;
     if (depPiece === null) {
       cancelDep();
       return;
@@ -478,80 +512,144 @@ async function main() {
 
   function renderDepPanel() {
     clear(depPanel);
-    if (mode === 'dep_target' && depPiece !== null) {
+    const loadout = state?.players?.[state?.you]?.loadout ?? {};
+
+    if (mode === 'dep_piece' && depOptions !== null) {
+      depPanel.hidden = false;
+      const title = h('h4', { class: 'card-title' }, 'Деп: выберите фигуру');
+      const riskNote = h('p', { class: 'dep-risk-note' },
+        'Выберите фигуру на доске или в списке. Риск: при неудаче фигура сгорит.'
+      );
+      const grid = h('div', { class: 'dep-grid' });
+
+      for (const p of depOptions.pieces ?? []) {
+        const card = h('button', {
+          type: 'button',
+          class: ['dep-card', 'dep-card-source'],
+          'data-square': p.square,
+          'aria-label': (PIECE_NAME_RU[p.piece] ?? p.piece) + ' на ' + p.square,
+        });
+        const g = h('span', {
+          class: ['dep-card-glyph', state.you === 'white' ? 'side-white' : 'side-black'],
+        }, glyph(p.piece, state.you));
+        g.style.setProperty('--piece-color', pieceColor(loadout, p.piece, state.you));
+        const name = h('b', { class: 'dep-card-name' }, PIECE_NAME_RU[p.piece] ?? p.piece);
+        const sq = h('span', { class: 'dep-card-square mono' }, p.square);
+        const allowedCount = (p.targets ?? []).filter((t) => t.allowed).length;
+        const sub = h('span', { class: 'dep-card-sub' }, allowedCount > 0 ? (allowedCount + ' вариантов') : 'нет целей');
+
+        card.appendChild(g);
+        card.appendChild(name);
+        card.appendChild(sq);
+        card.appendChild(sub);
+        card.addEventListener('click', () => chooseDepPiece(p.square));
+        grid.appendChild(card);
+      }
+
+      const cancelBtn = h('button', {
+        type: 'button',
+        class: 'btn btn-ghost btn-block',
+      }, 'Отмена');
+      cancelBtn.addEventListener('click', () => cancelDep());
+
+      depPanel.appendChild(title);
+      depPanel.appendChild(riskNote);
+      depPanel.appendChild(grid);
+      depPanel.appendChild(h('div', { class: 'dep-btnrow' }, cancelBtn));
+    } else if (mode === 'dep_target' && depPiece !== null) {
       depPanel.hidden = false;
       const title = h('h4', { class: 'card-title' },
-        glyph(depPiece.piece, state.you) + ' ' + PIECE_NAME_RU[depPiece.piece] + ' ' + depPiece.square + ' → во что?');
-      depPanel.appendChild(title);
-      for (const target of depPiece.targets) {
-        const row = h('button', { type: 'button', class: 'dep-row' });
-        const g = h('span', { class: 'dep-row-glyph ' + (state.you === 'white' ? 'side-white' : 'side-black') }, glyph(target.piece, state.you));
-        g.style.setProperty('--piece-color', pieceColor(state.players[state.you].loadout, target.piece, state.you));
-        row.appendChild(g);
-        row.appendChild(h('b', { class: 'dep-row-name' }, PIECE_NAME_RU[target.piece]));
-        if (target.allowed) {
-          row.appendChild(h('span', { class: 'dep-row-chance mono' }, 'шанс ' + target.chance_text));
-        } else {
-          row.disabled = true;
-          row.appendChild(h('small', { class: 'dep-row-note' }, DEP_REASON_RU[target.reason] ?? target.reason ?? 'недоступно'));
-        }
-        row.addEventListener('click', () => {
-          if (!target.allowed) return;
-          depTarget = target;
-          mode = 'dep_confirm';
-          renderDepPanel();
+        glyph(depPiece.piece, state.you) + ' ' + (PIECE_NAME_RU[depPiece.piece] ?? depPiece.piece) + ' ' + depPiece.square + ' → цель депа'
+      );
+      const riskNote = h('p', { class: 'dep-risk-note' },
+        'Нажмите фигуру для депа. Деп выполняется сразу. Риск: при неудаче фигура сгорит.'
+      );
+      const grid = h('div', { class: 'dep-grid' });
+
+      for (const target of depPiece.targets ?? []) {
+        const card = h('button', {
+          type: 'button',
+          class: ['dep-card', 'dep-card-target', target.allowed ? 'allowed' : 'disabled'],
+          'data-piece': target.piece,
+          'aria-label': (PIECE_NAME_RU[target.piece] ?? target.piece) + (target.allowed ? (' шанс ' + target.chance_text) : ' недоступно'),
         });
-        depPanel.appendChild(row);
+        const g = h('span', {
+          class: ['dep-card-glyph', state.you === 'white' ? 'side-white' : 'side-black'],
+        }, glyph(target.piece, state.you));
+        g.style.setProperty('--piece-color', pieceColor(loadout, target.piece, state.you));
+        const name = h('b', { class: 'dep-card-name' }, PIECE_NAME_RU[target.piece] ?? target.piece);
+
+        card.appendChild(g);
+        card.appendChild(name);
+
+        if (target.allowed) {
+          const chance = h('span', { class: 'dep-card-chance mono' }, 'шанс ' + target.chance_text);
+          card.appendChild(chance);
+          card.addEventListener('click', () => {
+            if (!target.allowed) return;
+            sendDep(depPiece, target);
+          });
+        } else {
+          card.disabled = true;
+          const reasonText = DEP_REASON_RU[target.reason] ?? target.reason ?? 'недоступно';
+          const note = h('small', { class: 'dep-card-reason' }, reasonText);
+          card.appendChild(note);
+        }
+        grid.appendChild(card);
       }
-      depPanel.appendChild(makePanelBtns(
-        { label: 'Отмена', kind: 'ghost', onClick: () => cancelDep() },
-      ));
-    } else if (mode === 'dep_confirm' && depPiece !== null && depTarget !== null) {
-      depPanel.hidden = false;
-      depPanel.appendChild(h('h4', { class: 'card-title' }, 'Подтверждение депа'));
-      depPanel.appendChild(h('p', { class: 'dep-summary' },
-        (PIECE_NAME_RU[depPiece.piece] ?? depPiece.piece) + ' → ' + (PIECE_NAME_RU[depTarget.piece] ?? depTarget.piece)
-        + ' · шанс ' + depTarget.chance_text + ' · при провале фигура сгорит'));
-      depPanel.appendChild(makePanelBtns(
-        { label: 'Депнуть', kind: 'gold', onClick: () => sendDep() },
-        { label: 'Назад', kind: 'ghost', onClick: () => {
-          mode = 'dep_target';
-          depTarget = null;
-          renderDepPanel();
-        } },
-      ));
+
+      const backBtn = h('button', {
+        type: 'button',
+        class: 'btn btn-ghost btn-block',
+      }, 'Назад');
+      backBtn.addEventListener('click', () => {
+        mode = 'dep_piece';
+        depPiece = null;
+        depTarget = null;
+        depHint.hidden = false;
+        renderDepPanel();
+        boardRender();
+      });
+
+      const cancelBtn = h('button', {
+        type: 'button',
+        class: 'btn btn-ghost btn-block',
+      }, 'Отмена');
+      cancelBtn.addEventListener('click', () => cancelDep());
+
+      depPanel.appendChild(title);
+      depPanel.appendChild(riskNote);
+      depPanel.appendChild(grid);
+      depPanel.appendChild(h('div', { class: 'dep-btnrow' }, backBtn, cancelBtn));
     } else {
       depPanel.hidden = true;
     }
   }
 
-  function makePanelBtns(...buttons) {
-    const row = h('div', { class: 'dep-btnrow' });
-    for (const b of buttons) {
-      const el = h('button', { type: 'button', class: 'btn btn-' + b.kind + ' btn-block' }, b.label);
-      el.addEventListener('click', () => {
-        const proceed = b.onClick ? b.onClick() : undefined;
-        if (proceed === false) return;
-      });
-      row.appendChild(el);
-    }
-    return row;
-  }
+  function sendDep(pieceObj, targetObj) {
+    if (mode !== 'dep_target' || viewing !== null || isSpectator()) return;
+    const p = pieceObj ?? depPiece;
+    const t = targetObj ?? depTarget;
+    if (!p || !t || !t.allowed) return;
+    if (busy || fxRunning || forbidden) return;
+    if (!state || state.status !== 'active' || state.turn !== state.you) return;
+    if (state.deps.used_this_turn || myDepsUsed() >= state.deps.limit) return;
 
-  function sendDep() {
-    if (depPiece === null || depTarget === null || !state || state.status !== 'active') return;
-    const square = depPiece.square;
-    const target = depTarget.piece;
+    const square = p.square;
+    const target = t.piece;
+    const expectedVersion = state.version;
+
     cancelDep();
     busy = true;
     fxRunning = true;
     updateButtons();
+
     enqueue(async () => {
       try {
         const res = await api('POST', '/games/' + id + '/dep', {
           square,
           target,
-          expected_version: state.version,
+          expected_version: expectedVersion,
         });
         await playDep(boardApi, res, { mine: true });
         applyState(res.state);
@@ -566,13 +664,50 @@ async function main() {
     });
   }
 
-  // ---- клики по доске ----
+  // ---- клики и перетаскивание на доске ----
   function interactionAllowed() {
     if (state === null || forbidden) return false;
     if (state.status !== 'active') return false;
     if (state.turn !== state.you) return false;
     if (busy || fxRunning) return false;
     return true;
+  }
+
+  function canDrag(square) {
+    if (viewing !== null) return false;
+    if (isSpectator()) return false;
+    if (mode !== 'idle') return false;
+    if (busy || fxRunning || forbidden) return false;
+    if (state === null || state.status !== 'active') return false;
+    if (state.turn !== state.you) return false;
+    if (!square || typeof square !== 'string') return false;
+
+    const cell = pieceAt(square);
+    if (cell === null || cell.color !== state.you) return false;
+
+    return (state.legal_moves ?? []).some((uci) => uci.slice(0, 2) === square);
+  }
+
+  function onDragStart(square) {
+    if (!canDrag(square)) return;
+    selected = square;
+    boardRender();
+  }
+
+  function onPieceDrop(from, to) {
+    if (!canDrag(from)) return;
+    if (!to || typeof to !== 'string' || from === to) return;
+
+    const matches = (state?.legal_moves ?? []).filter(
+      (uci) => uci.slice(0, 2) === from && uci.slice(2, 4) === to
+    );
+    if (matches.length === 0) return;
+
+    if (matches.some((uci) => uci.length > 4)) {
+      openPromotion(matches);
+    } else {
+      sendMove(from + to);
+    }
   }
 
   function onSquareClick(name) {
@@ -583,6 +718,12 @@ async function main() {
         chooseDepPiece(name);
       } else {
         cancelDep();
+      }
+      return;
+    }
+    if (mode === 'dep_target') {
+      if (depOptions !== null && depOptions.pieces.some((p) => p.square === name)) {
+        chooseDepPiece(name);
       }
       return;
     }
@@ -700,6 +841,8 @@ async function main() {
     moves.select(ev.seq);
     viewBannerText.textContent = 'Просмотр позиции · ход ' + (Math.floor((ev.ply - 1) / 2) + 1);
     viewBanner.hidden = false;
+    updateCheckBanner();
+    updateButtons();
     boardRender();
   }
 
@@ -708,6 +851,8 @@ async function main() {
     viewing = null;
     moves.select(null);
     viewBanner.hidden = true;
+    updateCheckBanner();
+    updateButtons();
     boardRender();
   }
 
