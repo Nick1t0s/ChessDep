@@ -7,9 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import app.core.clock as clock
 from app.core.errors import AppError
 from app.core.ratelimit import hit
-from app.models.social import Friendship
+from app.models.social import Friendship, UserBlock
 from app.models.user import User
 from app.services.notifications import notify
+from app.services.social_settings import ensure_not_blocked
 
 _USER_NOT_FOUND = AppError(404, "USER_NOT_FOUND", "Пользователь не найден")
 _CANNOT_FRIEND_SELF = AppError(400, "CANNOT_FRIEND_SELF", "Нельзя добавить в друзья себя")
@@ -114,7 +115,6 @@ async def list_friend_requests(
     user_id: int,
 ) -> tuple[list[User], list[User]]:
     """Возвращает входящие и исходящие заявки в друзья."""
-    # Входящие: Friendship.status == 'pending', requester_id != user_id
     incoming_query = (
         select(User)
         .join(
@@ -131,7 +131,6 @@ async def list_friend_requests(
     )
     incoming = list((await db.scalars(incoming_query)).all())
 
-    # Исходящие: Friendship.status == 'pending', requester_id == user_id
     other_id_expr = case(
         (Friendship.user_low_id == user_id, Friendship.user_high_id),
         else_=Friendship.user_low_id,
@@ -162,7 +161,7 @@ async def search_users(
     *,
     limit: int = 20,
 ) -> list[dict[str, object]]:
-    """Поиск пользователей по логину без себя и заблокированных."""
+    """Поиск пользователей по логину без себя, заблокированных и заблокировавших."""
     q = query_text.strip()
     if len(q) < 2 or len(q) > 64:
         raise AppError(422, "VALIDATION_ERROR", "Длина запроса от 2 до 64 символов")
@@ -170,11 +169,16 @@ async def search_users(
     escaped = escape_like(q)
     limit = max(1, min(limit, 20))
 
+    blocked_by_me = select(UserBlock.blocked_id).where(UserBlock.blocker_id == current_user_id)
+    blocked_me = select(UserBlock.blocker_id).where(UserBlock.blocked_id == current_user_id)
+
     query = (
         select(User)
         .where(
             User.id != current_user_id,
             User.is_banned.is_(False),
+            User.id.not_in(blocked_by_me),
+            User.id.not_in(blocked_me),
             User.login.ilike(f"%{escaped}%", escape="\\"),
         )
         .order_by(User.login.asc())
@@ -193,7 +197,6 @@ async def search_users(
     )
     friendships = list((await db.scalars(friendships_query)).all())
 
-    # Сопоставляем target_id -> relationship
     rel_map: dict[int, Literal["none", "friend", "incoming", "outgoing"]] = {}
     for f in friendships:
         other_id = f.user_high_id if f.user_low_id == current_user_id else f.user_low_id
@@ -234,11 +237,14 @@ async def send_friend_request(
     if target_user.is_banned:
         raise _USER_BANNED
 
-    # Простой рейт-лимит: до 30 заявок в минуту на пользователя (hit сам выбрасывает AppError при превышении)
+    await ensure_not_blocked(db, current_user.id, target_user.id)
+
+    # Резерв рейт-лимита
     await hit(f"friend_req:{current_user.id}", 30, 60)
 
     # Сериализация через блокировку пары пользователей в возрастающем порядке
     await _lock_user_pair(db, current_user.id, target_user.id)
+    await ensure_not_blocked(db, current_user.id, target_user.id)
 
     low_id, high_id = (
         (current_user.id, target_user.id)
@@ -259,7 +265,6 @@ async def send_friend_request(
         if friendship.status == "pending":
             if friendship.requester_id == current_user.id:
                 raise _REQUEST_ALREADY_SENT
-            # Встречный запрос требует явного принятия
             raise _CROSS_REQUEST_EXISTS
 
     if now is None:
@@ -276,7 +281,6 @@ async def send_friend_request(
     db.add(new_friendship)
     await db.flush()
 
-    # Транзакционное уведомление адресату
     await notify(
         db,
         user_id=target_user.id,
@@ -284,6 +288,7 @@ async def send_friend_request(
         title="Запрос в друзья",
         body=f"{current_user.login} хочет добавить вас в друзья",
         href="/friends.html",
+        data={"actor_id": current_user.id, "friendship_id": new_friendship.id},
         now=now,
     )
 
@@ -301,9 +306,13 @@ async def accept_friend_request(
     if requester_user_id == current_user.id:
         raise _CANNOT_FRIEND_SELF
 
+    await ensure_not_blocked(db, current_user.id, requester_user_id)
+
     _curr, requester_user = await _lock_user_pair(db, current_user.id, requester_user_id)
     if requester_user.is_banned:
         raise _USER_BANNED
+
+    await ensure_not_blocked(db, current_user.id, requester_user_id)
 
     low_id, high_id = (
         (current_user.id, requester_user_id)
@@ -322,7 +331,6 @@ async def accept_friend_request(
     if friendship.status == "accepted":
         raise _ALREADY_FRIENDS
 
-    # Только получатель может принять заявку
     recipient_id = (
         friendship.user_high_id
         if friendship.requester_id == friendship.user_low_id
@@ -338,7 +346,6 @@ async def accept_friend_request(
     friendship.updated_at = now
     await db.flush()
 
-    # Транзакционное уведомление инициатору заявки
     await notify(
         db,
         user_id=requester_user_id,
@@ -346,6 +353,7 @@ async def accept_friend_request(
         title="Запрос в друзья принят",
         body=f"{current_user.login} принял(а) вашу заявку в друзья",
         href=f"/user.html?login={current_user.login}",
+        data={"actor_id": current_user.id},
         now=now,
     )
 
@@ -357,7 +365,6 @@ async def delete_friend_request(
     current_user_id: int,
     other_user_id: int,
 ) -> None:
-    """Отклоняет входящую заявку или отменяет исходящую."""
     if current_user_id == other_user_id:
         raise _CANNOT_FRIEND_SELF
 
@@ -385,7 +392,6 @@ async def remove_friend(
     current_user_id: int,
     friend_id: int,
 ) -> None:
-    """Удаляет существующую дружбу; проверяет принадлежность."""
     if current_user_id == friend_id:
         raise _CANNOT_FRIEND_SELF
 

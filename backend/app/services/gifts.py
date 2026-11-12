@@ -8,6 +8,7 @@ from app.schemas.market import ListingItemOut
 from app.services.items import check_trade_hold, items_out, lock_items, unequip_items
 from app.services.notifications import notify
 from app.services.settings import get_setting
+from app.services.social_settings import ensure_not_blocked
 
 _USER_NOT_FOUND = AppError(404, "USER_NOT_FOUND", "Пользователь не найден")
 _CANNOT_GIFT_SELF = AppError(400, "CANNOT_GIFT_SELF", "Нельзя подарить себе")
@@ -24,10 +25,17 @@ async def send_gift(
         raise _CANNOT_GIFT_SELF
     if recipient.is_banned:
         raise _RECIPIENT_BANNED
+
+    await ensure_not_blocked(db, sender.id, recipient.id)
+
     items = await lock_items(db, sender.id, [item_id])
     item = items[0]
     hold = int(await get_setting(db, "trade_hold_hours"))
     check_trade_hold(item, hold, now)
+
+    # Проверка блокировки перед фиксацией передачи
+    await ensure_not_blocked(db, sender.id, recipient.id)
+
     await unequip_items(db, [item.id])
     item.user_id = recipient.id
     item.acquired_at = now
@@ -52,6 +60,7 @@ async def send_gift(
         title="Новый подарок",
         body=f"{sender.login} отправил вам подарок{note_suffix}",
         href="/gifts.html",
+        data={"actor_id": sender.id, "transfer_id": transfer.id},
         now=now,
     )
 
@@ -119,7 +128,6 @@ async def list_gifts(
             )
         )
     if direction == "in":
-        # seen в ответе — значение до пометки; помечаем все входящие целиком.
         await db.execute(
             update(ItemTransfer)
             .where(

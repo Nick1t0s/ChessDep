@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -79,6 +81,9 @@ class Notification(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     href: Mapped[str | None] = mapped_column(Text, nullable=True)
+    data: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
     read: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
@@ -90,6 +95,7 @@ class Notification(Base):
 class InviteDelivery(Base):
     __tablename__ = "invite_deliveries"
     __table_args__ = (
+        CheckConstraint("status IN ('pending', 'accepted', 'declined')", name="invite_delivery_status_whitelist"),
         UniqueConstraint("code", "recipient_id", name="uq_invite_deliveries_code_recipient"),
         Index("ix_invite_deliveries_recipient_id", "recipient_id"),
     )
@@ -99,6 +105,51 @@ class InviteDelivery(Base):
         Text, ForeignKey("invites.code", ondelete="CASCADE"), nullable=False
     )
     recipient_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="pending", server_default="pending"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class UserSocialSettings(Base):
+    __tablename__ = "user_social_settings"
+    __table_args__ = (
+        CheckConstraint("presence_mode IN ('online', 'dnd')", name="presence_mode_whitelist"),
+        CheckConstraint("match_invites IN ('all', 'friends', 'none')", name="match_invites_whitelist"),
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    presence_mode: Mapped[str] = mapped_column(
+        Text, nullable=False, default="online", server_default="online"
+    )
+    match_invites: Mapped[str] = mapped_column(
+        Text, nullable=False, default="all", server_default="all"
+    )
+    notification_settings: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+
+
+class UserBlock(Base):
+    __tablename__ = "user_blocks"
+    __table_args__ = (
+        CheckConstraint("blocker_id != blocked_id", name="check_block_no_self"),
+        UniqueConstraint("blocker_id", "blocked_id", name="uq_user_blocks_blocker_blocked"),
+        Index("ix_user_blocks_blocker_id", "blocker_id"),
+        Index("ix_user_blocks_blocked_id", "blocked_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    blocker_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    blocked_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(

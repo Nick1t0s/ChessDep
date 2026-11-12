@@ -16,6 +16,7 @@ from app.schemas.social import (
     UserSearchOut,
 )
 from app.services import friends as friends_service
+from app.services import social_settings as social_settings_service
 
 router = APIRouter(prefix="/api/v1", tags=["friends"])
 
@@ -26,7 +27,19 @@ UserDep = Annotated[User, Depends(current_user)]
 @router.get("/friends", response_model=FriendsListOut)
 async def get_friends(user: UserDep, db: DbDep) -> FriendsListOut:
     friends = await friends_service.list_friends(db, user.id)
-    items = [FriendUserOut(id=f.id, login=f.login, elo=f.elo) for f in friends]
+    friend_ids = [f.id for f in friends]
+    presence_map = await social_settings_service.batch_get_presence(db, friend_ids)
+
+    items = [
+        FriendUserOut(
+            id=f.id,
+            login=f.login,
+            elo=f.elo,
+            presence=presence_map.get(f.id, ("offline", None))[0],  # type: ignore[arg-type]
+            game_id=presence_map.get(f.id, ("offline", None))[1],
+        )
+        for f in friends
+    ]
     return FriendsListOut(items=items)
 
 
