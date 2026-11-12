@@ -331,6 +331,23 @@ class SocialTestContext:
         self.page.route('**/api/v1/invites**', handle_invites)
         self.page.route('**/api/v1/notifications**', handle_notifications)
 
+        def handle_skins(route: Any) -> None:
+            seed_p = os.path.join(os.path.dirname(__file__), '..', 'backend', 'app', 'seed_images', 'base-wq.png')
+            with open(seed_p, 'rb') as sf:
+                route.fulfill(status=200, content_type='image/png', body=sf.read())
+
+        self.page.route('**/api/v1/skins/**', handle_skins)
+
+        def handle_daily_reward(route: Any, request: Any) -> None:
+            if request.method == 'GET':
+                route.fulfill(status=200, content_type='application/json', body=json.dumps({
+                    'wins_today': 1, 'wins_required': 3, 'claimed_today': False, 'available': False
+                }))
+            else:
+                route.fulfill(status=200, content_type='application/json', body=json.dumps({}))
+
+        self.page.route('**/api/v1/me/daily-reward', handle_daily_reward)
+
     def assert_no_errors(self) -> None:
         assert not self.errors, f'Page errors encountered: {self.errors}'
 

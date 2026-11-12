@@ -439,7 +439,7 @@ def run_tests(root_dir: str, artifacts_dir: str, executable_path: Optional[str] 
         def t_profile_and_market_links(ctx: Social2TestContext, page: Page):
             page.goto(f'{base_url}/profile.html')
             page.wait_for_selector('.profile', timeout=5000)
-            settings_link = page.wait_for_selector('a[href="/social-settings.html"]', timeout=3000)
+            settings_link = page.wait_for_selector('.profile a[href="/social-settings.html"]', timeout=3000)
             assert settings_link is not None, "Profile missing link to /social-settings.html"
             trade_link = page.wait_for_selector('a[href="/trade-history.html"]', timeout=3000)
             assert trade_link is not None, "Profile missing link to /trade-history.html"

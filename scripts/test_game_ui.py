@@ -40,17 +40,46 @@ WHITE_LEGAL_MOVES = [
     'b1a3', 'b1c3', 'g1f3', 'g1h3'
 ]
 
+MOCK_ASSET = {
+    'type': 'png',
+    'image': '1' * 64,
+    'exteriors': {
+        'FN': '1' * 64,
+        'MW': '1' * 64,
+        'FT': '1' * 64,
+        'WW': '1' * 64,
+        'BS': '1' * 64,
+    },
+}
+
+MOCK_TARGET_ASSET = {
+    'type': 'png',
+    'image': '2' * 64,
+    'exteriors': {
+        'FN': '2' * 64,
+        'MW': '2' * 64,
+        'FT': '2' * 64,
+        'WW': '2' * 64,
+        'BS': '2' * 64,
+    },
+}
+
 MOCK_INVENTORY = [
     {
         'id': 'i1',
+        'kind': 'skin',
         'status': 'owned',
         'exterior': 'FN',
+        'bound': False,
         'def': {
             'id': 'd1',
-            'kind': 'piece_skin',
+            'kind': 'piece',
             'piece_type': 'P',
+            'side': 'w',
+            'set': {'code': 'test', 'name': 'Test'},
+            'collection': None,
             'rarity': 'common',
-            'asset': {'type': 'stub', 'color': '#ffd700'},
+            'asset': MOCK_ASSET,
             'value': 100,
             'name': 'Pawn Skin',
         },
@@ -60,10 +89,13 @@ MOCK_INVENTORY = [
 MOCK_TARGET_DEFS = [
     {
         'id': 't1',
-        'kind': 'piece_skin',
+        'kind': 'piece',
         'piece_type': 'Q',
+        'side': 'w',
+        'set': {'code': 'test', 'name': 'Test'},
+        'collection': None,
         'rarity': 'common',
-        'asset': {'type': 'stub', 'color': '#ffd700'},
+        'asset': MOCK_TARGET_ASSET,
         'value': 500,
         'name': 'Target Queen',
     }
@@ -71,19 +103,22 @@ MOCK_TARGET_DEFS = [
 
 MOCK_UPGRADE_ITEM = {
     'id': 'item-2',
+    'kind': 'skin',
     'exterior': 'FN',
+    'bound': False,
     'def': {
         'id': 't1',
-        'kind': 'piece_skin',
+        'kind': 'piece',
         'piece_type': 'Q',
+        'side': 'w',
+        'set': {'code': 'test', 'name': 'Test'},
+        'collection': None,
         'rarity': 'common',
-        'asset': {'type': 'stub', 'color': '#ffd700'},
+        'asset': MOCK_TARGET_ASSET,
         'value': 500,
         'name': 'Queen Skin',
     },
 }
-
-
 def make_game_state(
     game_id: str = '11111111-1111-1111-1111-111111111111',
     you: str = 'white',
@@ -108,8 +143,8 @@ def make_game_state(
         'end_reason': None,
         'result': None,
         'players': {
-            'white': {'login': 'alice', 'elo': 1200, 'loadout': {}},
-            'black': {'login': 'bob', 'elo': 1250, 'loadout': {}},
+            'white': {'login': 'alice', 'elo': 1200, 'loadout': {p: {'asset': MOCK_ASSET} for p in ['P', 'N', 'B', 'R', 'Q', 'K']}},
+            'black': {'login': 'bob', 'elo': 1250, 'loadout': {p: {'asset': MOCK_ASSET} for p in ['P', 'N', 'B', 'R', 'Q', 'K']}},
         },
         'clocks': {
             'white_ms': 300000,
@@ -308,6 +343,13 @@ class TestContext:
         self.page.route('**/api/v1/inventory*', handle_inventory)
         self.page.route('**/api/v1/item-defs*', handle_item_defs)
 
+        def handle_skins(route: Any) -> None:
+            seed_p = os.path.join(os.path.dirname(__file__), '..', 'backend', 'app', 'seed_images', 'base-wp.png')
+            with open(seed_p, 'rb') as sf:
+                route.fulfill(status=200, content_type='image/png', body=sf.read())
+
+        self.page.route('**/api/v1/skins/**', handle_skins)
+
     def send_ws_state(self, new_state: Dict[str, Any]) -> None:
         self.page.wait_for_function('() => window.__mockSockets && window.__mockSockets.some(s => s.readyState === 1)')
         self.current_state = new_state
@@ -388,7 +430,33 @@ def run_tests(root_dir: str, artifacts_dir: str, headless: bool, chromium_path: 
             tc.current_state = make_game_state(game_id=game_id, version=1)
             page.goto(game_url)
             tc.wait_board()
-            tc.drag('e2', 'e4')
+
+            # Mandatory check: board piece has PNG image with naturalWidth > 0
+            board_img = page.locator('.sq[data-square="e2"] img.piece-img')
+            board_img.wait_for(state='visible', timeout=5000)
+            nw = page.evaluate('(el) => el.naturalWidth', board_img.element_handle())
+            assert nw > 0, f'Expected positive naturalWidth on board piece img, got {nw}'
+
+            # Drag with ghost inspection
+            src = page.locator('.sq[data-square="e2"]')
+            dst = page.locator('.sq[data-square="e4"]')
+            sb = src.bounding_box()
+            db = dst.bounding_box()
+            assert sb and db
+            page.mouse.move(sb['x'] + sb['width'] / 2, sb['y'] + sb['height'] / 2)
+            page.mouse.down()
+            page.mouse.move((sb['x'] + db['x']) / 2, (sb['y'] + db['y']) / 2, steps=4)
+
+            # Mandatory check: drag ghost exists and has img with naturalWidth > 0
+            ghost = page.locator('.drag-ghost')
+            ghost.wait_for(state='visible', timeout=5000)
+            ghost_img = ghost.locator('img')
+            ghost_img.wait_for(state='visible', timeout=5000)
+            gnw = page.evaluate('(el) => el.naturalWidth', ghost_img.element_handle())
+            assert gnw > 0, f'Expected positive naturalWidth on drag ghost img, got {gnw}'
+
+            page.mouse.move(db['x'] + db['width'] / 2, db['y'] + db['height'] / 2, steps=4)
+            page.mouse.up()
             page.wait_for_timeout(100)
             assert len(tc.post_moves) == 1, f'Expected 1 move POST via drag, got {len(tc.post_moves)}'
             assert tc.post_moves[0].get('uci') == 'e2e4'
