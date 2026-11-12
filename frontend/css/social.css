@@ -1,3 +1,4 @@
+/* Social & Notification styles */
 .sc-tabs { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .sc-hint { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
 .sc-hint a { color: var(--gold); }
@@ -218,6 +219,49 @@
   outline: 2px solid var(--accent);
 }
 
+/* Actionable notification buttons & statuses */
+.notif-actions {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.notif-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.notif-action-btn {
+  font-size: 11.5px;
+  padding: 3px 8px;
+}
+
+.notif-action-status {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+}
+
+.notif-status-accepted {
+  color: var(--green);
+  border-color: rgba(74, 222, 128, .3);
+}
+
+.notif-status-declined {
+  color: var(--red);
+  border-color: rgba(255, 84, 112, .3);
+}
+
+.notif-status-cancelled,
+.notif-status-expired,
+.notif-status-unavailable {
+  color: var(--muted);
+}
+
 /* Friends & Social Page Layout */
 .social-page {
   padding-top: 24px;
@@ -226,6 +270,18 @@
 
 .page-header {
   margin-bottom: 20px;
+}
+
+.friends-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.friends-header-main {
+  min-width: 0;
 }
 
 .page-subtitle {
@@ -292,10 +348,11 @@
 .social-person-info {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
   flex: 1;
-  overflow-wrap: break-word;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
   word-break: break-word;
 }
 
@@ -305,7 +362,7 @@
   color: var(--text);
   text-decoration: none;
   word-break: break-word;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 .social-person-name:hover {
@@ -322,6 +379,32 @@
   font-size: 11.5px;
   padding: 4px 8px;
   flex-shrink: 0;
+}
+
+.social-status-pill {
+  font-size: 11px;
+  padding: 3px 7px;
+  font-weight: 600;
+}
+
+.status-online {
+  color: var(--green);
+  border-color: rgba(74, 222, 128, .3);
+}
+
+.status-in_game {
+  color: var(--gold);
+  border-color: rgba(255, 201, 60, .3);
+}
+
+.status-dnd {
+  color: #a78bfa;
+  border-color: rgba(167, 139, 250, .3);
+}
+
+.status-offline {
+  color: var(--muted);
+  border-color: var(--line);
 }
 
 .social-actions {
@@ -384,7 +467,39 @@
   font-size: 14px;
 }
 
-/* Friend Picker shared component styling (modal & embedded) */
+/* Reusable Social Controls Component */
+.social-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.social-controls-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.social-controls-loading,
+.social-controls-error {
+  font-size: 12.5px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Modal result (user social-controls + rematch) overflow safety without breaking dep/upgrade */
+.modal:has(.social-controls) {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+
+/* Friend Picker shared component styling */
 .social-picker {
   display: flex;
   flex-direction: column;
@@ -523,6 +638,146 @@
   padding: 10px 24px;
 }
 
+/* Settings Page */
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.settings-section {
+  padding: 20px;
+  border-radius: var(--radius);
+}
+
+.settings-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.settings-section-desc {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 16px;
+  line-height: 1.45;
+}
+
+.settings-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-radio-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, .015);
+  transition: border-color .12s, background .12s;
+}
+
+.settings-radio-item:hover {
+  border-color: #39415c;
+  background: rgba(255, 255, 255, .03);
+}
+
+.settings-radio-item input[type="radio"] {
+  margin-top: 3px;
+  cursor: pointer;
+}
+
+.settings-radio-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-radio-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-radio-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.settings-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-checkbox-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, .015);
+  transition: border-color .12s, background .12s;
+}
+
+.settings-checkbox-item:hover {
+  border-color: #39415c;
+  background: rgba(255, 255, 255, .03);
+}
+
+.settings-checkbox-item input[type="checkbox"] {
+  margin-top: 3px;
+  cursor: pointer;
+}
+
+.settings-checkbox-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-checkbox-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-checkbox-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.settings-block-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.settings-block-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+}
+
+.settings-empty-blocks {
+  font-size: 13.5px;
+  color: var(--muted);
+  text-align: center;
+  padding: 20px;
+}
+
 /* Responsive adjustments at 390px (e.g. 390x844) */
 @media (max-width: 480px) {
   .social-page {
@@ -555,5 +810,8 @@
     right: 0;
     left: auto;
     max-width: calc(100vw - 20px);
+  }
+  .settings-block-form {
+    flex-direction: column;
   }
 }

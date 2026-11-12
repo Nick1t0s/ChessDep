@@ -1,11 +1,10 @@
 import secrets
-import uuid
 from datetime import timedelta
 from typing import Annotated
 
 import app.core.clock as clock
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,10 +17,10 @@ from app.models import ActivePlayer, Invite, User
 from app.models.social import InviteDelivery
 from app.schemas.games import TimeControlIn
 from app.services.friends import require_friend
-from app.services.games import create_game
 from app.services.notifications import notify
-from app.services.rolls import get_rng
 from app.services.settings import get_setting
+from app.services.social_matches import accept_invite_domain
+from app.services.social_settings import ensure_invitation_allowed
 
 router = APIRouter(prefix="/api/v1", tags=["invites"])
 
@@ -33,6 +32,8 @@ _INVITE_TTL = timedelta(minutes=10)
 
 
 class SendInviteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     friend_id: int
 
 
@@ -75,6 +76,8 @@ async def send_invite(
 
     if invite.game_id is not None or invite.expires_at <= now:
         raise AppError(400, "INVITE_EXPIRED", "Инвайт недействителен")
+    if invite.target_user_id is not None and invite.target_user_id != body.friend_id:
+        raise AppError(403, "FORBIDDEN", "Это приглашение предназначено другому игроку")
 
     # 2. Проверяем, что создатель инвайта сам не находится в активной партии
     active_creator = await db.get(ActivePlayer, user.id)
@@ -84,6 +87,9 @@ async def send_invite(
     # 4. Проверяем дружбу (отклоняет чужих, заблокированных, себя)
     recipient = await require_friend(db, user.id, body.friend_id)
 
+    # Проверяем политику приглашений и блокировок
+    await ensure_invitation_allowed(db, user.id, recipient.id, require_friendship=True)
+
     # 5. Проверяем, что получатель не в активной партии
     active_recipient = await db.get(ActivePlayer, recipient.id)
     if active_recipient is not None:
@@ -92,13 +98,12 @@ async def send_invite(
     # 6. Идемпотентная доставка через pg_insert on_conflict_do_nothing
     stmt = (
         pg_insert(InviteDelivery)
-        .values(code=invite.code, recipient_id=recipient.id)
+        .values(code=invite.code, recipient_id=recipient.id, status="pending")
         .on_conflict_do_nothing(index_elements=["code", "recipient_id"])
     )
     res = await db.execute(stmt)
 
-    # 7. Умеренный rate limit и уведомление применяются только при реальной новой отправке,
-    # сохраняя идемпотентное поведение для повторов без блокировок и лишних запросов к лимитеру
+    # 7. Умеренный rate limit и уведомление применяются только при реальной новой отправке
     if res.rowcount and res.rowcount > 0:
         await hit(f"rl:invite:send:{user.id}", 20, 60)
         await notify(
@@ -109,6 +114,7 @@ async def send_invite(
             body=f"{user.login} приглашает вас сыграть партию ({invite.time_control})",
             href=f"/invite.html?code={invite.code}",
             now=now,
+            data={"actor_id": user.id, "invite_code": invite.code},
         )
 
     return {"status": "sent"}
@@ -116,22 +122,8 @@ async def send_invite(
 
 @router.post("/invites/{code}/accept")
 async def accept_invite(code: str, user: UserDep, db: DbDep) -> dict:
-    now = clock.now()
-    invite = await db.scalar(
-        select(Invite)
-        .where(Invite.code == code)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
-    if invite is None:
-        raise AppError(404, "INVITE_NOT_FOUND", "Инвайт не найден")
-    if invite.game_id is not None or invite.expires_at <= now:
-        raise AppError(400, "INVITE_EXPIRED", "Инвайт недействителен")
-    if invite.creator_id == user.id:
-        raise AppError(400, "INVITE_OWN", "Нельзя принять свой инвайт")
-    game = await create_game(db, invite.creator_id, user.id, invite.time_control, now)
-    invite.game_id = game.id
-    return {"game_id": str(game.id)}
+    game_id = await accept_invite_domain(db, code, user)
+    return {"game_id": game_id}
 
 
 @router.delete("/invites/{code}", status_code=204)

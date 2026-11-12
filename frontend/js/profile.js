@@ -27,13 +27,17 @@ const profileCard = h('div', { class: 'card' },
   h('p', { class: 'pf-row' }, h('span', null, 'Elo'), h('b', null, String(me.elo))),
   h('p', { class: 'pf-row' }, h('span', null, 'Баланс'), h('b', null, fmtCrystals(me.balance))),
   h('p', { class: 'pf-row' }, h('span', null, 'Роль'), h('b', null, me.role === 'admin' ? 'Администратор' : 'Игрок')),
-  h('button', {
-    type: 'button',
-    class: 'btn btn-ghost',
-    onClick: () => {
-      logout().catch((e) => toast(e.message, 'error'));
-    },
-  }, 'Выйти'),
+  h('div', { class: 'pf-links' },
+    h('a', { href: '/social-settings.html', class: 'btn btn-ghost' }, 'Настройки приватности'),
+    h('a', { href: '/trade-history.html', class: 'btn btn-ghost' }, 'История сделок'),
+    h('button', {
+      type: 'button',
+      class: 'btn btn-ghost',
+      onClick: () => {
+        logout().catch((e) => toast(e.message, 'error'));
+      },
+    }, 'Выйти'),
+  ),
 );
 
 async function logout() {

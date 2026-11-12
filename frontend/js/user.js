@@ -3,8 +3,9 @@ import { h } from './dom.js';
 import { initLayout } from './layout.js';
 import { toast } from './toast.js';
 import { END_REASON_RU } from './format.js';
+import { createUserSocialControls } from './social-controls.js';
 
-await initLayout({ auth: 'required', active: '' });
+const me = await initLayout({ auth: 'required', active: '' });
 
 const main = h('main', { class: 'wrap-wide user' });
 document.body.appendChild(main);
@@ -28,6 +29,11 @@ if (login === null || !/^[A-Za-z0-9_-]{3,16}$/.test(login)) {
   if (user) {
     // ---------- 1. Профиль ----------
     main.appendChild(h('h1', { class: 'page-title' }, user.login));
+
+    if (me && me.login !== user.login) {
+      main.appendChild(createUserSocialControls(user.login));
+    }
+
     main.appendChild(h('div', { class: 'card' },
       h('h3', { class: 'card-title' }, 'Статистика'),
       h('p', { class: 'us-row' }, h('span', null, 'Elo'), h('b', null, String(user.elo))),
