@@ -13,6 +13,7 @@ from app.api import (
     config,
     game_history,
     games,
+    friends,
     gifts,
     health,
     internal,
@@ -22,6 +23,7 @@ from app.api import (
     market,
     matchmaking,
     me,
+    notifications,
     ws,
 )
 from app.core.errors import (
@@ -58,6 +60,8 @@ app.include_router(me.router)
 app.include_router(internal.router)
 app.include_router(config.router)
 app.include_router(games.router)
+app.include_router(friends.router)
+app.include_router(notifications.router)
 app.include_router(game_history.router)
 app.include_router(chat.router)
 app.include_router(matchmaking.router)
