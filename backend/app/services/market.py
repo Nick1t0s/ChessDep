@@ -16,6 +16,7 @@ from app.services.items import (
     lock_items,
     unequip_items,
 )
+from app.services.notifications import notify
 from app.services.settings import get_setting
 
 _LISTING_NOT_FOUND = AppError(404, "LISTING_NOT_FOUND", "Лот не найден")
@@ -142,6 +143,19 @@ async def buy_listing(db: AsyncSession, buyer: User, listing_id: int, now) -> Ma
         )
     )
     await db.flush()
+
+    item_def = await db.get(ItemDef, listing.item_def_id)
+    item_name = item_def.name if item_def is not None else f"#{listing.item_def_id}"
+    await notify(
+        db,
+        user_id=seller_id,
+        kind="market_sale",
+        title="Продажа на маркете",
+        body=f"Предмет {item_name} успешно продан. Выручка: {seller_amount} кристаллов",
+        href=f"/market-item.html?def={listing.item_def_id}",
+        now=now,
+    )
+
     return listing
 
 
