@@ -1,8 +1,10 @@
 import { api } from './api.js';
 import { h } from './dom.js';
+import { setupNotificationCenter } from './notification-center.js';
 
 const SECTIONS = [
   ['Играть', '/index.html', 'play'],
+  ['Друзья', '/friends.html', 'friends'],
   ['Смотреть', '/live.html', 'live'],
   ['Кейсы', '/cases.html', 'cases'],
   ['Инвентарь', '/inventory.html', 'inventory'],
@@ -13,6 +15,7 @@ const SECTIONS = [
 
 const TABBAR = [
   ['Играть', '/index.html', 'play'],
+  ['Друзья', '/friends.html', 'friends'],
   ['Кейсы', '/cases.html', 'cases'],
   ['Инвентарь', '/inventory.html', 'inventory'],
   ['Маркет', '/market.html', 'market'],
@@ -20,6 +23,15 @@ const TABBAR = [
 ];
 
 let balanceEl = null;
+
+function ensureSocialStyles() {
+  if (!document.querySelector('link[href*="social.css"]')) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/css/social.css';
+    document.head.appendChild(link);
+  }
+}
 
 export async function initLayout({ auth = 'required', active = '' } = {}) {
   let me = null;
@@ -45,9 +57,14 @@ export async function initLayout({ auth = 'required', active = '' } = {}) {
 
     const right = h('div', { class: 'topbar-right' });
     if (me !== null) {
+      ensureSocialStyles();
       balanceEl = h('span', { class: 'balance pill' }, h('b', { id: 'balance-num' }, fmtBalance(me.balance)));
       right.appendChild(balanceEl);
       right.appendChild(h('a', { class: 'pill gift-badge', href: '/gifts.html', hidden: true }, 'Подарки'));
+
+      const bell = setupNotificationCenter();
+      right.appendChild(bell);
+
       right.appendChild(h('a', { class: 'pill login-link', href: '/profile.html' }, me.login));
       if (me.role === 'admin') {
         right.appendChild(h('a', { class: 'pill', href: '/admin.html' }, 'Админка'));
