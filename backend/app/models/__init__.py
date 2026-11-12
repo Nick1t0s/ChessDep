@@ -9,6 +9,7 @@ from app.models.roll import Roll
 from app.models.session import Session
 from app.models.setting import Setting
 from app.models.user import User
+from app.models.social import Friendship, InviteDelivery, Notification
 
 __all__ = [
     "ActivePlayer",
@@ -20,6 +21,9 @@ __all__ = [
     "Game",
     "GameEvent",
     "GameMessage",
+    "Friendship",
+    "InviteDelivery",
+    "Notification",
     "InventoryItem",
     "Invite",
     "ItemDef",
