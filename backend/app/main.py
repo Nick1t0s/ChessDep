@@ -24,6 +24,9 @@ from app.api import (
     matchmaking,
     me,
     notifications,
+    social_settings,
+    social_matches,
+    trade_history,
     ws,
 )
 from app.core.errors import (
@@ -62,6 +65,9 @@ app.include_router(config.router)
 app.include_router(games.router)
 app.include_router(friends.router)
 app.include_router(notifications.router)
+app.include_router(social_settings.router)
+app.include_router(social_matches.router)
+app.include_router(trade_history.router)
 app.include_router(game_history.router)
 app.include_router(chat.router)
 app.include_router(matchmaking.router)
