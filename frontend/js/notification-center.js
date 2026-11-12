@@ -104,6 +104,9 @@ export function setupNotificationCenter() {
 function onExternalSync(ev) {
   if (typeof ev?.detail?.count === 'number') {
     updateBadge(ev.detail.count);
+    if (ev.detail.count === 0) {
+      for (const item of latestItems) item.read = true;
+    }
     if (popoverEl && !popoverEl.hasAttribute('hidden')) {
       renderPopoverList();
     }
@@ -339,6 +342,9 @@ export async function pollNotifications() {
 
     latestItems = items;
     updateBadge(count);
+    window.dispatchEvent(new CustomEvent('chessdep:notifications-polled', {
+      detail: { items, count },
+    }));
     if (popoverEl && !popoverEl.hasAttribute('hidden')) {
       renderPopoverList();
     }

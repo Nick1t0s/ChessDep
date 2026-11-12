@@ -323,11 +323,23 @@ function onPageCleanup() {
   window.removeEventListener('focus', onFocusRefresh);
   document.removeEventListener('visibilitychange', onFocusRefresh);
   window.removeEventListener('pagehide', onPageCleanup);
+  window.removeEventListener('chessdep:notifications-polled', onNotificationsPolled);
+}
+
+function onNotificationsPolled(event) {
+  if (loading || markingAll || busyIds.size) return;
+  const fresh = event.detail.items;
+  const byId = new Map(items.map((item) => [item.id, item]));
+  for (const item of fresh) byId.set(item.id, item);
+  items = [...byId.values()].sort((a, b) => b.id - a.id);
+  unreadCount = event.detail.count;
+  renderList();
 }
 
 window.addEventListener('focus', onFocusRefresh);
 document.addEventListener('visibilitychange', onFocusRefresh);
 window.addEventListener('pagehide', onPageCleanup);
+window.addEventListener('chessdep:notifications-polled', onNotificationsPolled);
 
 function formatDateTime(iso) {
   if (!iso) return '';

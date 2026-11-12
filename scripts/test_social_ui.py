@@ -18,6 +18,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import copy
+import traceback
 import glob
 import json
 import os
@@ -170,7 +172,7 @@ class SocialTestContext:
         self.hold_search_query: Optional[str] = None
 
         # Notifications polling state
-        self.notifications_state = dict(MOCK_NOTIFICATIONS_PAGE_1)
+        self.notifications_state = copy.deepcopy(MOCK_NOTIFICATIONS_PAGE_1)
 
         self.page.on('pageerror', lambda err: self.errors.append(str(err)))
         self._setup_routes()
@@ -188,7 +190,7 @@ class SocialTestContext:
             }))
 
         def handle_active_game(route: Any) -> None:
-            route.fulfill(status=200, content_type='application/json', body=json.dumps(None))
+            route.fulfill(status=200, content_type='application/json', body=json.dumps({'game_id': None}))
 
         def handle_inventory(route: Any) -> None:
             route.fulfill(status=200, content_type='application/json', body=json.dumps(MOCK_INVENTORY))
@@ -355,6 +357,8 @@ def run_tests(root_dir: str, artifacts_dir: str, headless: bool, chromium_path: 
         except Exception as e:
             failed.append(name)
             print(f'  [FAIL] {name}: {e}')
+            traceback.print_exc()
+            page.screenshot(path=os.path.join(artifacts_dir, f'failure_{len(failed)}.png'))
 
     with sync_playwright() as p:
         browser = p.chromium.launch(executable_path=exec_path, headless=headless)
@@ -482,7 +486,7 @@ def run_tests(root_dir: str, artifacts_dir: str, headless: bool, chromium_path: 
             tc.held_gift_route = None
 
             page.locator('#gift-login').fill('bob')
-            gift_btn = page.locator('.modal .btn-gold:has-text("Подарить")')
+            gift_btn = page.locator('.modal .m-btnrow .btn-gold')
 
             # First click triggers request which is held
             gift_btn.click()
@@ -526,7 +530,7 @@ def run_tests(root_dir: str, artifacts_dir: str, headless: bool, chromium_path: 
             link_input = page.locator('.invite-link')
             assert 'testinvite123' in link_input.input_value()
             assert page.locator('button:has-text("Копировать")').is_visible()
-            assert page.locator('.invite-countdown').is_visible()
+            page.locator('.invite-countdown').wait_for(state='visible', timeout=2000)
             assert page.locator('button:has-text("Отменить")').is_visible()
 
             # Verify quick friend invite picker is present (friend-only: searchAll=false)
@@ -602,107 +606,57 @@ def run_tests(root_dir: str, artifacts_dir: str, headless: bool, chromium_path: 
             tc.read_notifications.clear()
             tc.read_all_called = False
 
-            # Navigate to friends.html
+            tc.notifications_state = copy.deepcopy(MOCK_NOTIFICATIONS_PAGE_1)
             page.goto(f'{base_url}/friends.html')
-            page.wait_for_selector('.wrap-wide, main', timeout=5000)
-
-            # 1. Friends list & remove friend
-            remove_btn = page.locator('button:has-text("Удалить"), [data-action="remove-friend"]')
-            if remove_btn.count() > 0 and remove_btn.first.is_visible():
-                remove_btn.first.click()
-                # If confirm modal appears, confirm
-                confirm_ok = page.locator('.modal .btn-gold, .modal button:has-text("Да"), .modal button:has-text("Удалить")')
-                if confirm_ok.count() > 0 and confirm_ok.first.is_visible():
-                    confirm_ok.first.click()
-                page.wait_for_timeout(100)
-                assert len(tc.friend_deletes) > 0, 'Expected DELETE /friends/{id} on remove friend'
-
-            # 2. Incoming requests: accept and reject
-            incoming_tab = page.locator('button:has-text("Заявки"), button:has-text("Входящие"), [data-tab="requests"]')
-            if incoming_tab.count() > 0 and incoming_tab.first.is_visible():
-                incoming_tab.first.click()
-                page.wait_for_timeout(100)
-
-            accept_btn = page.locator('button:has-text("Принять"), [data-action="accept-request"]')
-            if accept_btn.count() > 0 and accept_btn.first.is_visible():
-                accept_btn.first.click()
-                page.wait_for_timeout(100)
-                assert len(tc.friend_accept_posts) > 0, 'Expected POST /friends/requests/{id}/accept'
-
-            reject_btn = page.locator('button:has-text("Отклонить"), [data-action="reject-request"]')
-            if reject_btn.count() > 0 and reject_btn.first.is_visible():
-                reject_btn.first.click()
-                page.wait_for_timeout(100)
-                assert len(tc.friend_request_deletes) > 0, 'Expected DELETE /friends/requests/{id}'
-
-            # 3. Outgoing requests: cancel
-            outgoing_tab = page.locator('button:has-text("Исходящие"), [data-tab="outgoing"]')
-            if outgoing_tab.count() > 0 and outgoing_tab.first.is_visible():
-                outgoing_tab.first.click()
-                page.wait_for_timeout(100)
-                cancel_req_btn = page.locator('button:has-text("Отменить"), [data-action="cancel-request"]')
-                if cancel_req_btn.count() > 0 and cancel_req_btn.first.is_visible():
-                    cancel_req_btn.first.click()
-                    page.wait_for_timeout(100)
-                    assert len(tc.friend_request_deletes) > 0, 'Expected DELETE /friends/requests/{id} on cancel'
-
-            # 4. Search and send friend request
-            search_input = page.locator('.social-search, input[placeholder*="Поиск"], input[type="search"]')
-            if search_input.count() > 0 and search_input.first.is_visible():
-                search_input.first.fill('charlotte')
-                page.wait_for_timeout(250)
-                add_btn = page.locator('button:has-text("Добавить"), button:has-text("Заявка"), [data-action="add-friend"]')
-                if add_btn.count() > 0 and add_btn.first.is_visible():
-                    add_btn.first.click()
-                    page.wait_for_timeout(100)
-                    assert len(tc.friend_request_posts) > 0, 'Expected POST /friends/requests'
-
-            # 5. Topbar bell opening and read-all
-            bell_link = page.locator('a[href*="notification"], .bell-badge, [data-action="notifications"]')
-            if bell_link.count() > 0 and bell_link.first.is_visible():
-                bell_link.first.click()
-                page.wait_for_timeout(200)
-
-            # Navigate to notifications.html
+            people = page.locator('.social-content .social-person')
+            people.filter(has_text='bob').get_by_role('button', name='Удалить').click()
+            page.wait_for_timeout(100)
+            assert tc.friend_deletes == [2]
+            page.get_by_role('button', name='Входящие заявки').click()
+            people.filter(has_text='dave').get_by_role('button', name='Принять', exact=True).click()
+            page.wait_for_timeout(100)
+            assert tc.friend_accept_posts == [4]
+            people.filter(has_text='dave').get_by_role('button', name='Отклонить').click()
+            page.wait_for_timeout(100)
+            assert tc.friend_request_deletes == [4]
+            page.get_by_role('button', name='Исходящие').click()
+            people.filter(has_text='eve').get_by_role('button', name='Отменить заявку').click()
+            page.wait_for_timeout(100)
+            assert tc.friend_request_deletes == [4, 5]
+            page.locator('main .social-search').fill('charlotte')
+            people.filter(has_text='charlotte').get_by_role('button', name='Добавить в друзья').click()
+            page.wait_for_timeout(100)
+            assert tc.friend_request_posts == [{'login': 'charlotte'}]
+            page.locator('.notif-bell-btn').click()
+            assert page.locator('.notif-popover').is_visible()
+            page.locator('.notif-popover .notif-read-all-btn').click()
+            page.wait_for_timeout(100)
+            assert tc.read_all_called
+            assert page.locator('.notif-badge').is_hidden()
+            tc.notifications_state = copy.deepcopy(MOCK_NOTIFICATIONS_PAGE_1)
             page.goto(f'{base_url}/notifications.html')
-            page.wait_for_selector('.wrap-wide, main', timeout=5000)
-
-            # Read all button
-            read_all_btn = page.locator('button:has-text("Прочитать все"), [data-action="read-all"]')
-            if read_all_btn.count() > 0 and read_all_btn.first.is_visible():
-                read_all_btn.first.click()
-                page.wait_for_timeout(100)
-                assert tc.read_all_called, 'Expected POST /notifications/read-all'
-
-            # Notifications pagination: click "Ещё"
-            more_btn = page.locator('button:has-text("Ещё"), [data-action="load-more"]')
-            if more_btn.count() > 0 and more_btn.first.is_visible():
-                more_btn.first.click()
-                page.wait_for_timeout(150)
-                # Verify item 8 loaded from page 2
-                assert page.locator('text="Предмет продан"').count() > 0 or page.locator('text="500 кристаллов"').count() > 0
-
-            # 6. Polling toast notification: update unread count and trigger focus
-            tc.notifications_state = {
-                'items': [
-                    {
-                        'id': 99,
-                        'kind': 'match_invite',
-                        'title': 'Новое приглашение',
-                        'body': 'Новый соперник ждёт вас',
-                        'href': '/invite.html?code=pollcode',
-                        'read': False,
-                        'created_at': '2026-11-12T11:00:00Z',
-                    }
-                ],
-                'next_cursor': None,
-                'unread_count': 1,
-            }
-
-            # Trigger window focus event to fire immediate poll refresh
+            page.locator('.notif-card').first.get_by_role('button', name='Прочитать', exact=True).click()
+            page.wait_for_timeout(100)
+            assert 10 in tc.read_notifications
+            page.locator('main .notif-mark-all-btn').click()
+            page.wait_for_timeout(100)
+            assert page.locator('.notif-badge').is_hidden()
+            page.locator('main .notif-load-more').click()
+            page.get_by_role('heading', name='Предмет продан').wait_for()
+            assert page.locator('.toast').filter(has_text='Новое приглашение').count() == 0
+            tc.notifications_state['items'].insert(0, {
+                'id': 99, 'kind': 'match_invite', 'title': 'Новое приглашение',
+                'body': 'Новый соперник ждёт вас', 'href': '/invite.html?code=pollcode',
+                'read': False, 'created_at': '2026-11-12T11:00:00Z',
+            })
+            tc.notifications_state['unread_count'] = 1
             page.evaluate("() => window.dispatchEvent(new Event('focus'))")
-            page.wait_for_timeout(300)
-
+            page.locator('.toast').filter(has_text='Новое приглашение').wait_for()
+            page.get_by_role('heading', name='Новое приглашение').wait_for()
+            page.evaluate("() => window.dispatchEvent(new Event('focus'))")
+            page.wait_for_timeout(150)
+            assert page.locator('.toast').filter(has_text='Новое приглашение').count() == 1
+            page.screenshot(path=os.path.join(artifacts_dir, 'desktop_notifications.png'))
             tc.assert_no_errors()
 
         check('Friends and notifications page UI flows per contract', t_friends_notifications_ui_flow)
@@ -751,6 +705,25 @@ def run_tests(root_dir: str, artifacts_dir: str, headless: bool, chromium_path: 
             m_tc.assert_no_errors()
 
         check('Mobile screenshots and no horizontal overflow', t_mobile_screenshots_and_overflow)
+
+        def t_mobile_social_pages() -> None:
+            for path in ('friends', 'notifications'):
+                m_page.goto(f'{base_url}/{path}.html')
+                m_page.locator('main .social-person, main .notif-card').first.wait_for()
+                assert m_page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+                m_page.screenshot(path=os.path.join(artifacts_dir, f'mobile_{path}.png'))
+            m_page.locator('.notif-bell-btn').click()
+            popover = m_page.locator('.notif-popover')
+            popover.wait_for(state='visible')
+            bounds = popover.bounding_box()
+            assert bounds and bounds['x'] >= 0 and bounds['x'] + bounds['width'] <= 390
+            m_page.screenshot(path=os.path.join(artifacts_dir, 'mobile_bell.png'))
+            m_page.keyboard.press('Escape')
+            assert popover.is_hidden()
+            assert m_page.locator('.notif-bell-btn').evaluate('(el) => el === document.activeElement')
+            m_tc.assert_no_errors()
+
+        check('Mobile friends, notifications, and accessible bell', t_mobile_social_pages)
 
         browser.close()
 

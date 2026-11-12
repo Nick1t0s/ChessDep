@@ -25,8 +25,6 @@ export function createFriendPicker({ onSelect, searchAll = true, selectedId = nu
   });
 
   const listEl = h('div', { class: 'social-list', role: 'listbox' });
-  listEl.style.maxHeight = '150px';
-  listEl.style.overflowY = 'auto';
 
   root.append(searchInput, listEl);
 

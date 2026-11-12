@@ -237,6 +237,7 @@ function giftModal(item) {
     const currentSelected = picker.getSelected();
     if (currentSelected && currentSelected.login.toLowerCase() !== val.toLowerCase()) {
       picker.clearSelection();
+      loginInput.value = val;
     }
     if (val) {
       recipientStatus.textContent = 'Логин: ' + val;
