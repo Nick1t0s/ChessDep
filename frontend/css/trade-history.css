@@ -1,0 +1,125 @@
+.trade-history {
+  margin: 0 auto;
+  padding: 16px;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+.th-summary {
+  margin-bottom: 20px;
+}
+.th-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.th-sum-box {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.th-sum-label {
+  font-size: 12px;
+  color: #8e95a5;
+}
+.th-sum-val {
+  font-size: 16px;
+  color: #e5e9f0;
+}
+.th-filters-card {
+  margin-bottom: 20px;
+}
+.th-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.th-dir-select {
+  background: #14171f;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+.th-def-input {
+  background: #14171f;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 4px;
+  max-width: 140px;
+  font-size: 14px;
+}
+.th-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 16px;
+  max-width: 100%;
+}
+.th-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 560px;
+}
+.th-table th, .th-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 14px;
+}
+.th-table th {
+  color: #8e95a5;
+  font-weight: 500;
+}
+.th-skin-btn {
+  background: none;
+  border: none;
+  color: #e2b714;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+}
+.th-skin-btn:hover {
+  color: #ffd84d;
+}
+.dir-buy {
+  color: #4ade80;
+}
+.dir-sell {
+  color: #60a5fa;
+}
+.th-empty, .th-loading, .th-error {
+  text-align: center;
+  padding: 24px;
+  color: #8e95a5;
+}
+.th-error-wrap {
+  text-align: center;
+  padding: 16px;
+}
+.th-error {
+  color: #f87171;
+  margin-bottom: 8px;
+}
+@media (max-width: 500px) {
+  .trade-history {
+    padding: 8px;
+  }
+  .th-summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .th-def-input {
+    max-width: 100%;
+    flex: 1 1 100%;
+  }
+  .th-dir-select {
+    flex: 1 1 100%;
+  }
+}
