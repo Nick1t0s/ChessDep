@@ -91,7 +91,7 @@
   justify-content: space-between;
   gap: 12px;
   width: 100%;
-  max-width: min(100vw - 32px, 760px);
+  max-width: min(100vw - 32px, 100vh - 140px, 720px);
   padding: 10px 14px;
   border-radius: 12px;
   background: linear-gradient(135deg, rgba(239, 68, 68, .18), rgba(185, 28, 28, .1));
