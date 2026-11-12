@@ -132,6 +132,9 @@ class GameEvent(Base):
 
 class Invite(Base):
     __tablename__ = "invites"
+    __table_args__ = (
+        Index("ix_invites_source_game_id_creator_id", "source_game_id", "creator_id"),
+    )
 
     code: Mapped[str] = mapped_column(Text, primary_key=True)
     creator_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=False)
@@ -141,5 +144,11 @@ class Invite(Base):
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     game_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("games.id"), nullable=True
+    )
+    target_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=True
+    )
+    source_game_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("games.id"), nullable=True
     )
