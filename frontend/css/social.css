@@ -815,3 +815,33 @@
     flex-direction: column;
   }
 }
+
+/* Lobby quick invite */
+.lobby-friend-invite {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: var(--color-surface, #1e1e24);
+  border: 1px solid var(--color-border, #333);
+  border-radius: 8px;
+}
+.lobby-friend-invite .section-title {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.friend-send-row {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: flex-end;
+}
+.friend-send-status {
+  margin-top: 0.5rem;
+  min-height: 1.25rem;
+}
+.text-success {
+  color: var(--color-success, #4caf50);
+}
+.text-error {
+  color: var(--color-danger, #f44336);
+}

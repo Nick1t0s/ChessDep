@@ -39,6 +39,7 @@
 .topnav a.active { color: var(--gold); background: rgba(255, 201, 60, .08); }
 
 .topbar-right {
+  flex-shrink: 0;
   margin-left: auto;
   display: flex;
   align-items: center;

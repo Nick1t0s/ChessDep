@@ -3,6 +3,7 @@ import { h, clear } from './dom.js';
 import { initLayout } from './layout.js';
 import { toast } from './toast.js';
 import { openModal } from './modal.js';
+import { createFriendPicker } from './friend-picker.js';
 import { invItemCard, SLOT_RU, WHITE_SLOTS, BLACK_SLOTS } from './items.js';
 
 const me = await initLayout({ auth: 'required', active: 'inventory' });
@@ -211,19 +212,139 @@ function sellModal(item) {
 }
 
 function giftModal(item) {
-  const login = h('input', { id: 'gift-login', type: 'text', maxlength: '64', 'aria-label': 'Логин получателя' });
-  const note = h('textarea', { id: 'gift-note', rows: '3', maxlength: '140', 'aria-label': 'Записка' });
-  const body = h('div', { class: 'inventory' },
+  const loginInput = h('input', {
+    id: 'gift-login',
+    type: 'text',
+    maxlength: '64',
+    'aria-label': 'Логин получателя',
+    placeholder: 'Введите логин или выберите из списка',
+  });
+
+  const recipientStatus = h('div', {
+    class: 'gift-chosen-recipient note',
+    'aria-live': 'polite',
+  }, 'Получатель не выбран');
+
+  const noteInput = h('textarea', {
+    id: 'gift-note',
+    rows: '2',
+    maxlength: '140',
+    'aria-label': 'Записка',
+    placeholder: 'Записка к подарку (необязательно)',
+  });
+
+  const errorBox = h('div', {
+    class: 'form-error note',
+    role: 'alert',
+    hidden: true,
+  });
+
+  const picker = createFriendPicker({
+    searchAll: true,
+    onSelect: (user) => {
+      if (user) {
+        loginInput.value = user.login;
+        recipientStatus.textContent = 'Выбран: ' + user.login + (user.elo ? ` (${user.elo})` : '');
+      } else {
+        loginInput.value = '';
+        recipientStatus.textContent = 'Получатель не выбран';
+      }
+      errorBox.hidden = true;
+      errorBox.textContent = '';
+    },
+  });
+
+  loginInput.addEventListener('input', () => {
+    const val = loginInput.value.trim();
+    const currentSelected = picker.getSelected();
+    if (currentSelected && currentSelected.login.toLowerCase() !== val.toLowerCase()) {
+      picker.clearSelection();
+      loginInput.value = val;
+    }
+    if (val) {
+      recipientStatus.textContent = 'Логин: ' + val;
+    } else {
+      recipientStatus.textContent = 'Получатель не выбран';
+    }
+    errorBox.hidden = true;
+    errorBox.textContent = '';
+  });
+
+  const body = h('div', { class: 'inventory gift-modal-body' },
     h('div', { class: 'field' },
-      h('label', { for: 'gift-login' }, 'Логин получателя'),
-      login,
+      h('label', {}, 'Поиск друзей и игроков:'),
+      picker,
+    ),
+    h('div', { class: 'field' },
+      h('label', { for: 'gift-login' }, 'Логин получателя:'),
+      loginInput,
+      recipientStatus,
     ),
     h('div', { class: 'field' },
       h('label', { for: 'gift-note' }, 'Записка (необязательно)'),
-      note,
+      noteInput,
     ),
+    errorBox,
   );
-  openModal({
+
+  let isSubmitting = false;
+  let closeModal = null;
+
+  async function submitGift(submitBtn) {
+    if (isSubmitting) return;
+
+    const toLogin = loginInput.value.trim();
+    if (!toLogin) {
+      const msg = 'Укажите логин получателя';
+      errorBox.textContent = msg;
+      errorBox.hidden = false;
+      toast(msg, 'error');
+      return;
+    }
+
+    const noteText = noteInput.value.trim();
+    isSubmitting = true;
+    errorBox.hidden = true;
+    errorBox.textContent = '';
+
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Отправка...';
+    }
+    loginInput.disabled = true;
+    noteInput.disabled = true;
+    picker.setDisabled(true);
+
+    try {
+      await api('POST', '/gifts', {
+        item_id: item.id,
+        to_login: toLogin,
+        note: noteText || null,
+      });
+      toast('Готово', 'success');
+      // Only close if modal body is still connected in document (avoid closing newer modal)
+      if (body.isConnected && typeof closeModal === 'function') {
+        closeModal();
+      }
+      await loadAll();
+    } catch (e) {
+      const msg = e.message || 'Ошибка отправки подарка';
+      errorBox.textContent = msg;
+      errorBox.hidden = false;
+      toast(msg, 'error');
+    } finally {
+      isSubmitting = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Подарить';
+      }
+      loginInput.disabled = false;
+      noteInput.disabled = false;
+      picker.setDisabled(false);
+    }
+  }
+
+  closeModal = openModal({
     title: 'Подарок',
     titleAnim: 'none',
     body,
@@ -231,25 +352,10 @@ function giftModal(item) {
       {
         label: 'Подарить',
         kind: 'gold',
-        onClick: async () => {
-          const toLogin = login.value.trim();
-          if (!toLogin) {
-            toast('Укажите логин получателя', 'error');
-            return false;
-          }
-          const noteText = note.value.trim();
-          try {
-            await api('POST', '/gifts', {
-              item_id: item.id,
-              to_login: toLogin,
-              note: noteText || null,
-            });
-            toast('Готово', 'success');
-            await loadAll();
-          } catch (e) {
-            toast(e.message, 'error');
-            return false;
-          }
+        onClick: () => {
+          const btn = document.querySelector('.modal .btn-gold');
+          submitGift(btn);
+          return false; // Synchronous return false blocks modal auto-close!
         },
       },
     ],
