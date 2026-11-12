@@ -20,6 +20,8 @@ let mineTab = null;
 if (me !== null) {
   mineTab = h('button', { type: 'button', class: 'btn btn-ghost' }, 'Мои лоты');
   tabs.appendChild(mineTab);
+  const historyLink = h('a', { href: '/trade-history.html', class: 'btn btn-ghost' }, 'История сделок');
+  tabs.appendChild(historyLink);
 }
 main.appendChild(tabs);
 

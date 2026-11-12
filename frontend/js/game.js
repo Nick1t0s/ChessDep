@@ -10,6 +10,7 @@ import { toast } from './toast.js';
 import { openModal, confirmModal } from './modal.js';
 import { createMoveList } from './game-moves.js';
 import { createChat } from './game-chat.js';
+import { createUserSocialControls } from './social-controls.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -49,6 +50,25 @@ async function main() {
   let forbidden = false;
   let firstStateSeen = false;
   let viewing = null;        // просматриваемое событие (история ходов) или null
+
+  let rematchPollTimer = null;
+  let rematchInFlight = false;
+  let rematchDone = false;
+  let rematchExpiresAt = 0;
+  let pollInFlight = false;
+  let rematchBtnRef = null;
+  let rematchMsgRef = null;
+
+  window.addEventListener('pagehide', cleanupRematch);
+  window.addEventListener('beforeunload', cleanupRematch);
+
+  function cleanupRematch() {
+    if (rematchPollTimer !== null) {
+      clearInterval(rematchPollTimer);
+      rematchPollTimer = null;
+    }
+    pollInFlight = false;
+  }
 
   // ---- очередь событий: всё последовательно ----
   let chain = Promise.resolve();
@@ -214,8 +234,6 @@ async function main() {
 
   function scheduleEnd() {
     if (endTimer !== null || endShown) return;
-    // партии, загруженные после окончания (перезагрузка страницы), не получат
-    // WS game_over — итоги показываем без Elo/наград.
     endTimer = setTimeout(() => {
       endTimer = null;
       showEnd(null);
@@ -248,8 +266,6 @@ async function main() {
     else showEnd(gameOverInfo);
   }
 
-  // game_over по WS может прийти позже, чем откроется модалка по таймеру
-  // (медленная сеть), — тогда строки Elo и награды дописываются в неё.
   function fillEndInfo(info) {
     if (endBody === null || info === null || endInfoFilled) return;
     endInfoFilled = true;
@@ -261,6 +277,63 @@ async function main() {
     if (info.reward !== null && info.reward > 0) {
       endBody.appendChild(h('p', { class: 'm-line' }, 'Награда +' + info.reward + ' ◈'));
     }
+  }
+
+  function onRematchClick(msgEl, btnEl) {
+    if (rematchInFlight || rematchDone) return false;
+    rematchInFlight = true;
+    if (btnEl) btnEl.disabled = true;
+    msgEl.hidden = false;
+    msgEl.textContent = 'Отправка вызова...';
+
+    api('POST', '/games/' + id + '/rematch')
+      .then((res) => {
+        rematchDone = true;
+        rematchInFlight = false;
+        if (res && res.expires_at) {
+          rematchExpiresAt = new Date(res.expires_at).getTime();
+        } else {
+          rematchExpiresAt = Date.now() + 60000;
+        }
+        msgEl.textContent = 'Ожидание соперника...';
+        startRematchPoll(msgEl, btnEl);
+      })
+      .catch((e) => {
+        rematchInFlight = false;
+        rematchDone = false;
+        if (btnEl) btnEl.disabled = false;
+        msgEl.textContent = e.message || 'Ошибка отправки вызова';
+        toast(e.message || 'Ошибка реванша', 'error');
+      });
+
+    return false;
+  }
+
+  function startRematchPoll(msgEl, btnEl) {
+    if (rematchPollTimer !== null) return;
+    rematchPollTimer = setInterval(async () => {
+      if (pollInFlight || document.hidden) return;
+      if (rematchExpiresAt > 0 && Date.now() > rematchExpiresAt) {
+        cleanupRematch();
+        rematchDone = false;
+        rematchInFlight = false;
+        if (btnEl) btnEl.disabled = false;
+        msgEl.textContent = 'Время ожидания реванша истекло';
+        return;
+      }
+      pollInFlight = true;
+      try {
+        const active = await api('GET', '/me/active-game');
+        if (active && active.game_id && active.game_id !== id) {
+          cleanupRematch();
+          location.href = '/game.html?id=' + active.game_id;
+        }
+      } catch {
+        /* ignore polling errors */
+      } finally {
+        pollInFlight = false;
+      }
+    }, 2000);
   }
 
   function showEnd(info) {
@@ -318,15 +391,54 @@ async function main() {
     endBody = body;
     fillEndInfo(info);
 
+    const oppColor = state?.you === 'white' ? 'black' : 'white';
+    const oppLogin = state?.players?.[oppColor]?.login;
+    if (oppLogin) {
+      body.appendChild(createUserSocialControls(oppLogin));
+    }
+
+    const rematchMsg = h('p', { class: 'm-line rematch-status', hidden: true });
+    body.appendChild(rematchMsg);
+    rematchMsgRef = rematchMsg;
+
+    const actions = [
+      {
+        label: 'В лобби',
+        kind: 'ghost',
+        onClick: () => {
+          cleanupRematch();
+          location.href = '/index.html';
+        },
+      },
+      {
+        label: 'Новая партия',
+        kind: 'ghost',
+        onClick: () => {
+          cleanupRematch();
+          location.href = '/index.html';
+        },
+      },
+    ];
+
+    if (!aborted) {
+      actions.push({
+        label: 'Реванш',
+        kind: 'gold',
+        onClick: () => {
+          const btnEl = document.querySelector('.m-btnrow .btn-gold');
+          rematchBtnRef = btnEl;
+          onRematchClick(rematchMsg, btnEl);
+          return false;
+        },
+      });
+    }
+
     openModal({
       title,
       titleAnim: anim,
       dismissible: false,
       body,
-      actions: [
-        { label: 'В лобби', kind: 'ghost', onClick: () => { location.href = '/index.html'; } },
-        { label: 'Новая партия', kind: 'gold', onClick: () => { location.href = '/index.html'; } },
-      ],
+      actions,
     });
   }
 
