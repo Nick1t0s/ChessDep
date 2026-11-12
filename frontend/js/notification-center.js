@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { h, clear } from './dom.js';
 import { toast } from './toast.js';
+import { playSound } from './sound.js';
 import { createNotificationActions } from './notification-actions.js';
 
 let pollTimer = null;
@@ -346,7 +347,14 @@ export async function pollNotifications() {
       for (let i = incomingNew.length - 1; i >= 0; i--) {
         const n = incomingNew[i];
         const msg = n.title && n.body ? `${n.title}: ${n.body}` : n.title || n.body || 'Новое уведомление';
-        toast(msg, 'info');
+        toast(msg, n.kind === 'market_sale' ? 'gold' : 'info');
+        if (n.kind === 'market_sale') {
+          try {
+            playSound('sale');
+          } catch {
+            /* ignore audio issues */
+          }
+        }
       }
     }
 

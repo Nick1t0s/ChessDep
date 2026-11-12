@@ -141,6 +141,7 @@ function validateSkinId(val) {
 }
 
 function setSkinFilter(defId) {
+  if (defId === null || defId === undefined) return;
   if (![...defInput.options].some((el) => el.value === String(defId))) {
     defInput.appendChild(h('option', { value: String(defId) }, 'Выбранный скин'));
   }
@@ -196,12 +197,24 @@ moreBtn.addEventListener('click', () => {
 });
 
 function tradeRow(item) {
-  const skinBtn = h('button', {
-    type: 'button',
-    class: 'th-skin-btn',
-    title: 'Показать сделки с этим скином',
-  }, item.item_name || ('Скин #' + item.item_def_id));
-  skinBtn.addEventListener('click', () => setSkinFilter(item.item_def_id));
+  let itemCell;
+  if (item.kind === 'case' || item.case_id || !item.item_def_id) {
+    const caseId = item.case_id != null ? String(item.case_id) : '';
+    const caseName = item.item_name || 'Кейс';
+    itemCell = h('a', {
+      class: 'th-skin-btn th-case-link',
+      href: `/market-item.html?case=${encodeURIComponent(caseId)}`,
+      title: 'Открыть лоты с этим кейсом',
+    }, caseName);
+  } else {
+    const skinBtn = h('button', {
+      type: 'button',
+      class: 'th-skin-btn',
+      title: 'Показать сделки с этим скином',
+    }, item.item_name || ('Скин #' + item.item_def_id));
+    skinBtn.addEventListener('click', () => setSkinFilter(item.item_def_id));
+    itemCell = skinBtn;
+  }
 
   const dirClass = item.direction === 'buy' ? 'dir-buy' : 'dir-sell';
   const dirText = item.direction === 'buy' ? 'Покупка' : 'Продажа';
@@ -209,7 +222,7 @@ function tradeRow(item) {
 
   return h('tr', null,
     h('td', null, new Date(item.created_at).toLocaleString('ru-RU')),
-    h('td', null, skinBtn),
+    h('td', null, itemCell),
     h('td', { class: dirClass }, dirText),
     h('td', { class: 'mono' }, fmtCrystals(item.price)),
     h('td', { class: 'mono' }, feeText),

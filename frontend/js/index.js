@@ -1,3 +1,4 @@
+import { createFriendPicker } from './friend-picker.js';
 import { api } from './api.js';
 import { h, clear } from './dom.js';
 import { initLayout } from './layout.js';
@@ -17,7 +18,7 @@ const activeCard = h('div', { class: 'card game-card', hidden: true },
 );
 
 // 2. Играть онлайн
-const tcRow = h('div', { class: 'tc-grid' });
+const tcRow = h('div', { class: 'tc-grid online-tc-grid' });
 const searchLine = h('div', { class: 'search-state mono' });
 const cancelSearch = h('button', { type: 'button', class: 'btn btn-ghost btn-block' }, 'Отмена');
 const searchBox = h('div', { class: 'search-box', hidden: true }, searchLine, cancelSearch);
@@ -28,9 +29,9 @@ const playCard = h('div', { class: 'card lobby-card' },
 );
 
 // 3. Сыграть с другом
-const friendControls = h('div', { class: 'tc-grid' });
+const friendControls = h('div', { class: 'tc-grid friend-tc-grid' });
 const friendStates = h('div', { class: 'friend-box' });
-const friendCard = h('div', { class: 'card lobby-card' },
+const friendCard = h('div', { class: 'card lobby-card friend-card' },
   h('h3', { class: 'card-title' }, 'Сыграть с другом'),
   friendControls,
   friendStates,
@@ -194,16 +195,23 @@ async function initPlayOnline() {
 let friendPoll = null;
 let inviteCountdown = null;
 
+let activeInviteCode = null;
+let isCreatingInvite = false;
+
 async function initFriend() {
   const config = await api('GET', '/config');
   for (const tc of config.time_controls ?? []) {
-    const btn = h('button', { type: 'button', class: 'btn btn-ghost btn-tc' }, tc);
+    const btn = h('button', { type: 'button', class: 'btn btn-ghost btn-tc friend-tc-btn' }, tc);
     btn.addEventListener('click', async () => {
+      if (isCreatingInvite) return;
+      isCreatingInvite = true;
       try {
         const invite = await api('POST', '/invites', { time_control: tc });
         renderFriendInvite(invite);
       } catch (e) {
         showError(e);
+      } finally {
+        isCreatingInvite = false;
       }
     });
     friendControls.appendChild(btn);
@@ -222,6 +230,7 @@ function stopFriendTimers() {
 }
 
 function renderFriendIdle(message) {
+  activeInviteCode = null;
   stopFriendTimers();
   clear(friendStates);
   friendControls.hidden = activeGame?.game_id !== null;
@@ -232,6 +241,12 @@ function renderFriendInvite(invite) {
   stopFriendTimers();
   clear(friendStates);
   friendControls.hidden = true;
+
+  const currentCode = invite.code;
+  activeInviteCode = currentCode;
+
+  const preselectedFriendId = new URLSearchParams(location.search).get('friend');
+
   const link = location.origin + '/invite.html?code=' + encodeURIComponent(invite.code);
   const field = h('input', { class: 'invite-link mono', readonly: 'true', 'aria-label': 'Ссылка-приглашение', value: link });
   const copy = h('button', { type: 'button', class: 'btn btn-ghost' }, 'Копировать');
@@ -254,6 +269,7 @@ function renderFriendInvite(invite) {
   });
 
   cancel.addEventListener('click', async () => {
+    activeInviteCode = null;
     try {
       await api('DELETE', '/invites/' + encodeURIComponent(invite.code));
     } catch (e) {
@@ -263,8 +279,10 @@ function renderFriendInvite(invite) {
   });
 
   friendPoll = setInterval(async () => {
+    if (activeInviteCode !== currentCode) return;
     try {
       const active = await api('GET', '/me/active-game');
+      if (activeInviteCode !== currentCode) return;
       if (active?.game_id) {
         stopFriendTimers();
         location.href = '/game.html?id=' + encodeURIComponent(active.game_id);
@@ -275,6 +293,7 @@ function renderFriendInvite(invite) {
   }, 2000);
 
   const expires = Date.parse(invite.expires_at);
+  countdown.textContent = 'истекает через ' + fmtRemaining(expires - Date.now());
   inviteCountdown = setInterval(() => {
     const left = expires - Date.now();
     if (left <= 0) {
@@ -284,8 +303,88 @@ function renderFriendInvite(invite) {
     countdown.textContent = 'истекает через ' + fmtRemaining(left);
   }, 1000);
 
+  // Quick friend invite section
+  const sentFriendIds = new Set();
+  let isSending = false;
+  let selectedFriend = null;
+
+  const sendBtn = h('button', {
+    type: 'button',
+    class: 'btn btn-gold btn-send-invite',
+    disabled: 'true',
+  }, 'Отправить приглашение');
+
+  const sendStatus = h('div', {
+    class: 'friend-send-status note',
+    'aria-live': 'polite',
+  });
+
+  function updateSendBtn() {
+    if (!selectedFriend) {
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'Отправить приглашение';
+    } else if (sentFriendIds.has(selectedFriend.id)) {
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'Приглашение отправлено ' + selectedFriend.login;
+    } else {
+      sendBtn.disabled = isSending;
+      sendBtn.textContent = 'Отправить ' + selectedFriend.login;
+    }
+  }
+
+  sendBtn.addEventListener('click', async () => {
+    if (!selectedFriend || isSending || sentFriendIds.has(selectedFriend.id)) return;
+    if (activeInviteCode !== currentCode) return;
+
+    const targetFriend = selectedFriend;
+    isSending = true;
+    updateSendBtn();
+    clear(sendStatus);
+
+    try {
+      if (activeInviteCode !== currentCode) return;
+      await api('POST', `/invites/${encodeURIComponent(currentCode)}/send`, {
+        friend_id: targetFriend.id,
+      });
+
+      if (activeInviteCode !== currentCode) return;
+
+      sentFriendIds.add(targetFriend.id);
+      toast('Приглашение отправлено ' + targetFriend.login, 'success');
+      sendStatus.append(h('span', { class: 'text-success' }, 'Приглашение успешно отправлено игроку ' + targetFriend.login));
+    } catch (e) {
+      if (activeInviteCode !== currentCode) return;
+      const msg = e.message || 'Ошибка отправки приглашения';
+      toast(msg, 'error');
+      sendStatus.append(h('span', { class: 'text-error' }, msg));
+    } finally {
+      if (activeInviteCode === currentCode) {
+        isSending = false;
+        updateSendBtn();
+      }
+    }
+  });
+
+  const picker = createFriendPicker({
+    searchAll: false,
+    selectedId: preselectedFriendId,
+    onSelect: (user) => {
+      selectedFriend = user;
+      updateSendBtn();
+      clear(sendStatus);
+    },
+  });
+
+  const quickInviteBox = h('div', { class: 'lobby-friend-invite' },
+    h('h4', { class: 'section-title' }, 'Быстрое приглашение друга'),
+    picker,
+    h('div', { class: 'friend-send-row' }, sendBtn),
+    sendStatus,
+  );
+
   friendStates.append(
-    h('p', { class: 'note' }, 'Отправьте другу ссылку:'),
+    quickInviteBox,
+    h('p', { class: 'note' }, 'Или отправьте другу публичную ссылку:'),
     h('div', { class: 'invite-row' }, field, copy),
     h('div', { class: 'invite-meta' }, countdown, cancel),
   );
