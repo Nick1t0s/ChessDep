@@ -116,8 +116,8 @@ async def test_concurrent_patches_survive() -> None:
 async def test_muted_notification_preserves_domain_action(
     alice: AsyncClient, bob: AsyncClient, db: AsyncSession
 ) -> None:
-    # Используем genesis-pawn-chalk вместо несуществующего piece_pawn_wood
-    item_ids = await give_items("alice", ["genesis-pawn-chalk"])
+    # Используем genesis-wp вместо несуществующего piece_pawn_wood
+    item_ids = await give_items("alice", ["genesis-wp"])
     pawn_id = item_ids[0]
 
     # Bob отключает уведомления о подарках и заявках в друзья
@@ -253,7 +253,7 @@ async def test_block_lifecycle(
     assert req2.json()["error"]["code"] == "CONTACT_BLOCKED"
 
     # 4. Подарки блокируются в обе стороны
-    item_ids = await give_items("alice", ["genesis-pawn-chalk"])
+    item_ids = await give_items("alice", ["genesis-wp"])
     gift1 = await alice.post(
         "/api/v1/gifts",
         json={"item_id": item_ids[0], "to_login": "bob"},
@@ -261,7 +261,7 @@ async def test_block_lifecycle(
     assert gift1.status_code == 403
     assert gift1.json()["error"]["code"] == "CONTACT_BLOCKED"
 
-    item_ids_bob = await give_items("bob", ["genesis-pawn-chalk"])
+    item_ids_bob = await give_items("bob", ["genesis-wp"])
     gift2 = await bob.post(
         "/api/v1/gifts",
         json={"item_id": item_ids_bob[0], "to_login": "alice"},

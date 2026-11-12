@@ -3,7 +3,7 @@ from typing import Literal
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import ItemDef
+from app.models import Case, ItemDef
 from app.models.market import MarketListing
 from app.schemas.trade_history import TradeHistoryItem, TradeHistoryPageOut, TradeSummary
 
@@ -61,8 +61,9 @@ async def get_trade_history(
 
     # 2. Paginated rows
     query = (
-        select(MarketListing, ItemDef.name)
-        .join(ItemDef, MarketListing.item_def_id == ItemDef.id)
+        select(MarketListing, func.coalesce(ItemDef.name, Case.name))
+        .outerjoin(ItemDef, MarketListing.item_def_id == ItemDef.id)
+        .outerjoin(Case, MarketListing.case_id == Case.id)
         .where(MarketListing.status == "sold")
     )
 
@@ -104,6 +105,8 @@ async def get_trade_history(
                 id=listing.id,
                 item_id=listing.item_id,
                 item_def_id=listing.item_def_id,
+                case_id=listing.case_id,
+                kind="case" if listing.case_id is not None else "skin",
                 item_name=def_name,
                 direction=item_direction,
                 price=int(listing.price),

@@ -29,7 +29,7 @@ async def _make_friends(client_a, client_b, user_a: User, user_b: User) -> None:
 
 @pytest.mark.asyncio
 async def test_gift_producer_notification_success(alice, bob) -> None:
-    ids = await give_items("alice", ["genesis-knight-frost"])
+    ids = await give_items("alice", ["genesis-wn"])
     item_id = ids[0]
     bob_user = await _get_user("bob")
 
@@ -60,7 +60,7 @@ async def test_gift_producer_notification_success(alice, bob) -> None:
 
 @pytest.mark.asyncio
 async def test_gift_producer_atomicity_on_notify_failure(alice, bob, monkeypatch) -> None:
-    ids = await give_items("alice", ["genesis-knight-frost"])
+    ids = await give_items("alice", ["genesis-wn"])
     item_id = ids[0]
     alice_user = await _get_user("alice")
     bob_user = await _get_user("bob")
@@ -103,7 +103,7 @@ async def test_gift_producer_atomicity_on_notify_failure(alice, bob, monkeypatch
 
 @pytest.mark.asyncio
 async def test_market_sale_producer_notification_success(alice, bob) -> None:
-    ids = await give_items("alice", ["genesis-knight-frost"])
+    ids = await give_items("alice", ["genesis-wn"])
     item_id = ids[0]
     alice_user = await _get_user("alice")
 
@@ -149,7 +149,7 @@ async def test_market_sale_producer_notification_success(alice, bob) -> None:
 
 @pytest.mark.asyncio
 async def test_market_sale_producer_atomicity_on_notify_failure(alice, bob, monkeypatch) -> None:
-    ids = await give_items("alice", ["genesis-knight-frost"])
+    ids = await give_items("alice", ["genesis-wn"])
     item_id = ids[0]
     alice_user = await _get_user("alice")
     bob_user = await _get_user("bob")
