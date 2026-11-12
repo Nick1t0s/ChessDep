@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.core.clock as clock
 from app.core.errors import AppError
-from app.models.social import Notification
+from app.models.social import Notification, UserSocialSettings
 
 _NOTIFICATION_NOT_FOUND = AppError(404, "NOTIFICATION_NOT_FOUND", "Уведомление не найдено")
 _ALLOWED_KINDS = frozenset({"friend_request", "friend_accepted", "match_invite", "market_sale", "gift"})
@@ -20,13 +20,23 @@ async def notify(
     title: str,
     body: str,
     href: str | None = None,
+    data: dict[str, Any] | None = None,
     now: datetime | None = None,
-) -> Notification:
+) -> Notification | None:
     if kind not in _ALLOWED_KINDS:
         raise AppError(400, "INVALID_NOTIFICATION_KIND", f"Неизвестный тип уведомления: {kind}")
     if href is not None:
         if not href.startswith("/") or href.startswith("//") or "\\" in href:
             raise AppError(400, "INVALID_NOTIFICATION_HREF", "Недопустимый адрес ссылки")
+
+    # Проверяем настройки уведомлений пользователя
+    settings = await db.scalar(
+        select(UserSocialSettings).where(UserSocialSettings.user_id == user_id)
+    )
+    if settings is not None and settings.notification_settings:
+        if settings.notification_settings.get(kind) is False:
+            return None
+
     if now is None:
         now = clock.now()
     notification = Notification(
@@ -35,6 +45,7 @@ async def notify(
         title=title,
         body=body,
         href=href,
+        data=data if data is not None else {},
         read=False,
         created_at=now,
     )

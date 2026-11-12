@@ -12,6 +12,7 @@ from app.schemas.social import (
     UnreadCountOut,
 )
 from app.services import notifications as notifications_service
+from app.services.social_matches import notification_action_info
 
 router = APIRouter(prefix="/api/v1", tags=["notifications"])
 
@@ -32,8 +33,28 @@ async def get_notifications(
         before_id=before_id,
         limit=limit,
     )
+
+    items_out: list[NotificationOut] = []
+    for n in items:
+        action_info = await notification_action_info(db, user.id, n)
+        items_out.append(
+            NotificationOut(
+                id=n.id,
+                kind=n.kind,
+                title=n.title,
+                body=n.body,
+                href=n.href,
+                read=n.read,
+                created_at=n.created_at,
+                data=n.data if n.data is not None else {},
+                action_state=action_info.get("action_state"),
+                allowed_actions=action_info.get("allowed_actions") or [],
+                game_id=action_info.get("game_id"),
+            )
+        )
+
     return NotificationsPageOut(
-        items=[NotificationOut.model_validate(n) for n in items],
+        items=items_out,
         next_cursor=next_cursor,
         unread_count=unread_count,
     )
