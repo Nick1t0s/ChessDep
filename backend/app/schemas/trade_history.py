@@ -9,7 +9,9 @@ class TradeHistoryItem(BaseModel):
 
     id: int
     item_id: int
-    item_def_id: int
+    item_def_id: int | None
+    case_id: int | None = None
+    kind: Literal["skin", "case"] = "skin"
     item_name: str
     direction: Literal["buy", "sell"]
     price: int

@@ -168,16 +168,18 @@ async def buy_listing(db: AsyncSession, buyer: User, listing_id: int, now) -> Ma
     )
     await db.flush()
 
-    item_def = await db.get(ItemDef, listing.item_def_id)
-    item_name = item_def.name if item_def is not None else f"#{listing.item_def_id}"
+    if listing.case_id is not None:
+        definition = await db.get(Case, listing.case_id)
+        item_href = f"/market-item.html?case={listing.case_id}"
+    else:
+        definition = await db.get(ItemDef, listing.item_def_id)
+        item_href = f"/market-item.html?def={listing.item_def_id}"
+    item_name = definition.name if definition is not None else "Предмет"
     await notify(
-        db,
-        user_id=seller_id,
-        kind="market_sale",
-        title="Продажа на маркете",
-        body=f"Предмет {item_name} успешно продан. Выручка: {seller_amount} кристаллов",
-        href=f"/market-item.html?def={listing.item_def_id}",
-        now=now,
+        db, user_id=seller_id, kind="market_sale", title="Продажа на маркете",
+        body=f"{item_name} продан. Зачислено после комиссии: {seller_amount} ◈",
+        href=item_href, now=now,
+        data={"listing_id": listing.id, "price": price, "fee": fee, "net": seller_amount},
     )
 
     return listing
