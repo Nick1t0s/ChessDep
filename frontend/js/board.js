@@ -29,7 +29,6 @@ export function createBoard(
   const filesRow = h('div', { class: 'files' });
   const zone = h('div', { class: 'board-zone' }, ranksCol, board, filesRow);
   container.appendChild(zone);
-  let lastState = null;
 
   let currentOrientation = orientation === 'black' ? 'black' : 'white';
   let lastState = null;
@@ -107,7 +106,7 @@ export function createBoard(
 
     let sourceGlyph = null;
     for (const child of sourceBtn.children) {
-      if (child.classList.contains('glyph')) {
+      if (child.classList.contains('glyph') || child.classList.contains('piece-img')) {
         sourceGlyph = child;
         break;
       }
@@ -121,13 +120,20 @@ export function createBoard(
       dragGhost.classList.add('side-black');
     }
 
-    const ghostGlyph = h('span', { class: 'glyph' });
-    ghostGlyph.textContent = sourceGlyph.textContent;
-    const pieceColorVal = sourceGlyph.style.getPropertyValue('--piece-color');
-    if (pieceColorVal) {
-      ghostGlyph.style.setProperty('--piece-color', pieceColorVal);
+    let ghostChild;
+    if (sourceGlyph.tagName === 'IMG' || sourceGlyph.classList.contains('piece-img')) {
+      ghostChild = sourceGlyph.cloneNode(true);
+      ghostChild.draggable = false;
+      ghostChild.alt = '';
+    } else {
+      ghostChild = h('span', { class: 'glyph' });
+      ghostChild.textContent = sourceGlyph.textContent;
+      const pieceColorVal = sourceGlyph.style.getPropertyValue('--piece-color');
+      if (pieceColorVal) {
+        ghostChild.style.setProperty('--piece-color', pieceColorVal);
+      }
     }
-    dragGhost.appendChild(ghostGlyph);
+    dragGhost.appendChild(ghostChild);
 
     const rect = sourceBtn.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {

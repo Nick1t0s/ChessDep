@@ -2,7 +2,7 @@ import { api } from './api.js';
 import { h, clear } from './dom.js';
 import { initLayout } from './layout.js';
 import { toast } from './toast.js';
-import { openModal, confirmModal } from './modal.js';
+import { openModal } from './modal.js';
 import { fmtCrystals } from './format.js';
 import { itemCard } from './items.js';
 import { playSound } from './sound.js';
@@ -22,6 +22,7 @@ const selected = new Set();
 let target = null;
 let rotation = 180; // стрелка в покое — внизу, в центре дуги
 let previewSeq = 0;
+let busy = false;
 
 const main = h('main', { class: 'wrap-wide upgrade' });
 
@@ -98,6 +99,7 @@ function renderTargets() {
     targetGrid.appendChild(itemCard(def, {
       selected: target?.id === def.id,
       onClick: () => {
+        if (busy) return;
         target = target?.id === def.id ? null : def;
         renderTargets();
         refreshPreview();
@@ -107,6 +109,7 @@ function renderTargets() {
 }
 
 function toggleItem(id) {
+  if (busy) return;
   if (selected.has(id)) {
     selected.delete(id);
   } else {
@@ -136,6 +139,7 @@ function chanceLevel(chance) {
 }
 
 function resetPreview() {
+  previewSeq++;
   gaugeArc.style.setProperty('--half', '0deg');
   chanceEl.textContent = '—';
   levelEl.textContent = '';
@@ -144,24 +148,28 @@ function resetPreview() {
 }
 
 async function refreshPreview() {
+  if (busy) return;
   if (selected.size === 0 || target === null) {
     resetPreview();
     return;
   }
   const seq = ++previewSeq;
+  goBtn.disabled = true;
+  chanceEl.textContent = '…';
+  levelEl.textContent = '';
   try {
     const p = await api('POST', '/upgrade/preview', {
       input_ids: [...selected],
       target_def_id: target.id,
     });
-    if (seq !== previewSeq) return;
+    if (seq !== previewSeq || busy || selected.size === 0 || target === null) return;
     gaugeArc.style.setProperty('--half', (p.chance * 180) + 'deg');
     chanceEl.textContent = p.chance_text;
     levelEl.textContent = chanceLevel(p.chance);
     reasonEl.textContent = REASON_RU[p.reason] ?? '';
     goBtn.disabled = !p.allowed;
   } catch (e) {
-    if (seq !== previewSeq) return;
+    if (seq !== previewSeq || busy || selected.size === 0 || target === null) return;
     resetPreview();
     toast(e.message, 'error');
   }
@@ -214,16 +222,11 @@ function tickWhileSpinning() {
 }
 
 goBtn.addEventListener('click', async () => {
-  if (selected.size === 0 || target === null || goBtn.disabled) return;
-  const chanceText = chanceEl.textContent;
-  const ok = await confirmModal(
-    'Апгрейд',
-    'Все выбранные предметы сгорят при любом исходе. Шанс ' + chanceText + '.',
-    'Рискнуть',
-    'gold',
-  );
-  if (!ok) return;
+  if (busy || selected.size === 0 || target === null || goBtn.disabled) return;
+  busy = true;
   goBtn.disabled = true;
+  previewSeq++;
+
   let res;
   try {
     res = await api('POST', '/upgrade', {
@@ -231,44 +234,52 @@ goBtn.addEventListener('click', async () => {
       target_def_id: target.id,
     });
   } catch (e) {
+    busy = false;
     toast(e.message, 'error');
     refreshPreview();
     return;
   }
 
-  // Дуга шанса — по центру снизу: [180° − chance·180°, 180° + chance·180°).
-  // Успех ⇔ roll_value < chance, поэтому стрелка встаёт в 180° − chance·180° + roll·360°.
-  const stop = 180 - res.chance * 180 + res.roll_value * 360;
-  rotation = Math.ceil(rotation / 360) * 360 + 1800 + stop;
-  const stopTicks = tickWhileSpinning();
-  arrow.style.setProperty('transition', 'transform 4s cubic-bezier(.15,.85,.25,1)');
-  arrow.style.setProperty('transform', 'rotate(' + rotation + 'deg)');
-  await waitSpin();
-  stopTicks();
-  playSound(res.success ? 'win' : 'fail');
+  try {
+    // Дуга шанса — по центру снизу: [180° − chance·180°, 180° + chance·180°).
+    // Успех ⇔ roll_value < chance, поэтому стрелка встаёт в 180° − chance·180° + roll·360°.
+    const stop = 180 - res.chance * 180 + res.roll_value * 360;
+    rotation = Math.ceil(rotation / 360) * 360 + 1800 + stop;
+    const stopTicks = tickWhileSpinning();
+    arrow.style.setProperty('transition', 'transform 4s cubic-bezier(.15,.85,.25,1)');
+    arrow.style.setProperty('transform', 'rotate(' + rotation + 'deg)');
+    await waitSpin();
+    stopTicks();
+    playSound(res.success ? 'win' : 'fail');
 
-  if (res.success && res.item) {
-    openModal({
-      title: 'Апгрейд удался!',
-      titleAnim: 'pop',
-      body: itemCard(res.item.def, { exterior: res.item.exterior, image: res.item.image }),
-      actions: [{ label: 'Отлично', kind: 'gold' }],
-    });
-  } else {
-    openModal({
-      title: 'Не повезло',
-      titleAnim: 'shake',
-      body: h('p', { class: 'm-text' }, 'Предметы сгорели.'),
-      actions: [{ label: 'Ок', kind: 'ghost' }],
-    });
+    if (res.success && res.item) {
+      openModal({
+        title: 'Апгрейд удался!',
+        titleAnim: 'pop',
+        body: itemCard(res.item.def, { exterior: res.item.exterior, image: res.item.image }),
+        actions: [{ label: 'Отлично', kind: 'gold' }],
+      });
+    } else {
+      openModal({
+        title: 'Не повезло',
+        titleAnim: 'shake',
+        body: h('p', { class: 'm-text' }, 'Предметы сгорели.'),
+        actions: [{ label: 'Ок', kind: 'ghost' }],
+      });
+    }
+  } finally {
+    selected.clear();
+    target = null;
+    try {
+      await loadInventory();
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+    renderInventory();
+    renderTargets();
+    resetPreview();
+    busy = false;
   }
-
-  selected.clear();
-  target = null;
-  await loadInventory();
-  renderInventory();
-  renderTargets();
-  resetPreview();
 });
 
 async function loadInventory() {
