@@ -258,6 +258,7 @@ export function createBoard(
 
     btn.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
+      if (currentPointerId !== null || e.isPrimary === false) return;
       if (typeof canDrag !== 'function') return;
 
       const cell = occupied.get(name);
@@ -268,7 +269,7 @@ export function createBoard(
         return;
       }
 
-      cleanupDrag({ suppress: true });
+      cleanupDrag();
 
       currentPointerId = e.pointerId;
       currentSourceSquare = name;
