@@ -6,6 +6,7 @@ from app.models import InventoryItem, ItemTransfer, User
 from app.schemas.gifts import GiftOut, GiftsPage
 from app.schemas.market import ListingItemOut
 from app.services.items import check_trade_hold, items_out, lock_items, unequip_items
+from app.services.notifications import notify
 from app.services.settings import get_setting
 
 _USER_NOT_FOUND = AppError(404, "USER_NOT_FOUND", "Пользователь не найден")
@@ -42,6 +43,18 @@ async def send_gift(
     )
     db.add(transfer)
     await db.flush()
+
+    note_suffix = f": {note}" if note else ""
+    await notify(
+        db,
+        user_id=recipient.id,
+        kind="gift",
+        title="Новый подарок",
+        body=f"{sender.login} отправил вам подарок{note_suffix}",
+        href="/gifts.html",
+        now=now,
+    )
+
     return transfer
 
 
