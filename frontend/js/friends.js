@@ -8,13 +8,22 @@ await initLayout({ auth: 'required', active: 'friends' });
 const main = h('main', { class: 'wrap-wide social-page friends-page' });
 document.body.appendChild(main);
 
-// Header
+// Header with link to Settings
 main.appendChild(
   h(
     'div',
-    { class: 'page-header' },
-    h('h1', { class: 'page-title' }, 'Друзья'),
-    h('p', { class: 'page-subtitle' }, 'Играйте в шахматы и соревнуйтесь с друзьями'),
+    { class: 'page-header friends-header' },
+    h(
+      'div',
+      { class: 'friends-header-main' },
+      h('h1', { class: 'page-title' }, 'Друзья'),
+      h('p', { class: 'page-subtitle' }, 'Играйте в шахматы и соревнуйтесь с друзьями'),
+    ),
+    h(
+      'a',
+      { class: 'btn btn-ghost btn-sm', href: '/social-settings.html' },
+      'Настройки общения',
+    ),
   ),
 );
 
@@ -85,6 +94,13 @@ const busyActions = new Set();
 let socialPollTimer = null;
 let socialInFlight = false;
 
+const STATUS_CONFIG = {
+  online: { label: 'В сети', cls: 'status-online' },
+  dnd: { label: 'Не беспокоить', cls: 'status-dnd' },
+  in_game: { label: 'В игре', cls: 'status-in_game' },
+  offline: { label: 'Не в сети', cls: 'status-offline' },
+};
+
 function setTab(tabId) {
   currentTab = tabId;
   for (const [id, btn] of Object.entries(tabButtons)) {
@@ -113,14 +129,14 @@ async function loadSocialData() {
       api('GET', '/friends'),
       api('GET', '/friends/requests'),
     ]);
-    friendsList = friendsRes?.items || [];
-    incomingList = requestsRes?.incoming || [];
-    outgoingList = requestsRes?.outgoing || [];
+    friendsList = (friendsRes && friendsRes.items) || [];
+    incomingList = (requestsRes && requestsRes.incoming) || [];
+    outgoingList = (requestsRes && requestsRes.outgoing) || [];
     initialLoadError = false;
     updateTabLabels();
   } catch (err) {
     initialLoadError = true;
-    toast(err.message || 'Ошибка загрузки друзей', 'error');
+    toast((err && err.message) || 'Ошибка загрузки друзей', 'error');
   } finally {
     pageLoading = false;
     renderContent();
@@ -136,9 +152,9 @@ async function refreshSocialDataQuietly() {
       api('GET', '/friends', undefined, { redirectOn401: false }),
       api('GET', '/friends/requests', undefined, { redirectOn401: false }),
     ]);
-    friendsList = friendsRes?.items || [];
-    incomingList = requestsRes?.incoming || [];
-    outgoingList = requestsRes?.outgoing || [];
+    friendsList = (friendsRes && friendsRes.items) || [];
+    incomingList = (requestsRes && requestsRes.incoming) || [];
+    outgoingList = (requestsRes && requestsRes.outgoing) || [];
     initialLoadError = false;
     updateTabLabels();
     if (currentTab !== TAB_SEARCH) {
@@ -207,22 +223,67 @@ function renderFriendsList() {
 
   const list = h('div', { class: 'social-list' });
   for (const friend of friendsList) {
-    const item = h(
+    const presKey = friend.presence || 'offline';
+    const presMeta = STATUS_CONFIG[presKey] || STATUS_CONFIG.offline;
+
+    const personInfo = h(
       'div',
-      { class: 'social-person card' },
+      { class: 'social-person-info' },
       h(
-        'div',
-        { class: 'social-person-info' },
+        'a',
+        { class: 'social-person-name', href: `/user.html?login=${encodeURIComponent(friend.login)}` },
+        friend.login,
+      ),
+      h('span', { class: 'social-person-elo pill' }, `${friend.elo ?? 1200} Elo`),
+      h('span', { class: 'pill social-status-pill ' + presMeta.cls }, presMeta.label),
+    );
+
+    const actions = h('div', { class: 'social-actions' });
+
+    // Review fix 3: Watch button appears if game_id exists even if presence is dnd
+    if (friend.game_id) {
+      actions.appendChild(
         h(
           'a',
-          { class: 'social-person-name', href: `/user.html?login=${encodeURIComponent(friend.login)}` },
-          friend.login,
+          {
+            class: 'btn btn-ghost btn-sm',
+            href: `/game.html?id=${encodeURIComponent(friend.game_id)}`,
+            title: 'Смотреть партию',
+          },
+          'Смотреть',
         ),
-        h('span', { class: 'social-person-elo pill' }, `${friend.elo ?? 1200} Elo`),
-      ),
-      h(
-        'div',
-        { class: 'social-actions' },
+      );
+    }
+
+    // Invite to game button: disabled for dnd and in_game
+    if (presKey === 'dnd') {
+      actions.appendChild(
+        h(
+          'button',
+          {
+            type: 'button',
+            class: 'btn btn-gold btn-sm',
+            disabled: true,
+            title: 'друзья видят Не беспокоить; прямые приглашения отключены',
+          },
+          'Позвать в игру',
+        ),
+      );
+    } else if (presKey === 'in_game') {
+      actions.appendChild(
+        h(
+          'button',
+          {
+            type: 'button',
+            class: 'btn btn-gold btn-sm',
+            disabled: true,
+            title: 'Игрок уже участвует в партии',
+          },
+          'Позвать в игру',
+        ),
+      );
+    } else {
+      actions.appendChild(
         h(
           'a',
           {
@@ -232,9 +293,17 @@ function renderFriendsList() {
           },
           'Позвать в игру',
         ),
-        createActionButton('Удалить', 'btn-ghost', () => removeFriend(friend.id, friend.login)),
-      ),
+      );
+    }
+
+    actions.appendChild(
+      createActionButton('Удалить', 'btn-ghost', () => removeFriend(friend.id, friend.login)),
     );
+    actions.appendChild(
+      createActionButton('Заблокировать', 'btn-ghost', () => blockFriend(friend.id, friend.login)),
+    );
+
+    const item = h('div', { class: 'social-person card' }, personInfo, actions);
     list.appendChild(item);
   }
   contentContainer.appendChild(list);
@@ -285,6 +354,7 @@ function renderIncomingRequests() {
         { class: 'social-actions' },
         createActionButton('Принять', 'btn-gold', () => acceptRequest(req.id, req.login)),
         createActionButton('Отклонить', 'btn-ghost', () => rejectRequest(req.id, req.login)),
+        createActionButton('Заблокировать', 'btn-ghost', () => blockFriend(req.id, req.login)),
       ),
     );
     list.appendChild(item);
@@ -336,6 +406,7 @@ function renderOutgoingRequests() {
         'div',
         { class: 'social-actions' },
         createActionButton('Отменить заявку', 'btn-ghost', () => cancelRequest(req.id, req.login)),
+        createActionButton('Заблокировать', 'btn-ghost', () => blockFriend(req.id, req.login)),
       ),
     );
     list.appendChild(item);
@@ -445,7 +516,7 @@ async function sendRequest(login) {
         performSearch(searchInput.value.trim());
       }
     } catch (err) {
-      toast(err.message || 'Не удалось отправить заявку', 'error');
+      toast((err && err.message) || 'Не удалось отправить заявку', 'error');
     }
   });
 }
@@ -460,7 +531,7 @@ async function acceptRequest(userId, login) {
         performSearch(searchInput.value.trim());
       }
     } catch (err) {
-      toast(err.message || 'Не удалось принять заявку', 'error');
+      toast((err && err.message) || 'Не удалось принять заявку', 'error');
     }
   });
 }
@@ -475,7 +546,7 @@ async function rejectRequest(userId, login) {
         performSearch(searchInput.value.trim());
       }
     } catch (err) {
-      toast(err.message || 'Не удалось отклонить заявку', 'error');
+      toast((err && err.message) || 'Не удалось отклонить заявку', 'error');
     }
   });
 }
@@ -490,7 +561,7 @@ async function cancelRequest(userId, login) {
         performSearch(searchInput.value.trim());
       }
     } catch (err) {
-      toast(err.message || 'Не удалось отменить заявку', 'error');
+      toast((err && err.message) || 'Не удалось отменить заявку', 'error');
     }
   });
 }
@@ -505,7 +576,22 @@ async function removeFriend(userId, login) {
         performSearch(searchInput.value.trim());
       }
     } catch (err) {
-      toast(err.message || 'Не удалось удалить друга', 'error');
+      toast((err && err.message) || 'Не удалось удалить друга', 'error');
+    }
+  });
+}
+
+async function blockFriend(userId, login) {
+  await withActionLock(`block:${userId}`, async () => {
+    try {
+      await api('POST', '/me/blocks', { login });
+      toast(`${login} заблокирован`, 'info');
+      await loadSocialData();
+      if (currentTab === TAB_SEARCH && searchInput.value.trim().length >= 2) {
+        performSearch(searchInput.value.trim());
+      }
+    } catch (err) {
+      toast((err && err.message) || 'Не удалось заблокировать', 'error');
     }
   });
 }
@@ -513,7 +599,7 @@ async function removeFriend(userId, login) {
 // Search handling with immediate stale guard
 searchInput.addEventListener('input', () => {
   const q = searchInput.value.trim();
-  ++searchSeq; // Инвалидирует любой текущий сетевой ответ сразу
+  ++searchSeq;
   if (searchTimer !== null) {
     clearTimeout(searchTimer);
     searchTimer = null;
@@ -562,11 +648,11 @@ async function performSearch(query) {
 
   try {
     const res = await api('GET', `/users/search?q=${encodeURIComponent(query)}`);
-    if (currentSeq !== searchSeq) return; // Stale query guard
-    searchResults = res?.items || [];
+    if (currentSeq !== searchSeq) return;
+    searchResults = (res && res.items) || [];
   } catch (err) {
     if (currentSeq !== searchSeq) return;
-    toast(err.message || 'Ошибка поиска пользователей', 'error');
+    toast((err && err.message) || 'Ошибка поиска пользователей', 'error');
     searchResults = [];
   } finally {
     if (currentSeq === searchSeq) {

@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { h, clear } from './dom.js';
 import { toast } from './toast.js';
+import { createNotificationActions } from './notification-actions.js';
 
 let pollTimer = null;
 let inFlight = false;
@@ -122,9 +123,7 @@ function togglePopover(ev) {
     popoverEl.removeAttribute('hidden');
     bellBtn.setAttribute('aria-expanded', 'true');
     renderPopoverList();
-    // Фоновое обновление при открытии
     pollNotifications().then(() => {
-      // Focus first control after popover is populated
       focusFirstControl();
     });
     focusFirstControl();
@@ -224,20 +223,35 @@ export function renderPopoverList() {
     const rowClasses = ['notif-item'];
     if (!item.read) rowClasses.push('unread');
 
+    const contentBox = h(
+      'div',
+      { class: 'notif-content' },
+      h('div', { class: 'notif-title' }, item.title || 'Уведомление'),
+      item.body ? h('div', { class: 'notif-body' }, item.body) : null,
+      h('div', { class: 'notif-date' }, formatDate(item.created_at)),
+    );
+
+    // Action controls (accept/decline/status)
+    const actionControls = createNotificationActions(item, {
+      onUpdate: () => {
+        updateBadge(Math.max(0, currentUnreadCount - 1));
+        renderPopoverList();
+      },
+    });
+    contentBox.appendChild(actionControls);
+
     const itemEl = h(
       'div',
       { class: rowClasses.join(' '), role: 'button', tabindex: '0' },
       h('span', { class: 'notif-kind-icon', 'aria-hidden': 'true' }, icon),
-      h(
-        'div',
-        { class: 'notif-content' },
-        h('div', { class: 'notif-title' }, item.title || 'Уведомление'),
-        item.body ? h('div', { class: 'notif-body' }, item.body) : null,
-        h('div', { class: 'notif-date' }, formatDate(item.created_at)),
-      ),
+      contentBox,
     );
 
-    const onActivate = async () => {
+    const onActivate = async (e) => {
+      if (e && e.target && e.target.closest('.notif-actions')) {
+        return;
+      }
+
       let targetHref = item.href;
       if (item.kind === 'friend_request' && (!targetHref || !isSafeHref(targetHref))) {
         targetHref = '/friends.html';
@@ -253,8 +267,7 @@ export function renderPopoverList() {
             new CustomEvent('chessdep:notifications-updated', { detail: { count: currentUnreadCount } }),
           );
         } catch (err) {
-          // On read failure preserve unread state and show visible toast
-          toast(err.message || 'Не удалось отметить уведомление', 'error');
+          toast((err && err.message) || 'Не удалось отметить уведомление', 'error');
           return;
         }
       }
@@ -268,7 +281,7 @@ export function renderPopoverList() {
     itemEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        onActivate();
+        onActivate(e);
       }
     });
 
@@ -293,8 +306,7 @@ async function onMarkAllRead() {
       new CustomEvent('chessdep:notifications-updated', { detail: { count: 0 } }),
     );
   } catch (err) {
-    // Preserve unread state on failure and show visible toast
-    toast(err.message || 'Не удалось прочитать уведомления', 'error');
+    toast((err && err.message) || 'Не удалось прочитать уведомления', 'error');
     if (markAllBtn && currentUnreadCount > 0) {
       markAllBtn.disabled = false;
     }
@@ -317,13 +329,11 @@ export async function pollNotifications() {
     const count = typeof res.unread_count === 'number' ? res.unread_count : items.filter((x) => !x.read).length;
 
     if (!baselineInitialized) {
-      // Базовое состояние: запоминаем все существующие id без тостов
       for (const it of items) {
         seenIds.add(it.id);
       }
       baselineInitialized = true;
     } else {
-      // Показываем тосты только для действительно новых входящих уведомлений
       const incomingNew = [];
       for (const it of items) {
         if (!seenIds.has(it.id)) {

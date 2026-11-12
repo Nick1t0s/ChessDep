@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { h } from './dom.js';
 import { setupNotificationCenter } from './notification-center.js';
+import { startPresenceHeartbeat } from './presence.js';
 
 const SECTIONS = [
   ['Играть', '/index.html', 'play'],
@@ -79,6 +80,7 @@ export async function initLayout({ auth = 'required', active = '' } = {}) {
       });
       right.appendChild(out);
       loadGiftBadge();
+      startPresenceHeartbeat();
     } else {
       right.appendChild(h('a', { class: 'pill', href: '/login.html' }, 'Войти'));
     }
