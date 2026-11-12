@@ -45,7 +45,7 @@
 }
 
 .p-king { font-size: 26px; line-height: 1; color: var(--piece-color, var(--text)); }
-.p-login { font-size: 13.5px; }
+.p-login { font-size: 13.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .p-elo, .p-deps { font-size: 11.5px; color: var(--muted); font-family: var(--mono); }
 .p-elo { margin-left: auto; }
 
@@ -54,6 +54,7 @@
   font-size: 20px;
   font-weight: 700;
   min-width: 66px;
+  flex-shrink: 0;
   text-align: right;
   color: var(--text);
 }
@@ -315,6 +316,12 @@
   }
 
   .side-col { padding-bottom: 8px; }
+  .player-panel { max-width: min(100vw - 32px, 100dvh - 24px); }
+}
+
+@media (max-width: 360px) {
+  .p-deps { display: none; }
+  .p-clock { min-width: 0; font-size: 18px; }
 }
 
 @keyframes sheet-in {
@@ -386,3 +393,28 @@
 .spectator-badge { padding: 6px 10px; border-radius: 10px; background: rgba(139,92,246,.15); color: var(--text); font-size: 13px; text-align: center; margin-bottom: 8px; }
 .view-banner { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 6px 10px; border-radius: 10px; background: color-mix(in srgb, var(--gold) 15%, transparent); font-size: 13px; margin-bottom: 8px; }
 .view-banner[hidden], .spectator-badge[hidden] { display: none; }
+
+/* PNG-скины фигур (docs/contracts-skins.md) */
+.p-king .piece-img { display: block; width: 28px; height: 28px; }
+.p-king-img { color: var(--piece-color, var(--text)); }
+.dep-row-glyph.piece-img { width: 28px; height: 28px; }
+.promo-btn .piece-img { width: 40px; height: 40px; }
+
+/* Телефон в альбомной ориентации: доска слева во всю высоту, панели справа, без шапки */
+@media (max-height: 500px) and (orientation: landscape) {
+  body.game-page .topbar { display: none; }
+  .game-main { padding-top: 8px; }
+
+  .board-side {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-auto-rows: min-content;
+    column-gap: 12px;
+    align-items: start;
+  }
+
+  .board-side > .board-box { grid-column: 1; grid-row: 1 / span 6; width: calc(100dvh - 16px); }
+  .board-side > :not(.board-box) { grid-column: 2; }
+  .board-side .player-panel { width: auto; max-width: none; }
+  .board-side .sq { font-size: calc((100dvh - 16px) / 13); }
+}

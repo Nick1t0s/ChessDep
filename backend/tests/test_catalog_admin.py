@@ -1,326 +1,347 @@
 from sqlalchemy import select
 
-from tests.conftest import SessionLocal, give_items
-from app.models import AdminAudit, User
+from app.models import AdminAudit
+from app.seed_skins import seed_asset
 
-_WINTER_COLLECTION = {
-    "code": "winter",
-    "name": "Winter",
-    "description": "Зимняя коллекция",
-}
+SLOTS = [s + p for s in "wb" for p in "PNBRQK"]
 
-_WINTER_SKIN = {
-    "code": "winter-queen-snow",
-    "name": "Зимний ферзь",
-    "kind": "piece_skin",
-    "piece_type": "Q",
-    "rarity": "epic",
-    "value": 500,
-    "asset": {"type": "stub", "color": "#ffffff"},
-}
+_WINTER_CODES = [f"winter-{slot[0]}{slot[1].lower()}" for slot in SLOTS]
+_GENESIS_CODES = [f"genesis-{slot[0]}{slot[1].lower()}" for slot in SLOTS]
+_GENESIS_CODES += ["genesis-board-paper", "genesis-board-albion"]
+
+_BOARD_ASSET = seed_asset("base-board")
+
+
+def pieces_body(rarity: str = "common", value: int = 20) -> list[dict]:
+    return [
+        {"side": s[0], "piece_type": s[1], "rarity": rarity, "value": value,
+         "asset": seed_asset("base-wp")}
+        for s in SLOTS
+    ]
+
+
+def board_body(code: str, name: str = "Winter Board") -> dict:
+    return {
+        "code": code, "name": name, "rarity": "uncommon", "value": 60,
+        "asset": dict(_BOARD_ASSET),
+    }
+
+
+async def create_set(admin, code: str = "winter") -> dict:
+    resp = await admin.post("/api/v1/admin/sets", json={
+        "code": code, "name": "Winter", "description": ""})
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+async def add_collection(admin, set_id: int, code: str = "winter") -> dict:
+    resp = await admin.post(f"/api/v1/admin/sets/{set_id}/collections", json={
+        "code": code, "name": "Winter", "description": "", "pieces": pieces_body()})
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+async def add_board(admin, set_id: int, code: str = "winter-board") -> dict:
+    resp = await admin.post(
+        f"/api/v1/admin/sets/{set_id}/boards", json=board_body(code))
+    assert resp.status_code == 201, resp.text
+    return resp.json()
 
 
 async def test_admin_required(client, alice) -> None:
-    resp = await client.get("/api/v1/admin/collections")
-    assert resp.status_code == 401
-    resp = await alice.get("/api/v1/admin/collections")
+    resp = await alice.get("/api/v1/admin/sets")
+    assert resp.status_code == 403
+    resp = await alice.post("/api/v1/admin/sets", json={
+        "code": "winter", "name": "Winter", "description": ""})
     assert resp.status_code == 403
 
 
-async def test_collection_lifecycle(admin, rng) -> None:
-    rng.values = [0.0]
-    resp = await admin.post("/api/v1/admin/collections", json=_WINTER_COLLECTION)
-    assert resp.status_code == 201, resp.text
-    collection_id = resp.json()["id"]
+async def test_set_create_and_list(admin, client) -> None:
+    body = await create_set(admin)
+    assert body["status"] == "draft"
+    assert body["is_base"] is False
+    assert body["collections_count"] == 0
+    assert body["boards_count"] == 0
 
-    resp = await admin.post(
-        f"/api/v1/admin/collections/{collection_id}/items", json=_WINTER_SKIN
-    )
-    assert resp.status_code == 201, resp.text
-    skin_id = resp.json()["id"]
+    resp = await admin.post("/api/v1/admin/sets", json={
+        "code": "winter", "name": "Другая зима", "description": ""})
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "SET_CODE_TAKEN"
 
-    resp = await admin.post(
-        f"/api/v1/admin/collections/{collection_id}/cases",
-        json={"code": "winter-case", "name": "Winter: кейс", "price": 120, "sort": 0},
-    )
-    assert resp.status_code == 201, resp.text
-    case_id = resp.json()["id"]
-
-    # Релиз без дропов → COLLECTION_NOT_READY.
-    resp = await admin.post(f"/api/v1/admin/collections/{collection_id}/release")
-    assert resp.status_code == 400
-    assert resp.json()["error"]["code"] == "COLLECTION_NOT_READY"
-
-    resp = await admin.post(
-        f"/api/v1/admin/cases/{case_id}/drops/auto", json={"kind": "piece_skin"}
-    )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["drops"] == [{"item_def_id": skin_id, "weight": 64_000}]
-
-    # Ретирать можно только выпущенные.
-    resp = await admin.post(f"/api/v1/admin/collections/{collection_id}/retire")
-    assert resp.status_code == 400
-    assert resp.json()["error"]["code"] == "COLLECTION_NOT_RELEASED"
-
-    resp = await admin.post(f"/api/v1/admin/collections/{collection_id}/release")
-    assert resp.status_code == 200, resp.text
-
-    # После релиза кейс виден публично первым (released_at свежее).
-    resp = await admin.get("/api/v1/cases")
+    resp = await admin.get("/api/v1/admin/sets")
     assert resp.status_code == 200
-    assert [c["code"] for c in resp.json()] == [
-        "winter-case",
-        "genesis-pieces",
-        "genesis-boards",
-    ]
+    by_code = {s["code"]: s for s in resp.json()}
+    assert set(by_code) == {"base", "genesis", "winter"}
+    base = by_code["base"]
+    assert base["is_base"] is True
+    assert base["status"] == "released"
+    assert by_code["genesis"]["is_base"] is False
+    assert by_code["winter"]["is_base"] is False
 
-    # Открытие кейса.
-    resp = await admin.post(f"/api/v1/cases/{case_id}/open")
+    # Черновик не виден публично.
+    resp = await client.get("/api/v1/sets/winter")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "SET_NOT_FOUND"
+    resp = await client.get("/api/v1/sets")
+    assert resp.status_code == 200
+    assert [s["code"] for s in resp.json()] == ["genesis"]
+
+
+async def test_collection_in_set(admin, client) -> None:
+    item_set = await create_set(admin)
+    set_id = item_set["id"]
+    detail = await add_collection(admin, set_id)
+
+    collections = detail["collections"]
+    assert len(collections) == 1
+    items = collections[0]["items"]
+    assert [i["code"] for i in items] == _WINTER_CODES
+    assert items[0]["name"] == "Winter | Белая пешка"
+    assert items[11]["name"] == "Winter | Чёрный король"
+    for item in items:
+        assert item["kind"] == "piece"
+        assert item["set"] == {"code": "winter", "name": "Winter"}
+
+    # 11 фигур → 422.
+    resp = await admin.post(f"/api/v1/admin/sets/{set_id}/collections", json={
+        "code": "short", "name": "Winter", "description": "",
+        "pieces": pieces_body()[:-1]})
+    assert resp.status_code == 422
+
+    # Повторный код коллекции → 409.
+    resp = await admin.post(f"/api/v1/admin/sets/{set_id}/collections", json={
+        "code": "winter", "name": "Другая зима", "description": "",
+        "pieces": pieces_body()})
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "COLLECTION_CODE_TAKEN"
+
+
+async def test_board_in_set(admin) -> None:
+    item_set = await create_set(admin)
+    set_id = item_set["id"]
+    detail = await add_collection(admin, set_id)
+    board = await add_board(admin, set_id, code="winter-board")
+    assert board["kind"] == "board"
+    assert board["side"] is None
+    assert board["collection"] is None
+    assert board["asset"] == _BOARD_ASSET
+    assert board["set"] == {"code": "winter", "name": "Winter"}
+
+    resp = await admin.get(f"/api/v1/admin/sets/{set_id}")
+    assert resp.status_code == 200
+    boards = resp.json()["boards"]
+    assert len(boards) == 1
+    assert boards[0]["code"] == "winter-board"
+    piece_id = resp.json()["collections"][0]["items"][0]["id"]
+
+    # asset с картинкой фигуры → 422.
+    resp = await admin.post(
+        f"/api/v1/admin/sets/{set_id}/boards",
+        json={**board_body("winter-board-2"), "asset": seed_asset("base-wp")},
+    )
+    assert resp.status_code == 422
+
+    resp = await admin.delete(f"/api/v1/admin/item-defs/{board['id']}")
+    assert resp.status_code == 204
+
+    # Скин фигуры удалить нельзя.
+    resp = await admin.delete(f"/api/v1/admin/item-defs/{piece_id}")
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "ITEM_DEF_LOCKED"
+
+
+async def test_release_and_retire(admin, client) -> None:
+    item_set = await create_set(admin)
+    set_id = item_set["id"]
+
+    resp = await admin.post(f"/api/v1/admin/sets/{set_id}/release")
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "SET_EMPTY"
+
+    await add_collection(admin, set_id)
+    await add_board(admin, set_id)
+
+    resp = await admin.post(f"/api/v1/admin/sets/{set_id}/release")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "released"
+
+    resp = await admin.post(f"/api/v1/admin/sets/{set_id}/release")
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "SET_NOT_DRAFT"
+
+    resp = await admin.post(f"/api/v1/admin/sets/{set_id}/collections", json={
+        "code": "extra", "name": "Extra", "description": "", "pieces": pieces_body()})
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "SET_NOT_DRAFT"
+
+    resp = await admin.post(
+        f"/api/v1/admin/sets/{set_id}/boards", json=board_body("extra-board"))
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "SET_NOT_DRAFT"
+
+    resp = await client.get("/api/v1/sets/winter")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["collections"]) == 1
+    assert len(body["collections"][0]["items"]) == 12
+    assert len(body["boards"]) == 1
+    assert body["boards"][0]["code"] == "winter-board"
+
+    resp = await client.get("/api/v1/sets")
+    assert resp.status_code == 200
+    winter = {s["code"]: s for s in resp.json()}["winter"]
+    assert winter["collections_count"] == 1
+    assert winter["boards_count"] == 1
+
+    resp = await admin.post(f"/api/v1/admin/sets/{set_id}/retire")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "retired"
+
+    resp = await admin.post(f"/api/v1/admin/sets/{set_id}/retire")
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "SET_NOT_RELEASED"
+
+
+async def test_base_set_protected(admin, client) -> None:
+    resp = await admin.post("/api/v1/admin/sets/1/retire")
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "SET_IS_BASE"
+
+    resp = await admin.delete("/api/v1/admin/sets/1")
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "SET_IS_BASE"
+
+    resp = await client.get("/api/v1/sets")
+    assert resp.status_code == 200
+    assert "base" not in [s["code"] for s in resp.json()]
+
+
+async def test_item_def_patch(admin) -> None:
+    item_set = await create_set(admin)
+    set_id = item_set["id"]
+    detail = await add_collection(admin, set_id)
+    piece = detail["collections"][0]["items"][0]  # winter-wp
+    piece_id = piece["id"]
+    board = await add_board(admin, set_id)
+
+    resp = await admin.patch(f"/api/v1/admin/item-defs/{piece_id}", json={
+        "rarity": "mythic", "value": 999, "name": "X",
+        "asset": seed_asset("genesis-wq"),
+    })
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["balance"] == 880
-    assert body["item"]["def"]["code"] == "winter-queen-snow"
-    assert body["item"]["def"]["id"] == skin_id
-    assert body["win_index"] == 45
-    assert len(body["strip"]) == 60
+    assert body["rarity"] == "mythic"
+    assert body["value"] == 999
+    assert body["name"] == "X"
+    assert body["asset"] == seed_asset("genesis-wq")
 
-    # Снятая коллекция скрывается из списков, её кейс недоступен.
-    resp = await admin.post(f"/api/v1/admin/collections/{collection_id}/retire")
-    assert resp.status_code == 200, resp.text
-    resp = await admin.get("/api/v1/cases")
-    assert [c["code"] for c in resp.json()] == ["genesis-pieces", "genesis-boards"]
-    resp = await admin.get("/api/v1/collections")
-    data = resp.json()
-    assert [c["code"] for c in data] == ["winter", "genesis"]
-    assert data[0]["status"] == "retired"
-    resp = await admin.get("/api/v1/item-defs?upgrade_target=true")
-    codes = [i["code"] for i in resp.json()]
-    assert len(codes) == 22
-    assert "winter-queen-snow" not in codes
-
-    # Открытый предмет сохранился, им можно экипироваться.
-    resp = await admin.get("/api/v1/inventory")
-    inv = resp.json()
-    assert [i["id"] for i in inv] == [body["item"]["id"]]
-    resp = await admin.put(
-        "/api/v1/loadout/Q", json={"inventory_item_id": body["item"]["id"]}
+    # Фигуре asset доски → 422.
+    resp = await admin.patch(
+        f"/api/v1/admin/item-defs/{piece_id}",
+        json={"asset": seed_asset("base-board")},
     )
+    assert resp.status_code == 422
+
+    # Доске asset фигуры → 422.
+    resp = await admin.patch(
+        f"/api/v1/admin/item-defs/{board['id']}",
+        json={"asset": seed_asset("base-wp")},
+    )
+    assert resp.status_code == 422
+
+    resp = await admin.post(f"/api/v1/admin/sets/{set_id}/release")
     assert resp.status_code == 200, resp.text
 
-    # Повторный релиз невозможен.
-    resp = await admin.post(f"/api/v1/admin/collections/{collection_id}/release")
+    resp = await admin.patch(
+        f"/api/v1/admin/item-defs/{piece_id}", json={"rarity": "rare"})
     assert resp.status_code == 400
-    assert resp.json()["error"]["code"] == "COLLECTION_NOT_DRAFT"
+    assert resp.json()["error"]["code"] == "ITEM_DEF_LOCKED"
+
+    resp = await admin.patch(
+        f"/api/v1/admin/item-defs/{piece_id}", json={"value": 77})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["value"] == 77
+
+    resp = await admin.patch(
+        f"/api/v1/admin/item-defs/{piece_id}", json={"side": "b"})
+    assert resp.status_code == 422
 
 
-async def test_item_def_validation(admin, db) -> None:
-    resp = await admin.post("/api/v1/admin/collections", json=_WINTER_COLLECTION)
+async def test_delete_draft_set(admin) -> None:
+    item_set = await create_set(admin)
+    set_id = item_set["id"]
+    await add_collection(admin, set_id)
+
+    resp = await admin.post("/api/v1/admin/cases", json={
+        "code": "w-case", "name": "W", "price": 10, "kind": "set", "set_id": set_id})
     assert resp.status_code == 201, resp.text
-    collection_id = resp.json()["id"]
 
-    # piece_skin с бордовым asset.
-    bad_asset = dict(_WINTER_SKIN, asset={"type": "stub", "light": "#fff", "dark": "#000"})
-    resp = await admin.post(
-        f"/api/v1/admin/collections/{collection_id}/items", json=bad_asset
-    )
-    assert resp.status_code == 422
-
-    # board_skin с piece_type.
-    bad_board = {
-        "code": "winter-board",
-        "name": "Зимняя доска",
-        "kind": "board_skin",
-        "piece_type": "P",
-        "rarity": "common",
-        "value": 20,
-        "asset": {"type": "stub", "light": "#fff", "dark": "#000"},
-    }
-    resp = await admin.post(
-        f"/api/v1/admin/collections/{collection_id}/items", json=bad_board
-    )
-    assert resp.status_code == 422
-
-    # piece_skin без piece_type.
-    no_type = {k: v for k, v in _WINTER_SKIN.items() if k != "piece_type"}
-    resp = await admin.post(
-        f"/api/v1/admin/collections/{collection_id}/items", json=no_type
-    )
-    assert resp.status_code == 422
-
-    # Некорректный rarity.
-    bad_rarity = dict(_WINTER_SKIN, rarity="gold")
-    resp = await admin.post(
-        f"/api/v1/admin/collections/{collection_id}/items", json=bad_rarity
-    )
-    assert resp.status_code == 422
-
-    # Повтор кода (genesis) → 409.
-    dup = dict(_WINTER_SKIN, code="genesis-pawn-chalk")
-    resp = await admin.post(
-        f"/api/v1/admin/collections/{collection_id}/items", json=dup
-    )
-    assert resp.status_code == 409
-    assert resp.json()["error"]["code"] == "ITEM_CODE_TAKEN"
-
-    # Скин можно удалить из черновика.
-    resp = await admin.post(
-        f"/api/v1/admin/collections/{collection_id}/items", json=_WINTER_SKIN
-    )
-    assert resp.status_code == 201, resp.text
-    skin_id = resp.json()["id"]
-    resp = await admin.delete(f"/api/v1/admin/item-defs/{skin_id}")
+    resp = await admin.delete(f"/api/v1/admin/sets/{set_id}")
     assert resp.status_code == 204
-    resp = await admin.get(f"/api/v1/admin/collections/{collection_id}")
+
+    resp = await admin.get("/api/v1/admin/cases")
     assert resp.status_code == 200
-    assert [i["code"] for i in resp.json()["items"]] == []
+    assert "w-case" not in [c["code"] for c in resp.json()]
 
-
-async def test_item_def_locked_after_release(admin) -> None:
-    # PATCH разрешённых полей + видимость в публичной ручке.
-    resp = await admin.patch(
-        "/api/v1/admin/item-defs/1",
-        json={"name": "Пешка | Мел", "value": 25},
-    )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["value"] == 25
-
-    resp = await admin.patch(
-        "/api/v1/admin/item-defs/1",
-        json={"asset": {"type": "stub", "color": "#cccccc"}},
-    )
-    assert resp.status_code == 200, resp.text
-    resp = await admin.get("/api/v1/collections/genesis")
-    detail = resp.json()
-    pawn = next(i for i in detail["items"] if i["code"] == "genesis-pawn-chalk")
-    assert pawn["asset"] == {"type": "stub", "color": "#cccccc"}
-    assert pawn["value"] == 25
-
-    # PATCH заблокированных полей → ITEM_DEF_LOCKED.
-    resp = await admin.patch(
-        "/api/v1/admin/item-defs/2", json={"rarity": "mythic"}
-    )
+    # Выпущенный genesis нельзя удалить.
+    resp = await admin.delete("/api/v1/admin/sets/2")
     assert resp.status_code == 400
-    assert resp.json()["error"]["code"] == "ITEM_DEF_LOCKED"
+    assert resp.json()["error"]["code"] == "SET_NOT_DRAFT"
 
-    resp = await admin.patch("/api/v1/admin/item-defs/2", json={"kind": "board_skin"})
-    assert resp.status_code == 400
-    assert resp.json()["error"]["code"] == "ITEM_DEF_LOCKED"
 
-    # DELETE скина из выпущенной коллекции → ITEM_DEF_LOCKED.
-    resp = await admin.delete("/api/v1/admin/item-defs/2")
-    assert resp.status_code == 400
-    assert resp.json()["error"]["code"] == "ITEM_DEF_LOCKED"
+async def test_delete_collection(admin) -> None:
+    item_set = await create_set(admin)
+    set_id = item_set["id"]
+    detail = await add_collection(admin, set_id)
+    collection_id = detail["collections"][0]["id"]
 
-    # PATCH asset/kind несовместимого вида → 422.
-    resp = await admin.patch(
-        "/api/v1/admin/item-defs/1",
-        json={"asset": {"type": "stub", "light": "#fff", "dark": "#000"}},
-    )
-    assert resp.status_code == 422
+    resp = await admin.delete(f"/api/v1/admin/collections/{collection_id}")
+    assert resp.status_code == 204
 
-    # PATCH asset у board_skin (совпадает по виду) — ок.
-    resp = await admin.patch(
-        "/api/v1/admin/item-defs/19",
-        json={"asset": {"type": "stub", "light": "#ffffff", "dark": "#e5e5e5"}},
-    )
+    resp = await admin.get(f"/api/v1/admin/sets/{set_id}")
     assert resp.status_code == 200
+    assert resp.json()["collections"] == []
+    assert resp.json()["collections_count"] == 0
 
-
-async def test_drops_validation(admin) -> None:
-    resp = await admin.post("/api/v1/admin/collections", json=_WINTER_COLLECTION)
-    assert resp.status_code == 201, resp.text
-    collection_id = resp.json()["id"]
-    resp = await admin.post(
-        f"/api/v1/admin/collections/{collection_id}/items", json=_WINTER_SKIN
-    )
-    assert resp.status_code == 201, resp.text
-    skin_id = resp.json()["id"]
-    resp = await admin.post(
-        f"/api/v1/admin/collections/{collection_id}/cases",
-        json={"code": "winter-case", "name": "Winter: кейс", "price": 100, "sort": 0},
-    )
-    assert resp.status_code == 201, resp.text
-    case_id = resp.json()["id"]
-
-    # Дроп со скином другой коллекции.
-    resp = await admin.put(
-        f"/api/v1/admin/cases/{case_id}/drops", json=[{"item_def_id": 1, "weight": 10}]
-    )
-    assert resp.status_code == 400
-    assert resp.json()["error"]["code"] == "DROP_ITEM_NOT_IN_COLLECTION"
-
-    # Повтор item_def_id → 422.
-    resp = await admin.put(
-        f"/api/v1/admin/cases/{case_id}/drops",
-        json=[
-            {"item_def_id": skin_id, "weight": 10},
-            {"item_def_id": skin_id, "weight": 20},
-        ],
-    )
-    assert resp.status_code == 422
-
-    # weight: 0 → 422.
-    resp = await admin.put(
-        f"/api/v1/admin/cases/{case_id}/drops", json=[{"item_def_id": skin_id, "weight": 0}]
-    )
-    assert resp.status_code == 422
-
-    # Дропы кейса выпущенной коллекции менять нельзя.
-    resp = await admin.put(
-        "/api/v1/admin/cases/1/drops", json=[{"item_def_id": 1, "weight": 10}]
-    )
-    assert resp.status_code == 400
-    assert resp.json()["error"]["code"] == "CASE_LOCKED"
-
-    resp = await admin.post("/api/v1/admin/cases/1/drops/auto")
-    assert resp.status_code == 400
-    assert resp.json()["error"]["code"] == "CASE_LOCKED"
-
-    # Ручная установка дропов в черновике работает.
-    resp = await admin.put(
-        f"/api/v1/admin/cases/{case_id}/drops", json=[{"item_def_id": skin_id, "weight": 5}]
-    )
+    # У выпущенного набора коллекцию удалить нельзя.
+    detail = await add_collection(admin, set_id, code="summer")
+    collection_id = detail["collections"][0]["id"]
+    resp = await admin.post(f"/api/v1/admin/sets/{set_id}/release")
     assert resp.status_code == 200, resp.text
-    assert resp.json()["drops"] == [{"item_def_id": skin_id, "weight": 5}]
-
-
-async def test_grant_item_and_audit(admin, alice, db) -> None:
-    alice_id = (await db.scalars(select(User).where(User.login == "alice"))).one().id
-    admin_id = (await db.scalars(select(User).where(User.login == "admin"))).one().id
-
-    resp = await admin.post(
-        f"/api/v1/admin/users/{alice_id}/grant-item", json={"item_def_id": 1}
-    )
-    assert resp.status_code == 200, resp.text
-    granted = resp.json()
-    assert granted["source"] == "admin_grant"
-    assert granted["def"]["code"] == "genesis-pawn-chalk"
-
-    resp = await admin.post("/api/v1/admin/collections", json=_WINTER_COLLECTION)
-    assert resp.status_code == 201, resp.text
-    collection_id = resp.json()["id"]
-    resp = await admin.post(
-        f"/api/v1/admin/collections/{collection_id}/items", json=_WINTER_SKIN
-    )
-    assert resp.status_code == 201, resp.text
-    draft_skin_id = resp.json()["id"]
-
-    # Выдача скина из черновой коллекции → ITEM_DEF_NOT_AVAILABLE, без аудита.
-    resp = await admin.post(
-        f"/api/v1/admin/users/{alice_id}/grant-item", json={"item_def_id": draft_skin_id}
-    )
+    resp = await admin.delete(f"/api/v1/admin/collections/{collection_id}")
     assert resp.status_code == 400
-    assert resp.json()["error"]["code"] == "ITEM_DEF_NOT_AVAILABLE"
+    assert resp.json()["error"]["code"] == "SET_NOT_DRAFT"
 
-    # Несуществующий пользователь → 404, без аудита.
-    resp = await admin.post("/api/v1/admin/users/999999/grant-item", json={"item_def_id": 1})
-    assert resp.status_code == 404
-    assert resp.json()["error"]["code"] == "USER_NOT_FOUND"
+
+async def test_admin_item_defs_list(admin) -> None:
+    resp = await admin.get("/api/v1/admin/item-defs")
+    assert resp.status_code == 200
+    codes = [i["code"] for i in resp.json()]
+    assert codes == _GENESIS_CODES
+    assert not any(c.startswith("base-") for c in codes)
+
+    item_set = await create_set(admin)
+    await add_collection(admin, item_set["id"])
+
+    resp = await admin.get("/api/v1/admin/item-defs")
+    codes = [i["code"] for i in resp.json()]
+    assert len(codes) == 26
+    assert codes[:14] == _GENESIS_CODES
+    assert codes[14:] == _WINTER_CODES
+
+
+async def test_audit(admin, db) -> None:
+    item_set = await create_set(admin)
+    set_id = item_set["id"]
+    await add_collection(admin, set_id)
+    await add_board(admin, set_id)
+    resp = await admin.post(f"/api/v1/admin/sets/{set_id}/release")
+    assert resp.status_code == 200, resp.text
 
     audits = (await db.scalars(select(AdminAudit).order_by(AdminAudit.id))).all()
     assert [a.action for a in audits] == [
-        "user.grant_item",
+        "set.create",
         "collection.create",
-        "item_def.create",
+        "board.create",
+        "set.release",
     ]
-    assert all(a.admin_id == admin_id for a in audits)

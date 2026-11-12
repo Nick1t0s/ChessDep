@@ -8,6 +8,7 @@ from app.db import SessionLocal, run_after_commit
 from app.models import ActivePlayer, Game
 from app.redis import redis_client
 from app.services.games import create_game
+from app.services.items import ensure_loadout_complete, loadout_complete
 from app.services.settings import get_setting
 
 _QUEUE_TTL_S = 10
@@ -27,6 +28,7 @@ async def enqueue(db: AsyncSession, user, tc: str) -> None:
     time_controls = await get_setting(db, "time_controls")
     if tc not in time_controls:
         raise _INVALID_TIME_CONTROL
+    await ensure_loadout_complete(db, user.id)
     active = await db.get(ActivePlayer, user.id)
     if active is not None:
         raise AppError(409, "ALREADY_IN_GAME", "У вас уже есть активная партия")
@@ -95,11 +97,26 @@ async def _match_pair(a: str, b: str, tc: str, now: datetime, queue_key: str) ->
                 await create_game(db, int(a), int(b), tc, now)
             await run_after_commit(db)
     except Exception as exc:
+        if isinstance(exc, AppError) and exc.code == "LOADOUT_INCOMPLETE":
+            # Откат уже произошёл. Неполную экипировку — из очереди, второго — обратно.
+            async with SessionLocal() as db2:
+                incomplete = {
+                    int(user_id)
+                    for user_id in (a, b)
+                    if not await loadout_complete(db2, int(user_id))
+                }
+            for user_id in (a, b):
+                if int(user_id) in incomplete:
+                    await redis_client.delete(_user_key(int(user_id)))
+                else:
+                    await redis_client.lpush(queue_key, user_id)
+            return
         if not (isinstance(exc, AppError) and exc.code == "ALREADY_IN_GAME"):
             # Любой другой сбой: вернуть пару в начало очереди в исходном порядке.
             await redis_client.lpush(queue_key, b, a)
             raise
-        # Откат уже произошёл. Кто-то из пары уже в партии.
+        # Откат уже произошёл.
+        # Кто-то из пары уже в партии.
         in_game = await _in_game_ids([int(a), int(b)])
         for user_id in (a, b):
             if int(user_id) in in_game:

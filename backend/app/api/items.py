@@ -2,29 +2,39 @@ import app.core.clock as clock
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import case as sql_case, func, select
+from sqlalchemy import case as sql_case, func, nulls_last, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.chess_engine import format_chance
 from app.core.deps import current_user
 from app.core.errors import AppError
 from app.core.ratelimit import hit
 from app.db import get_db
-from app.models import Case, CaseDrop, Collection, InventoryItem, ItemDef, Loadout, User
+from app.models import (
+    Case,
+    Collection,
+    InventoryItem,
+    ItemDef,
+    ItemSet,
+    Loadout,
+    User,
+)
+from app.seed_data import CANONICAL_SLOTS, LOADOUT_SLOTS
 from app.schemas.items import (
+    CaseBuyOut,
     CaseDetailOut,
-    CaseDropOut,
     CaseOpenOut,
-    CaseOut,
     CollectionDetailOut,
-    CollectionRef,
     ItemDefOut,
     ItemOut,
     LoadoutOut,
     LoadoutPutIn,
-    PublicCollectionOut,
+    PublicSetOut,
     RARITY_ORDER,
+    SetCollectionOut,
+    SetDetailOut,
+    SetRef,
+    ShopCaseOut,
     Slot,
     UpgradeIn,
     UpgradeOut,
@@ -39,55 +49,140 @@ router = APIRouter(prefix="/api/v1", tags=["items"])
 DbDep = Annotated[AsyncSession, Depends(get_db)]
 UserDep = Annotated[User, Depends(current_user)]
 
-_CASE_NOT_FOUND = AppError(404, "CASE_NOT_FOUND", "Кейс не найден")
+_SET_NOT_FOUND = AppError(404, "SET_NOT_FOUND", "Набор не найден")
 _COLLECTION_NOT_FOUND = AppError(404, "COLLECTION_NOT_FOUND", "Коллекция не найдена")
 _ITEM_SLOT_MISMATCH = AppError(400, "ITEM_SLOT_MISMATCH", "Предмет не подходит в этот слот")
 
-_ALL_SLOTS: tuple[str, ...] = ("P", "N", "B", "R", "Q", "K", "board")
 
-
-@router.get("/collections", response_model=list[PublicCollectionOut])
-async def list_collections(db: DbDep) -> list[PublicCollectionOut]:
-    collections = (
-        await db.scalars(
-            select(Collection)
-            .where(Collection.status.in_(("released", "retired")))
-            .order_by(Collection.released_at.desc(), Collection.id)
-        )
-    ).all()
-    counts = await db.execute(
-        select(ItemDef.collection_id, func.count()).group_by(ItemDef.collection_id)
+@router.get("/sets", response_model=list[PublicSetOut])
+async def list_sets(db: DbDep) -> list[PublicSetOut]:
+    sets = list(
+        (
+            await db.scalars(
+                select(ItemSet)
+                .where(
+                    ItemSet.status.in_(("released", "retired")),
+                    ItemSet.is_base.is_(False),
+                )
+                .order_by(ItemSet.released_at.desc(), ItemSet.id)
+            )
+        ).all()
     )
-    count_by = dict(counts.all())
-    return [
-        PublicCollectionOut(
-            code=c.code,
-            name=c.name,
-            description=c.description,
-            status=c.status,
-            released_at=c.released_at,
-            items_count=count_by.get(c.id, 0),
+    collection_counts: dict[int, int] = {}
+    if sets:
+        rows = await db.execute(
+            select(Collection.set_id, func.count())
+            .where(Collection.set_id.in_([s.id for s in sets]))
+            .group_by(Collection.set_id)
         )
-        for c in collections
+        collection_counts = dict(rows.all())
+    board_counts: dict[int, int] = {}
+    if sets:
+        rows = await db.execute(
+            select(ItemDef.set_id, func.count())
+            .where(ItemDef.set_id.in_([s.id for s in sets]), ItemDef.kind == "board")
+            .group_by(ItemDef.set_id)
+        )
+        board_counts = dict(rows.all())
+    return [
+        PublicSetOut(
+            code=s.code,
+            name=s.name,
+            description=s.description,
+            status=s.status,
+            released_at=s.released_at,
+            collections_count=collection_counts.get(s.id, 0),
+            boards_count=board_counts.get(s.id, 0),
+        )
+        for s in sets
     ]
+
+
+@router.get("/sets/{code}", response_model=SetDetailOut)
+async def get_set(code: str, db: DbDep) -> SetDetailOut:
+    set_ = await db.scalar(select(ItemSet).where(ItemSet.code == code))
+    if set_ is None or set_.status == "draft":
+        raise _SET_NOT_FOUND
+    collections = list(
+        (
+            await db.scalars(
+                select(Collection)
+                .where(Collection.set_id == set_.id)
+                .order_by(Collection.id)
+            )
+        ).all()
+    )
+    defs_by_collection: dict[int, list[ItemDef]] = {}
+    if collections:
+        defs = list(
+            (
+                await db.scalars(
+                    select(ItemDef).where(
+                        ItemDef.collection_id.in_([c.id for c in collections])
+                    )
+                )
+            ).all()
+        )
+        for d in defs:
+            # kind = piece ⇒ side/piece_type гарантированно заданы (ck_item_defs_kind_shape).
+            defs_by_collection.setdefault(d.collection_id, []).append(d)
+    for defs in defs_by_collection.values():
+        defs.sort(key=lambda d: CANONICAL_SLOTS.index(d.side + d.piece_type))
+    boards = list(
+        (
+            await db.scalars(
+                select(ItemDef)
+                .where(ItemDef.set_id == set_.id, ItemDef.kind == "board")
+                .order_by(ItemDef.id)
+            )
+        ).all()
+    )
+    return SetDetailOut(
+        code=set_.code,
+        name=set_.name,
+        description=set_.description,
+        status=set_.status,
+        released_at=set_.released_at,
+        collections=[
+            SetCollectionOut(
+                code=c.code,
+                name=c.name,
+                description=c.description,
+                items=[
+                    item_def_out(d, set_, c)
+                    for d in defs_by_collection.get(c.id, [])
+                ],
+            )
+            for c in collections
+        ],
+        boards=[item_def_out(d, set_, None) for d in boards],
+    )
 
 
 @router.get("/collections/{code}", response_model=CollectionDetailOut)
 async def get_collection(code: str, db: DbDep) -> CollectionDetailOut:
-    collection = await db.scalar(select(Collection).where(Collection.code == code))
-    if collection is None or collection.status == "draft":
+    row = (
+        await db.execute(
+            select(Collection, ItemSet)
+            .join(ItemSet, ItemSet.id == Collection.set_id)
+            .where(Collection.code == code)
+        )
+    ).first()
+    if row is None or row[1].status == "draft":
         raise _COLLECTION_NOT_FOUND
+    collection, set_ = row
     defs = list(
-        (await db.scalars(select(ItemDef).where(ItemDef.collection_id == collection.id))).all()
+        (
+            await db.scalars(select(ItemDef).where(ItemDef.collection_id == collection.id))
+        ).all()
     )
-    defs.sort(key=lambda d: (RARITY_ORDER[d.rarity], d.code))
+    defs.sort(key=lambda d: CANONICAL_SLOTS.index(d.side + d.piece_type))
     return CollectionDetailOut(
         code=collection.code,
         name=collection.name,
         description=collection.description,
-        status=collection.status,
-        released_at=collection.released_at,
-        items=[item_def_out(d, collection) for d in defs],
+        set=SetRef(code=set_.code, name=set_.name),
+        items=[item_def_out(d, set_, collection) for d in defs],
     )
 
 
@@ -95,40 +190,82 @@ async def get_collection(code: str, db: DbDep) -> CollectionDetailOut:
 async def list_item_defs(
     user: UserDep, db: DbDep, upgrade_target: bool = False
 ) -> list[ItemDefOut]:
-    query = select(ItemDef, Collection).join(
-        Collection, Collection.id == ItemDef.collection_id
+    query = (
+        select(ItemDef, ItemSet, Collection)
+        .join(ItemSet, ItemSet.id == ItemDef.set_id)
+        .outerjoin(Collection, Collection.id == ItemDef.collection_id)
+        .where(ItemSet.is_base.is_(False))
     )
     if upgrade_target:
-        query = query.where(Collection.status == "released", ItemDef.is_upgrade_target)
+        query = query.where(
+            ItemSet.status == "released", ItemDef.is_upgrade_target
+        )
         query = query.order_by(ItemDef.value, ItemDef.id)
     else:
-        query = query.where(Collection.status != "draft")
+        query = query.where(ItemSet.status != "draft")
         query = query.order_by(ItemDef.id)
     rows = (await db.execute(query)).all()
-    return [item_def_out(d, collection) for d, collection in rows]
+    return [item_def_out(d, set_, collection) for d, set_, collection in rows]
+
+
+@router.get("/shop", response_model=list[ShopCaseOut])
+async def get_shop(db: DbDep) -> list[ShopCaseOut]:
+    cases = list(
+        (
+            await db.scalars(
+                select(Case).where(Case.status == "on_sale").order_by(Case.sort, Case.id)
+            )
+        ).all()
+    )
+    now = clock.now()
+    return await cases_service.shop_case_outs(
+        db, [case for case in cases if cases_service.on_sale_now(case, now)]
+    )
+
+
+@router.get("/cases/{case_id}", response_model=CaseDetailOut)
+async def get_case(case_id: int, db: DbDep) -> CaseDetailOut:
+    return await cases_service.case_detail(db, case_id, clock.now())
+
+
+@router.post("/cases/{case_id}/buy", response_model=CaseBuyOut)
+async def buy_case(case_id: int, user: UserDep, db: DbDep) -> CaseBuyOut:
+    await hit(f"rl:items:{user.id}", 3, 1)
+    return await cases_service.buy_case(db, user, case_id, clock.now())
+
+
+@router.post("/inventory/{item_id}/open", response_model=CaseOpenOut)
+async def open_case_item(item_id: int, user: UserDep, db: DbDep) -> CaseOpenOut:
+    await hit(f"rl:items:{user.id}", 3, 1)
+    return await cases_service.open_case_item(db, user, item_id, clock.now())
 
 
 @router.get("/inventory", response_model=list[ItemOut])
 async def list_inventory(
     user: UserDep,
     db: DbDep,
-    kind: Literal["piece_skin", "board_skin"] | None = None,
+    kind: Literal["piece", "board", "case"] | None = None,
+    side: Literal["w", "b"] | None = None,
     slot: Slot | None = None,
     sort: Literal["rarity", "value", "new"] = "rarity",
 ) -> list[ItemOut]:
     query = (
         select(InventoryItem)
-        .join(ItemDef, ItemDef.id == InventoryItem.item_def_id)
+        .outerjoin(ItemDef, ItemDef.id == InventoryItem.item_def_id)
         .where(InventoryItem.user_id == user.id)
         .where(InventoryItem.status.in_(("owned", "listed")))
     )
-    if kind is not None:
+    if kind == "case":
+        query = query.where(InventoryItem.case_id.is_not(None))
+    elif kind is not None:
         query = query.where(ItemDef.kind == kind)
+    if side is not None:
+        query = query.where(ItemDef.side == side)
     if slot is not None:
         if slot == "board":
-            query = query.where(ItemDef.kind == "board_skin")
+            query = query.where(ItemDef.kind == "board")
         else:
-            query = query.where(ItemDef.kind == "piece_skin", ItemDef.piece_type == slot)
+            query = query.where(ItemDef.side == slot[0], ItemDef.piece_type == slot[1])
     if sort == "rarity":
         rank = sql_case(
             *[
@@ -137,9 +274,14 @@ async def list_inventory(
             ],
             else_=0,
         )
-        query = query.order_by(rank.desc(), ItemDef.value.desc(), InventoryItem.id)
+        # У предметов-кейсов ItemDef = NULL — кейсы в конце результата.
+        query = query.order_by(
+            nulls_last(rank.desc()),
+            nulls_last(ItemDef.value.desc()),
+            InventoryItem.id,
+        )
     elif sort == "value":
-        query = query.order_by(ItemDef.value.desc(), InventoryItem.id)
+        query = query.order_by(nulls_last(ItemDef.value.desc()), InventoryItem.id)
     else:
         query = query.order_by(InventoryItem.acquired_at.desc(), InventoryItem.id.desc())
     items = (await db.scalars(query)).all()
@@ -158,12 +300,10 @@ async def _loadout_out(db: AsyncSession, user: User) -> LoadoutOut:
         for out in await items_out(db, [item for item in by_slot.values() if item is not None])
     }
     out: dict[str, ItemOut | None] = {}
-    for slot_name in _ALL_SLOTS:
+    for slot_name in LOADOUT_SLOTS:
         item = by_slot.get(slot_name)
         out[slot_name] = item_outs_by_id[item.id] if item is not None else None
-    return LoadoutOut(
-        P=out["P"], N=out["N"], B=out["B"], R=out["R"], Q=out["Q"], K=out["K"], board=out["board"]
-    )
+    return LoadoutOut(**out, complete=len(by_slot) == 13)
 
 
 @router.get("/loadout", response_model=LoadoutOut)
@@ -184,7 +324,9 @@ async def put_loadout(
     else:
         items = await lock_items(db, user.id, [body.inventory_item_id])
         item = items[0]
-        item_def = await db.get(ItemDef, item.item_def_id)
+        item_def = (
+            await db.get(ItemDef, item.item_def_id) if item.item_def_id is not None else None
+        )
         if not slot_matches(item_def, slot):
             raise _ITEM_SLOT_MISMATCH
         # Upsert вместо «select, затем insert или update» — иначе два
@@ -199,68 +341,6 @@ async def put_loadout(
         )
     await db.flush()
     return await _loadout_out(db, user)
-
-
-@router.get("/cases", response_model=list[CaseOut])
-async def list_cases(db: DbDep) -> list[CaseOut]:
-    rows = (
-        await db.execute(
-            select(Case, Collection)
-            .join(Collection, Collection.id == Case.collection_id)
-            .where(Collection.status == "released", Case.is_active)
-            .order_by(Case.sort, Case.id)
-        )
-    ).all()
-    return [
-        CaseOut(
-            id=case.id,
-            code=case.code,
-            name=case.name,
-            price=case.price,
-            collection=CollectionRef(code=collection.code, name=collection.name),
-        )
-        for case, collection in rows
-    ]
-
-
-@router.get("/cases/{case_id}", response_model=CaseDetailOut)
-async def get_case(case_id: int, db: DbDep) -> CaseDetailOut:
-    try:
-        case, collection, drops = await cases_service.openable_case(db, case_id)
-    except AppError as exc:
-        if exc.code == "CASE_NOT_AVAILABLE":
-            # Неоткрываемый (retired/неактивный/без дропов) — 404.
-            raise _CASE_NOT_FOUND
-        raise
-    defs = {
-        d.id: d
-        for d in (
-            await db.scalars(select(ItemDef).where(ItemDef.collection_id == collection.id))
-        ).all()
-    }
-    total = sum(d.weight for d in drops)
-    return CaseDetailOut(
-        id=case.id,
-        code=case.code,
-        name=case.name,
-        price=case.price,
-        collection=CollectionRef(code=collection.code, name=collection.name),
-        drops=[
-            CaseDropOut(
-                item_def=item_def_out(defs[drop.item_def_id], collection),
-                weight=drop.weight,
-                chance=drop.weight / total,
-                chance_text=format_chance(drop.weight / total),
-            )
-            for drop in drops
-        ],
-    )
-
-
-@router.post("/cases/{case_id}/open", response_model=CaseOpenOut)
-async def open_case(case_id: int, user: UserDep, db: DbDep) -> CaseOpenOut:
-    await hit(f"rl:items:{user.id}", 3, 1)
-    return await cases_service.open_case(db, user, case_id, clock.now())
 
 
 @router.post("/upgrade/preview", response_model=UpgradePreviewOut)

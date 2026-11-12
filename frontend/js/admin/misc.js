@@ -106,7 +106,7 @@ export async function mountMarket(root) {
     return h('tr', null,
       h('td', { class: 'mono' }, String(listing.id)),
       h('td', { class: 'mono' }, String(listing.item_id)),
-      h('td', null, String(listing.item_def_id)),
+      h('td', null, listing.item_def_id == null ? '—' : String(listing.item_def_id)),
       h('td', { class: 'mono' }, String(listing.seller_id)),
       h('td', null, fmtCrystals(listing.price)),
       h('td', null, h('span', { class: 'pill' }, STATUS_RU[listing.status] ?? String(listing.status))),
@@ -223,8 +223,8 @@ export async function mountAudit(root) {
       h('td', null, fmtDate(entry.created_at)),
       h('td', null, entry.admin_login ?? 'CLI'),
       h('td', null, h('span', { class: 'mono' }, String(entry.action))),
-      h('td', { class: 'mono' }, entry.target === null || entry.target === undefined ? '—' : String(entry.target)),
-      h('td', null, h('code', { class: 'admin-muted' }, payloadPreview(entry.payload))),
+      h('td', { class: 'mono audit-target' }, entry.target === null || entry.target === undefined ? '—' : String(entry.target)),
+      h('td', null, h('code', { class: 'admin-muted audit-data' }, payloadPreview(entry.payload))),
     );
   }
 

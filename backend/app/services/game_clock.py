@@ -4,6 +4,9 @@ import chess
 
 from app.chess_engine import COLOR_NAME
 
+# После депа часы депающего стоят столько, сколько идёт анимация на фронте (+ запас).
+DEP_CLOCK_PAUSE_MS = 3000
+
 
 def parse_time_control(tc: str) -> tuple[int, int]:
     # "3+2" -> (180000, 2000)
@@ -26,7 +29,8 @@ def remaining_ms(game, color: str, now: datetime) -> int:
     if game.clock_running and color == turn_color(game):
         delta = now - game.turn_started_at
         elapsed = (delta.days * 86_400 + delta.seconds) * 1000 + delta.microseconds // 1000
-        return max(0, ms - elapsed)
+        # turn_started_at может быть в будущем — пауза после депа.
+        return max(0, ms - max(0, elapsed))
     return ms
 
 

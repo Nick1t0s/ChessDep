@@ -119,7 +119,8 @@ class AdminListingOut(BaseModel):
 
     id: int
     item_id: int
-    item_def_id: int
+    item_def_id: int | None
+    case_id: int | None
     seller_id: int
     price: int
     status: str

@@ -108,6 +108,8 @@ ChessDep — онлайн-шахматы (PvP) с элементами кази�
 
 ## 4. Предметы: коллекции, скины, кейсы, апгрейд, маркет, дарение
 
+> **Изменено:** §4.1, 4.2, 4.4, 4.5 заменены контрактом `docs/contracts-collections.md` (коллекция = 12 фигур, без досок; кейсы не привязаны к коллекции).
+
 ### 4.1 Коллекции
 - Скины выпускаются **коллекциями**. Коллекция создаётся и наполняется в админке, затем выпускается.
 - `collections.status`: `draft` → `released` → `retired`.
@@ -129,7 +131,7 @@ ChessDep — онлайн-шахматы (PvP) с элементами кази�
 
 ### 4.3 Экземпляры
 - `inventory_items`: владелец, `item_def_id`, `wear ∈ [0,1)` (CSPRNG при создании), источник (`case | upgrade | admin_grant`), статус (`owned | listed | burned`), `acquired_at` (время получения текущим владельцем). Сгоревшие предметы физически не удаляются.
-- Exterior по `wear`: FN `[0,0.07)`, MW `[0.07,0.15)`, FT `[0.15,0.38)`, WW `[0.38,0.45)`, BS `[0.45,1)`. Пока чисто косметика, на `value` не влияет.
+- Exterior по `wear`: FN `[0,0.07)`, MW `[0.07,0.15)`, FT `[0.15,0.38)`, WW `[0.38,0.45)`, BS `[0.45,1)`. Пока чисто косметика, на `value` не влияет; у каждого скина обязательна своя картинка для каждого exterior (`docs/contracts-skins.md` §8).
 - Экипировать, апгрейдить, выставлять и дарить можно только предмет в статусе `owned`.
 
 ### 4.4 Экипировка (loadout)
@@ -148,6 +150,7 @@ ChessDep — онлайн-шахматы (PvP) с элементами кази�
 
 ### 4.6 Апгрейд скинов
 - Вход: от 1 до `upgrade_max_inputs` (10) **разных** своих `owned` предметов + целевой `item_def` (коллекция `released`, `is_upgrade_target = true`).
+- Все входы и цель — из **одного набора**, иначе `400 UPGRADE_SET_MISMATCH`. Апгрейд между наборами запрещён.
 - `chance = Σ(value_inputs) / target.value × (1 − upgrade_edge)`. Допустимо, только если `upgrade_min_chance ≤ chance ≤ upgrade_max_chance` (0.01 … 0.80), иначе `400 UPGRADE_CHANCE_OUT_OF_RANGE`.
 - Экипированные входы автоматически снимаются со слотов.
 - Бросок `r`; успех ⇔ `r < chance`. **Все входы сгорают** при любом исходе; при успехе создаётся экземпляр цели (source=`upgrade`).
@@ -433,7 +436,7 @@ legacy/  site/  templates/       # старый фронт, только как 
 | GET | `/collections` | выпущенные и снятые коллекции `[{code, name, description, status, released_at, items_count}]` |
 | GET | `/collections/{code}` | коллекция + её скины |
 | GET | `/item-defs?upgrade_target=true` | каталог целей апгрейда |
-| GET | `/inventory?kind=&slot=&sort=rarity\|value\|new` | `[{id, def, wear, exterior, status, equipped_slot, acquired_at}]` |
+| GET | `/inventory?kind=&slot=&sort=rarity\|value\|new` | `[{id, def, wear, exterior, image, status, equipped_slot, acquired_at}]` |
 | GET | `/loadout` | `{P: Item\|null, …, board: Item\|null}` |
 | PUT | `/loadout/{slot}` | тело `{inventory_item_id: int\|null}` → `Loadout`; `ITEM_NOT_OWNED`, `ITEM_SLOT_MISMATCH` |
 

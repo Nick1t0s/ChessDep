@@ -1,12 +1,15 @@
-import { api } from '../api.js';
+import { api, apiUpload } from '../api.js';
 import { h, clear } from '../dom.js';
 import { toast } from '../toast.js';
 import { confirmModal, openModal } from '../modal.js';
-import { fmtCrystals, PIECE_NAME_RU } from '../format.js';
-import { skinPreview, RARITIES, RARITY_RU } from '../items.js';
-import { renderCasesSection } from './cases.js';
+import { fmtCrystals } from '../format.js';
+import { skinPreview, SLOT_RU, WHITE_SLOTS, BLACK_SLOTS, RARITIES, RARITY_RU, EXTERIOR_RU } from '../items.js';
 
-const STATUS_RU = { draft: 'Черновик', released: 'Выпущена', retired: 'Снята' };
+const SET_STATUS_RU = { draft: 'Черновик', released: 'Выпущен', retired: 'Снят' };
+
+const DEFAULT_RARITY = { P: 'common', N: 'uncommon', B: 'uncommon', R: 'rare', Q: 'epic', K: 'legendary' };
+const RARITY_VALUE = { common: 20, uncommon: 60, rare: 150, epic: 500, legendary: 1500, mythic: 5000 };
+const EXTERIORS = ['FN', 'MW', 'FT', 'WW', 'BS'];
 
 let fieldSeq = 0;
 
@@ -16,13 +19,63 @@ function field(labelText, input) {
   return h('div', { class: 'field' }, h('label', { for: id }, labelText), input);
 }
 
-function statusPill(status) {
-  return h('span', { class: 'pill status-' + status }, STATUS_RU[status] ?? status);
+// Поле PNG скина: файл сразу грузится на сервер, picker.image — id картинки или null.
+function imagePicker(kind, initialImage) {
+  const picker = { image: initialImage, el: null };
+  const preview = h('span', { class: 'admin-skin-preview' });
+  const input = h('input', { type: 'file' });
+  input.accept = 'image/png';
+  function showPreview() {
+    clear(preview);
+    if (picker.image !== null) preview.appendChild(skinPreview({ kind, asset: { type: 'png', image: picker.image } }));
+  }
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const res = await apiUpload('/admin/skin-images?kind=' + kind, file);
+      picker.image = res.image;
+      showPreview();
+    } catch (err) {
+      input.value = '';
+      toast(err.message, 'error');
+    }
+  });
+  showPreview();
+  picker.el = h('div', { class: 'admin-skin-picker' }, input, preview);
+  return picker;
 }
 
-function kindRu(def) {
-  if (def.kind === 'board_skin') return 'Доска';
-  return 'Фигура ' + (PIECE_NAME_RU[def.piece_type] ?? def.piece_type ?? '');
+// Пять обязательных картинок качеств; initial — asset.exteriors или null.
+function exteriorPickers(kind, initial) {
+  const pickers = {};
+  for (const ext of EXTERIORS) pickers[ext] = imagePicker(kind, initial?.[ext] ?? null);
+  return pickers;
+}
+
+// asset из основной картинки и картинок всех качеств; null, если чего-то не хватает.
+function buildAsset(picker, extPickers) {
+  if (picker.image === null) return null;
+  const exteriors = {};
+  for (const ext of EXTERIORS) {
+    if (extPickers[ext].image === null) return null;
+    exteriors[ext] = extPickers[ext].image;
+  }
+  return { type: 'png', image: picker.image, exteriors };
+}
+
+function setPill(status) {
+  return h('span', { class: 'pill status-' + status }, SET_STATUS_RU[status] ?? status);
+}
+
+function baseMark() {
+  return h('span', { class: 'pill' }, 'Базовый');
+}
+
+async function done(root, screen, id) {
+  toast('Готово', 'success');
+  if (screen === 'detail') await renderDetail(root, id);
+  else await renderList(root);
 }
 
 export async function mount(root) {
@@ -33,26 +86,24 @@ export async function mount(root) {
 
 async function renderList(root) {
   clear(root);
-  root.appendChild(h('h2', { class: 'page-title' }, 'Коллекции'));
+  root.appendChild(h('h2', { class: 'page-title' }, 'Наборы'));
 
-  let collections;
+  let sets;
   try {
-    collections = await api('GET', '/admin/collections');
+    sets = await api('GET', '/admin/sets');
   } catch (e) {
     toast(e.message, 'error');
     return;
   }
 
   const tbody = h('tbody');
-  for (const c of collections) {
-    tbody.appendChild(h('tr', {},
-      h('td', { class: 'mono' }, c.code),
-      h('td', {}, c.name),
-      h('td', {}, statusPill(c.status)),
-      h('td', { class: 'mono' }, String(c.items_count)),
-      h('td', { class: 'mono' }, String(c.cases_count)),
-      h('td', {},
-        h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: () => renderDetail(root, c.id) }, 'Открыть')),
+  for (const s of sets) {
+    tbody.appendChild(h('tr', { onClick: () => renderDetail(root, s.id) },
+      h('td', { class: 'mono' }, s.code),
+      h('td', {}, s.name, ' ', s.is_base ? baseMark() : null),
+      h('td', {}, setPill(s.status)),
+      h('td', { class: 'mono' }, String(s.collections_count)),
+      h('td', { class: 'mono' }, String(s.boards_count)),
     ));
   }
 
@@ -61,24 +112,23 @@ async function renderList(root) {
       h('th', {}, 'Код'),
       h('th', {}, 'Название'),
       h('th', {}, 'Статус'),
-      h('th', {}, 'Скинов'),
-      h('th', {}, 'Кейсов'),
-      h('th', {}, ''),
+      h('th', {}, 'Коллекций'),
+      h('th', {}, 'Досок'),
     )),
     tbody,
   ));
 
-  if (!collections.length) {
-    root.appendChild(h('p', { class: 'admin-muted' }, 'Пока нет коллекций.'));
+  if (!sets.length) {
+    root.appendChild(h('p', { class: 'admin-muted' }, 'Пока нет наборов.'));
   }
 
   root.appendChild(h('div', { class: 'card admin-section' },
-    h('h3', { class: 'card-title' }, 'Новая коллекция'),
-    createCollectionForm(root),
+    h('h3', { class: 'card-title' }, 'Новый набор'),
+    createSetForm(root),
   ));
 }
 
-function createCollectionForm(root) {
+function createSetForm(root) {
   const codeIn = h('input', { type: 'text', name: 'code', placeholder: 'winter-2026', required: true });
   const nameIn = h('input', { type: 'text', name: 'name', required: true });
   const descIn = h('textarea', { name: 'description', rows: 3 });
@@ -94,29 +144,29 @@ function createCollectionForm(root) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
-      const created = await api('POST', '/admin/collections', {
+      const created = await api('POST', '/admin/sets', {
         code: codeIn.value.trim(),
         name: nameIn.value.trim(),
         description: descIn.value.trim(),
       });
-      toast('Коллекция создана', 'success');
+      toast('Готово', 'success');
       await renderDetail(root, created.id);
-    } catch (err2) {
-      toast(err2.message, 'error');
+    } catch (err) {
+      toast(err.message, 'error');
     }
   });
 
   return form;
 }
 
-// ---------- карточка ----------
+// ---------- карточка набора ----------
 
 async function renderDetail(root, id) {
   clear(root);
 
   let d;
   try {
-    d = await api('GET', '/admin/collections/' + encodeURIComponent(id));
+    d = await api('GET', '/admin/sets/' + encodeURIComponent(id));
   } catch (e) {
     toast(e.message, 'error');
     await renderList(root);
@@ -126,230 +176,375 @@ async function renderDetail(root, id) {
   root.appendChild(h('div', { class: 'admin-row' },
     h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: () => renderList(root) }, '← К списку'),
   ));
-  root.appendChild(h('h2', { class: 'page-title' }, d.name, ' ', statusPill(d.status)));
+  root.appendChild(h('h2', { class: 'page-title' },
+    d.name, ' ', setPill(d.status), ' ', d.is_base ? baseMark() : null));
   root.appendChild(h('p', { class: 'admin-muted' },
     d.code + (d.description ? ' · ' + d.description : '')));
 
   root.appendChild(actionsRow(root, d));
-  root.appendChild(skinsSection(root, d));
-
-  const casesBox = h('div', { class: 'admin-section' });
-  root.appendChild(casesBox);
-  renderCasesSection(casesBox, d, () => renderDetail(root, id));
+  root.appendChild(collectionsSection(root, d));
+  root.appendChild(boardsSection(root, d));
 }
 
 function actionsRow(root, d) {
   const row = h('div', { class: 'admin-row' });
   if (d.status === 'draft') {
-    row.appendChild(h('button', { type: 'button', class: 'btn btn-gold', onClick: () => releaseCollection(root, d) }, 'Выпустить'));
-    row.appendChild(h('button', { type: 'button', class: 'btn btn-danger', onClick: () => deleteCollection(root, d) }, 'Удалить коллекцию'));
-  } else if (d.status === 'released') {
-    row.appendChild(h('button', { type: 'button', class: 'btn btn-ghost', onClick: () => retireCollection(root, d) }, 'Снять с выпуска'));
+    row.appendChild(h('button', { type: 'button', class: 'btn btn-gold', onClick: () => releaseSet(root, d) }, 'Выпустить'));
+    row.appendChild(h('button', { type: 'button', class: 'btn btn-danger', onClick: () => deleteSet(root, d) }, 'Удалить набор'));
+  } else if (d.status === 'released' && !d.is_base) {
+    row.appendChild(h('button', { type: 'button', class: 'btn btn-ghost', onClick: () => retireSet(root, d) }, 'Снять с выпуска'));
   }
   return row;
 }
 
-async function releaseCollection(root, d) {
-  const ok = await confirmModal(
-    'Выпустить коллекцию',
-    'Выпустить коллекцию «' + d.name + '»? Она появится у игроков.',
-    'Выпустить', 'gold');
-  if (!ok) return;
+async function releaseSet(root, d) {
   try {
-    await api('POST', '/admin/collections/' + encodeURIComponent(d.id) + '/release');
-    toast('Коллекция выпущена', 'success');
+    await api('POST', '/admin/sets/' + encodeURIComponent(d.id) + '/release');
   } catch (e) {
     toast(e.message, 'error');
   }
   await renderDetail(root, d.id);
 }
 
-async function retireCollection(root, d) {
+async function retireSet(root, d) {
   const ok = await confirmModal(
     'Снять с выпуска',
-    'Снять коллекцию «' + d.name + '» с выпуска?',
+    'Все кейсы в продаже с его скинами будут сняты с продажи.',
     'Снять', 'danger');
   if (!ok) return;
   try {
-    await api('POST', '/admin/collections/' + encodeURIComponent(d.id) + '/retire');
-    toast('Коллекция снята с выпуска', 'success');
+    await api('POST', '/admin/sets/' + encodeURIComponent(d.id) + '/retire');
+    toast('Готово', 'success');
   } catch (e) {
     toast(e.message, 'error');
   }
   await renderDetail(root, d.id);
 }
 
-async function deleteCollection(root, d) {
+async function deleteSet(root, d) {
   const ok = await confirmModal(
-    'Удалить коллекцию',
+    'Удалить набор',
     'Удалить черновик «' + d.name + '»? Действие необратимо.',
     'Удалить', 'danger');
   if (!ok) return;
   try {
-    await api('DELETE', '/admin/collections/' + encodeURIComponent(d.id));
-    toast('Коллекция удалена', 'success');
+    await api('DELETE', '/admin/sets/' + encodeURIComponent(d.id));
   } catch (e) {
     toast(e.message, 'error');
+    await renderDetail(root, d.id);
+    return;
   }
-  await renderList(root);
+  await done(root, 'list');
 }
 
-// ---------- скины ----------
+// ---------- коллекции ----------
 
-function skinsSection(root, d) {
-  const section = h('div', { class: 'admin-section' }, h('h3', { class: 'card-title' }, 'Скины'));
+function collectionsSection(root, d) {
+  const section = h('div', { class: 'admin-section' }, h('h3', { class: 'card-title' }, 'Коллекции'));
 
-  const tbody = h('tbody');
-  for (const def of d.items) {
-    const btns = h('td', {},
-      h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: () => openEditModal(root, d, def) }, 'Изменить'),
-      d.status === 'draft'
-        ? h('button', { type: 'button', class: 'btn btn-danger btn-sm', onClick: () => deleteItemDef(root, d, def) }, 'Удалить')
-        : null,
+  if (!d.collections.length) {
+    section.appendChild(h('p', { class: 'admin-muted' }, 'Коллекций нет.'));
+  }
+
+  for (const c of d.collections) {
+    const card = h('div', { class: 'card' },
+      h('h4', {}, c.name),
+      h('p', { class: 'admin-muted' }, c.code),
+      collectionSkinsTable(root, d, c),
     );
-    tbody.appendChild(h('tr', {},
-      h('td', {}, skinPreview(def)),
-      h('td', { class: 'mono' }, def.code),
-      h('td', {}, def.name),
-      h('td', {}, kindRu(def)),
-      h('td', {}, RARITY_RU[def.rarity] ?? def.rarity),
-      h('td', { class: 'mono' }, fmtCrystals(def.value)),
-      h('td', {}, def.is_upgrade_target ? 'Да' : 'Нет'),
-      btns,
+    if (d.status === 'draft') {
+      card.appendChild(h('div', { class: 'admin-row' },
+        h('button', {
+          type: 'button', class: 'btn btn-danger btn-sm', onClick: () => deleteCollection(root, d, c),
+        }, 'Удалить коллекцию'),
+      ));
+    }
+    section.appendChild(card);
+  }
+
+  if (d.status === 'draft') {
+    section.appendChild(h('div', { class: 'card admin-section' },
+      h('h3', { class: 'card-title' }, 'Новая коллекция'),
+      createCollectionForm(root, d),
     ));
   }
 
-  section.appendChild(h('table', { class: 'admin-table' },
+  return section;
+}
+
+function collectionSkinsTable(root, d, c) {
+  const tbody = h('tbody');
+  for (const def of c.items) {
+    tbody.appendChild(h('tr', {},
+      h('td', {}, skinPreview(def)),
+      h('td', {}, SLOT_RU[def.side + def.piece_type] ?? (def.side + def.piece_type)),
+      h('td', { class: 'mono' }, def.code),
+      h('td', {}, def.name),
+      h('td', {}, RARITY_RU[def.rarity] ?? def.rarity),
+      h('td', { class: 'mono' }, fmtCrystals(def.value)),
+      h('td', {}, def.is_upgrade_target ? 'Да' : 'Нет'),
+      h('td', {},
+        h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: () => openEditModal(root, d, def) }, 'Изменить')),
+    ));
+  }
+
+  return h('table', { class: 'admin-table' },
     h('thead', {}, h('tr', {},
       h('th', {}, 'Превью'),
+      h('th', {}, 'Фигура'),
       h('th', {}, 'Код'),
       h('th', {}, 'Название'),
-      h('th', {}, 'Вид'),
       h('th', {}, 'Редкость'),
       h('th', {}, 'Ценность'),
       h('th', {}, 'Цель апгрейда'),
       h('th', {}, ''),
     )),
     tbody,
-  ));
-
-  section.appendChild(h('h3', { class: 'card-title' }, 'Новый скин'));
-  section.appendChild(newSkinForm(root, d));
-  return section;
+  );
 }
 
-function newSkinForm(root, d) {
-  const codeIn = h('input', { type: 'text', name: 'code', required: true });
+function createCollectionForm(root, d) {
+  const codeIn = h('input', { type: 'text', name: 'code', placeholder: 'winter-2026', required: true });
   const nameIn = h('input', { type: 'text', name: 'name', required: true });
+  const descIn = h('textarea', { name: 'description', rows: 3 });
 
-  const kindSel = h('select', { name: 'kind' },
-    h('option', { value: 'piece_skin' }, 'Фигура'),
-    h('option', { value: 'board_skin' }, 'Доска'),
-  );
-
-  const ptSel = h('select', { name: 'piece_type' });
-  for (const pt of ['P', 'N', 'B', 'R', 'Q', 'K']) {
-    ptSel.appendChild(h('option', { value: pt }, PIECE_NAME_RU[pt]));
-  }
-
-  const rarSel = h('select', { name: 'rarity' });
-  for (const r of RARITIES) {
-    rarSel.appendChild(h('option', { value: r }, RARITY_RU[r] ?? r));
-  }
-
-  const valIn = h('input', { type: 'number', name: 'value', min: 1, value: 20 });
-  const colorIn = h('input', { type: 'text', name: 'color', value: '#ffffff' });
-  const lightIn = h('input', { type: 'text', name: 'light', value: '#ffffff' });
-  const darkIn = h('input', { type: 'text', name: 'dark', value: '#e5e5e5' });
-  const upIn = h('input', { type: 'checkbox', name: 'is_upgrade_target', checked: true });
-
-  const ptField = field('Тип фигуры', ptSel);
-  const colorField = field('Цвет фигуры', colorIn);
-  const lightField = field('Светлые клетки', lightIn);
-  const darkField = field('Тёмные клетки', darkIn);
-
-  const syncKind = () => {
-    const board = kindSel.value === 'board_skin';
-    ptField.hidden = board;
-    colorField.hidden = board;
-    lightField.hidden = !board;
-    darkField.hidden = !board;
-  };
-  kindSel.addEventListener('change', syncKind);
-  syncKind();
+  const rows = [...WHITE_SLOTS, ...BLACK_SLOTS].map(makePiecesRow);
 
   const form = h('form', { class: 'admin-form' },
     field('Код', codeIn),
     field('Название', nameIn),
-    field('Вид', kindSel),
-    ptField,
-    field('Редкость', rarSel),
-    field('Ценность', valIn),
-    colorField,
-    lightField,
-    darkField,
-    field('Цель апгрейда', upIn),
+    field('Описание', descIn),
+    h('table', { class: 'admin-table' },
+      h('thead', {}, h('tr', {},
+        h('th', {}, 'Фигура'),
+        h('th', {}, 'Редкость'),
+        h('th', {}, 'Ценность'),
+        h('th', {}, 'Картинка 128×128'),
+        ...EXTERIORS.map((ext) => h('th', {}, EXTERIOR_RU[ext])),
+        h('th', {}, 'Цель апгрейда'),
+      )),
+      h('tbody', {}, ...rows.map((r) => r.tr)),
+    ),
     h('div', { class: 'admin-row' },
-      h('button', { type: 'submit', class: 'btn btn-gold' }, 'Добавить')),
+      h('button', { type: 'submit', class: 'btn btn-gold' }, 'Создать')),
   );
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const kind = kindSel.value;
-    const value = Number(valIn.value);
-    if (!codeIn.value.trim() || !nameIn.value.trim()) {
-      toast('Заполните код и название', 'error');
-      return;
+    const pieces = [];
+    for (const row of rows) {
+      const value = Number(row.valIn.value);
+      if (!Number.isInteger(value) || value < 1 || buildAsset(row.picker, row.extPickers) === null) {
+        toast('Строка «' + SLOT_RU[row.slot] + '»: проверьте ценность и загрузите все картинки', 'error');
+        return;
+      }
+      pieces.push({
+        side: row.slot[0],
+        piece_type: row.slot[1],
+        rarity: row.rarSel.value,
+        value,
+        asset: buildAsset(row.picker, row.extPickers),
+        is_upgrade_target: row.upIn.checked,
+      });
     }
-    if (!Number.isInteger(value) || value < 1) {
-      toast('Ценность должна быть целым числом ≥ 1', 'error');
-      return;
-    }
-    const body = {
-      code: codeIn.value.trim(),
-      name: nameIn.value.trim(),
-      kind,
-      piece_type: kind === 'piece_skin' ? ptSel.value : null,
-      rarity: rarSel.value,
-      value,
-      asset: kind === 'piece_skin'
-        ? { type: 'stub', color: colorIn.value.trim() || colorIn.placeholder || '#ffffff' }
-        : { type: 'stub', light: lightIn.value.trim() || '#ffffff', dark: darkIn.value.trim() || '#e5e5e5' },
-      is_upgrade_target: upIn.checked,
-    };
     try {
-      await api('POST', '/admin/collections/' + encodeURIComponent(d.id) + '/items', body);
-      toast('Скин добавлен', 'success');
+      await api('POST', '/admin/sets/' + encodeURIComponent(d.id) + '/collections', {
+        code: codeIn.value.trim(),
+        name: nameIn.value.trim(),
+        description: descIn.value.trim(),
+        pieces,
+      });
+      toast('Готово', 'success');
       await renderDetail(root, d.id);
-    } catch (err2) {
-      toast(err2.message, 'error');
+    } catch (err) {
+      toast(err.message, 'error');
     }
   });
 
   return form;
 }
 
-function openEditModal(root, d, def) {
-  const nameIn = h('input', { type: 'text', value: def.name });
-  const valIn = h('input', { type: 'number', min: 1, value: def.value });
+function makePiecesRow(slot) {
+  const pt = slot[1];
 
-  let colorField = null;
-  let lightField = null;
-  let darkField = null;
-  let colorIn = null;
-  let lightIn = null;
-  let darkIn = null;
-  if (def.kind === 'board_skin') {
-    lightIn = h('input', { type: 'text', value: def.asset.light });
-    darkIn = h('input', { type: 'text', value: def.asset.dark });
-    lightField = field('Светлые клетки', lightIn);
-    darkField = field('Тёмные клетки', darkIn);
+  const rarSel = h('select', { name: 'rarity-' + slot });
+  for (const r of RARITIES) {
+    rarSel.appendChild(h('option', { value: r }, RARITY_RU[r] ?? r));
+  }
+  rarSel.value = DEFAULT_RARITY[pt];
+
+  const valIn = h('input', { type: 'number', name: 'value-' + slot, min: 1, value: RARITY_VALUE[DEFAULT_RARITY[pt]] });
+  rarSel.addEventListener('change', () => {
+    valIn.value = String(RARITY_VALUE[rarSel.value]);
+  });
+
+  const picker = imagePicker('piece', null);
+  const extPickers = exteriorPickers('piece', null);
+  const upIn = h('input', { type: 'checkbox', name: 'target-' + slot, checked: true });
+
+  const tr = h('tr', {},
+    h('td', {}, SLOT_RU[slot]),
+    h('td', {}, rarSel),
+    h('td', {}, valIn),
+    h('td', {}, picker.el),
+    ...EXTERIORS.map((ext) => h('td', {}, extPickers[ext].el)),
+    h('td', {}, upIn),
+  );
+
+  return { slot, tr, rarSel, valIn, picker, extPickers, upIn };
+}
+
+async function deleteCollection(root, d, c) {
+  const ok = await confirmModal(
+    'Удалить коллекцию',
+    'Удалить коллекцию «' + c.name + '»? Её скины будут удалены безвозвратно.',
+    'Удалить', 'danger');
+  if (!ok) return;
+  try {
+    await api('DELETE', '/admin/collections/' + encodeURIComponent(c.id));
+    toast('Готово', 'success');
+    await renderDetail(root, d.id);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// ---------- доски ----------
+
+function boardsSection(root, d) {
+  const section = h('div', { class: 'admin-section' }, h('h3', { class: 'card-title' }, 'Доски'));
+
+  if (!d.boards.length) {
+    section.appendChild(h('p', { class: 'admin-muted' }, 'Досок нет.'));
   } else {
-    colorIn = h('input', { type: 'text', value: def.asset.color });
-    colorField = field('Цвет фигуры', colorIn);
+    const tbody = h('tbody');
+    for (const def of d.boards) {
+      const tds = [
+        h('td', {}, skinPreview(def)),
+        h('td', { class: 'mono' }, def.code),
+        h('td', {}, def.name),
+        h('td', {}, RARITY_RU[def.rarity] ?? def.rarity),
+        h('td', { class: 'mono' }, fmtCrystals(def.value)),
+        h('td', {},
+          h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: () => openEditModal(root, d, def) }, 'Изменить')),
+      ];
+      if (d.status === 'draft') {
+        tds.push(h('td', {},
+          h('button', { type: 'button', class: 'btn btn-danger btn-sm', onClick: () => deleteBoard(root, d, def) }, 'Удалить')));
+      }
+      tbody.appendChild(h('tr', {}, ...tds));
+    }
+
+    const headCells = [
+      h('th', {}, 'Превью'),
+      h('th', {}, 'Код'),
+      h('th', {}, 'Название'),
+      h('th', {}, 'Редкость'),
+      h('th', {}, 'Ценность'),
+      h('th', {}, ''),
+    ];
+    if (d.status === 'draft') headCells.push(h('th', {}, ''));
+
+    section.appendChild(h('table', { class: 'admin-table' },
+      h('thead', {}, h('tr', {}, ...headCells)),
+      tbody,
+    ));
   }
 
+  if (d.status === 'draft') {
+    section.appendChild(h('div', { class: 'card admin-section' },
+      h('h3', { class: 'card-title' }, 'Новая доска'),
+      createBoardForm(root, d),
+    ));
+  }
+
+  return section;
+}
+
+function createBoardForm(root, d) {
+  const codeIn = h('input', { type: 'text', name: 'code', required: true });
+  const nameIn = h('input', { type: 'text', name: 'name', required: true });
+  const rarSel = h('select', { name: 'rarity' });
+  for (const r of RARITIES) {
+    rarSel.appendChild(h('option', { value: r }, RARITY_RU[r] ?? r));
+  }
+  rarSel.value = 'common';
+  const valIn = h('input', { type: 'number', name: 'value', min: 1, value: RARITY_VALUE[rarSel.value] });
+  rarSel.addEventListener('change', () => {
+    valIn.value = String(RARITY_VALUE[rarSel.value]);
+  });
+  const picker = imagePicker('board', null);
+  const extPickers = exteriorPickers('board', null);
+  const upIn = h('input', { type: 'checkbox', name: 'target', checked: true });
+
+  const form = h('form', { class: 'admin-form' },
+    field('Код', codeIn),
+    field('Название', nameIn),
+    field('Редкость', rarSel),
+    field('Ценность', valIn),
+    field('Картинка 1088×1088', picker.el),
+    ...EXTERIORS.map((ext) => field('Картинка: ' + EXTERIOR_RU[ext], extPickers[ext].el)),
+    field('Цель апгрейда', upIn),
+    h('div', { class: 'admin-row' },
+      h('button', { type: 'submit', class: 'btn btn-gold' }, 'Создать')),
+  );
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const value = Number(valIn.value);
+    if (!Number.isInteger(value) || value < 1) {
+      toast('Ценность должна быть целым числом ≥ 1', 'error');
+      return;
+    }
+    const asset = buildAsset(picker, extPickers);
+    if (asset === null) {
+      toast('Загрузите основную картинку и картинки всех качеств', 'error');
+      return;
+    }
+    try {
+      await api('POST', '/admin/sets/' + encodeURIComponent(d.id) + '/boards', {
+        code: codeIn.value.trim(),
+        name: nameIn.value.trim(),
+        rarity: rarSel.value,
+        value,
+        asset,
+        is_upgrade_target: upIn.checked,
+      });
+      toast('Готово', 'success');
+      await renderDetail(root, d.id);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+
+  return form;
+}
+
+async function deleteBoard(root, d, def) {
+  const ok = await confirmModal(
+    'Удалить доску',
+    'Удалить доску «' + def.name + '»? Действие необратимо.',
+    'Удалить', 'danger');
+  if (!ok) return;
+  try {
+    await api('DELETE', '/admin/item-defs/' + encodeURIComponent(def.id));
+    toast('Готово', 'success');
+    await renderDetail(root, d.id);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// ---------- скины ----------
+
+function openEditModal(root, d, def) {
+  const isBoard = def.kind === 'board';
+  const nameIn = h('input', { type: 'text', value: def.name });
+  const valIn = h('input', { type: 'number', min: 1, value: def.value });
   const upIn = h('input', { type: 'checkbox', checked: def.is_upgrade_target });
+
+  const picker = imagePicker(def.kind, def.asset.image);
+  const extPickers = exteriorPickers(def.kind, def.asset.exteriors);
 
   let rarField = null;
   let rarSel = null;
@@ -365,9 +560,8 @@ function openEditModal(root, d, def) {
   const body = h('div', { class: 'admin-form' },
     field('Название', nameIn),
     field('Ценность', valIn),
-    colorField,
-    lightField,
-    darkField,
+    field(isBoard ? 'Картинка 1088×1088' : 'Картинка 128×128', picker.el),
+    ...EXTERIORS.map((ext) => field('Картинка: ' + EXTERIOR_RU[ext], extPickers[ext].el)),
     field('Цель апгрейда', upIn),
     rarField,
   );
@@ -382,7 +576,7 @@ function openEditModal(root, d, def) {
       {
         label: 'Сохранить',
         kind: 'gold',
-        onClick: () => {
+        onClick: async () => {
           const name = nameIn.value.trim();
           const value = Number(valIn.value);
           if (!name) {
@@ -393,60 +587,35 @@ function openEditModal(root, d, def) {
             toast('Ценность должна быть целым числом ≥ 1', 'error');
             return false;
           }
-          saveItemDef(root, d, def, { nameIn, valIn, colorIn, lightIn, darkIn, upIn, rarSel });
+          const asset = buildAsset(picker, extPickers);
+          if (asset === null) {
+            toast('Загрузите основную картинку и картинки всех качеств', 'error');
+            return false;
+          }
+          try {
+            await saveItemDef(d, def, { name, value, upIn, rarSel, asset });
+            toast('Готово', 'success');
+            await renderDetail(root, d.id);
+            return true;
+          } catch (e) {
+            toast(e.message, 'error');
+            return false;
+          }
         },
       },
     ],
   });
 }
 
-async function saveItemDef(root, d, def, inputs) {
-  const body = {};
-  const name = inputs.nameIn.value.trim();
-  const value = Number(inputs.valIn.value);
-  if (name !== def.name) body.name = name;
-  if (value !== def.value) body.value = value;
-
-  if (def.kind === 'board_skin') {
-    body.asset = {
-      type: 'stub',
-      light: inputs.lightIn.value.trim() || def.asset.light,
-      dark: inputs.darkIn.value.trim() || def.asset.dark,
-    };
-  } else {
-    body.asset = {
-      type: 'stub',
-      color: inputs.colorIn.value.trim() || def.asset.color,
-    };
+async function saveItemDef(d, def, { name, value, upIn, rarSel, asset }) {
+  const body = {
+    name,
+    value,
+    is_upgrade_target: upIn.checked,
+    asset,
+  };
+  if (d.status === 'draft' && rarSel) {
+    body.rarity = rarSel.value;
   }
-
-  if (inputs.upIn.checked !== def.is_upgrade_target) {
-    body.is_upgrade_target = inputs.upIn.checked;
-  }
-  if (d.status === 'draft' && inputs.rarSel && inputs.rarSel.value !== def.rarity) {
-    body.rarity = inputs.rarSel.value;
-  }
-
-  try {
-    await api('PATCH', '/admin/item-defs/' + encodeURIComponent(def.id), body);
-    toast('Скин обновлён', 'success');
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-  await renderDetail(root, d.id);
-}
-
-async function deleteItemDef(root, d, def) {
-  const ok = await confirmModal(
-    'Удалить скин',
-    'Удалить скин «' + def.name + '» (' + def.code + ')?',
-    'Удалить', 'danger');
-  if (!ok) return;
-  try {
-    await api('DELETE', '/admin/item-defs/' + encodeURIComponent(def.id));
-    toast('Скин удалён', 'success');
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-  await renderDetail(root, d.id);
+  await api('PATCH', '/admin/item-defs/' + encodeURIComponent(def.id), body);
 }

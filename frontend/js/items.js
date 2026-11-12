@@ -1,5 +1,5 @@
 import { h } from './dom.js';
-import { glyph } from './pieces.js';
+import { skinUrl } from './pieces.js';
 import { fmtCrystals } from './format.js';
 
 export const RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
@@ -12,23 +12,42 @@ export const EXTERIOR_RU = {
   WW: 'Поношенное', BS: 'Закалённое в боях',
 };
 export const SLOT_RU = {
-  P: 'Пешка', N: 'Конь', B: 'Слон', R: 'Ладья', Q: 'Ферзь', K: 'Король', board: 'Доска',
+  wP: 'Белая пешка', wN: 'Белый конь', wB: 'Белый слон', wR: 'Белая ладья', wQ: 'Белый ферзь', wK: 'Белый король',
+  bP: 'Чёрная пешка', bN: 'Чёрный конь', bB: 'Чёрный слон', bR: 'Чёрная ладья', bQ: 'Чёрный ферзь', bK: 'Чёрный король',
+  board: 'Доска',
 };
+export const WHITE_SLOTS = ['wP', 'wN', 'wB', 'wR', 'wQ', 'wK'];
+export const BLACK_SLOTS = ['bP', 'bN', 'bB', 'bR', 'bQ', 'bK'];
+export const LOADOUT_SLOTS = [...WHITE_SLOTS, ...BLACK_SLOTS, 'board'];
+export const SIDE_RU = { w: 'Белые', b: 'Чёрные' };
+export const CASE_KIND_RU = { set: 'Набор', collection: 'Коллекция', custom: 'Особый' };
 
-export function skinPreview(def) {
-  if (def.kind === 'board_skin') {
-    const grid = h('div', { class: 'skin-board' });
-    for (let i = 0; i < 16; i++) {
-      const cellClass = (Math.floor(i / 4) + i) % 2 === 1 ? 'cell dark' : 'cell light';
-      grid.appendChild(h('span', { class: cellClass }));
-    }
-    grid.style.setProperty('--light', def.asset.light);
-    grid.style.setProperty('--dark', def.asset.dark);
-    return h('div', { class: 'skin-preview' }, grid);
-  }
-  const glyphSpan = h('span', { class: 'skin-glyph' }, glyph(def.piece_type, 'white'));
-  glyphSpan.style.setProperty('--piece-color', def.asset.color);
-  return h('div', { class: 'skin-preview' }, glyphSpan);
+function setLine(def) {
+  if (!def.set) return null;
+  return def.collection ? def.set.name + ' · ' + def.collection.name : def.set.name;
+}
+
+// «Коллекция | Фигура» — по строке на часть, каждая обрезается многоточием:
+// высота карточки не зависит от длины названия.
+function nameNode(name) {
+  const cut = name.indexOf(' | ');
+  const parts = cut < 0 ? [name] : [name.slice(0, cut), name.slice(cut + 3)];
+  return h('div', { class: 'item-name', title: name }, ...parts.map((part) => h('span', null, part)));
+}
+
+export function skinPreview(def, image = null) {
+  const url = image ? skinUrl({ type: 'png', image }) : skinUrl(def.asset);
+  if (url === null) return h('div', { class: 'skin-preview' });
+  const img = h('img', { class: def.kind === 'board' ? 'skin-img skin-img-board' : 'skin-img' });
+  img.alt = '';
+  img.draggable = false;
+  img.loading = 'lazy';
+  img.src = url;
+  return h('div', { class: 'skin-preview' }, img);
+}
+
+export function casePreview(caseRef) {
+  return h('div', { class: 'skin-preview case-preview' }, h('span', { class: 'case-glyph' }, '▣'));
 }
 
 export function itemCard(def, opts = {}) {
@@ -36,8 +55,9 @@ export function itemCard(def, opts = {}) {
   if (opts.selected === true) classes.push('selected');
   if (opts.onClick) classes.push('clickable');
   const root = h('div', { class: classes.join(' ') },
-    skinPreview(def),
-    h('div', { class: 'item-name' }, def.name),
+    skinPreview(def, opts.image ?? null),
+    nameNode(def.name),
+    setLine(def) ? h('div', { class: 'item-set' }, setLine(def)) : null,
     h('div', { class: 'item-meta' },
       h('span', { class: 'item-rarity' }, RARITY_RU[def.rarity]),
       h('span', { class: 'item-value mono' }, fmtCrystals(def.value))),
@@ -51,4 +71,28 @@ export function itemCard(def, opts = {}) {
   }
   if (opts.extra) root.appendChild(opts.extra);
   return root;
+}
+
+export function invItemCard(item, opts = {}) {
+  if (item.kind === 'case') {
+    const card = h('div', { class: 'item-card r-case' + (opts.onClick ? ' clickable' : '') },
+      casePreview(item.case),
+      nameNode(item.case.name),
+      h('div', { class: 'item-meta' }, h('span', { class: 'item-rarity' }, 'Кейс')),
+      opts.badge ? h('span', { class: 'item-badge' }, opts.badge) : null,
+    );
+    if (opts.onClick) {
+      card.addEventListener('click', opts.onClick);
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', '0');
+    }
+    if (opts.extra) card.appendChild(opts.extra);
+    return card;
+  }
+  return itemCard(item.def, {
+    ...opts,
+    exterior: item.exterior,
+    image: item.image,
+    badge: opts.badge ?? (item.bound ? 'Базовый' : null),
+  });
 }

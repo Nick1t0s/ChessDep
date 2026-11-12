@@ -1,15 +1,34 @@
 import math
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.errors import AppError
-from app.models import Collection, InventoryItem, ItemDef, ItemTransfer, MarketListing, User
-from app.schemas.market import DefMarketOut, DefSaleOut, ListingItemOut, ListingOut, MarketStatsOut
+from app.models import (
+    Case,
+    Collection,
+    InventoryItem,
+    ItemDef,
+    ItemSet,
+    ItemTransfer,
+    MarketListing,
+    User,
+)
+from app.schemas.market import (
+    CaseMarketOut,
+    DefMarketOut,
+    DefSaleOut,
+    ListingItemOut,
+    ListingOut,
+    MarketStatsOut,
+)
 from app.services.economy import apply_delta, lock_user
 from app.services.items import (
+    case_ref_out,
     check_trade_hold,
+    check_transferable,
     item_def_out,
     items_out,
     lock_item_any,
@@ -24,27 +43,30 @@ _LISTING_NOT_ACTIVE = AppError(400, "LISTING_NOT_ACTIVE", "Лот уже не а
 _CANNOT_BUY_OWN = AppError(400, "CANNOT_BUY_OWN", "Нельзя купить свой лот")
 _LISTING_LIMIT = AppError(400, "LISTING_LIMIT", "Достигнут лимит активных лотов")
 _DEF_NOT_FOUND = AppError(404, "ITEM_DEF_NOT_FOUND", "Скин не найден")
+_CASE_NOT_FOUND = AppError(404, "CASE_NOT_FOUND", "Кейс не найден")
 
 _SORTS = ("price_asc", "price_desc", "new")
 
 
-async def load_listing_def(db: AsyncSession, def_id: int) -> tuple[ItemDef, Collection]:
+async def load_listing_def(db: AsyncSession, def_id: int) -> tuple[ItemDef, ItemSet, Collection | None]:
     row = (
         await db.execute(
-            select(ItemDef, Collection)
-            .join(Collection, Collection.id == ItemDef.collection_id)
+            select(ItemDef, ItemSet, Collection)
+            .join(ItemSet, ItemSet.id == ItemDef.set_id)
+            .outerjoin(Collection, Collection.id == ItemDef.collection_id)
             .where(ItemDef.id == def_id)
         )
     ).first()
     if row is None or row[1].status == "draft":
         raise _DEF_NOT_FOUND
-    return row[0], row[1]
+    return row[0], row[1], row[2]
 
 
 async def create_listing(db: AsyncSession, user: User, item_id: int, price: int, now) -> MarketListing:
     # 1. Предмет владельца.
     items = await lock_items(db, user.id, [item_id])
     item = items[0]
+    check_transferable(item)
     # 2. Trade hold.
     hold = int(await get_setting(db, "trade_hold_hours"))
     check_trade_hold(item, hold, now)
@@ -64,6 +86,7 @@ async def create_listing(db: AsyncSession, user: User, item_id: int, price: int,
     listing = MarketListing(
         item_id=item.id,
         item_def_id=item.item_def_id,
+        case_id=item.case_id,
         seller_id=user.id,
         price=price,
         status="active",
@@ -132,6 +155,7 @@ async def buy_listing(db: AsyncSession, buyer: User, listing_id: int, now) -> Ma
     listing.buyer_id = buyer.id
     listing.fee = fee
     listing.closed_at = now
+    listing.seller_seen = False
     db.add(
         ItemTransfer(
             item_id=item.id,
@@ -162,26 +186,38 @@ async def buy_listing(db: AsyncSession, buyer: User, listing_id: int, now) -> Ma
 def _apply_filters(
     query,
     *,
-    collection: str | None,
-    kind: str | None,
-    piece_type: str | None,
-    rarity: str | None,
-    def_id: int | None,
+    kind: str | None = None,
+    set_code: str | None = None,
+    collection: str | None = None,
+    side: str | None = None,
+    piece_type: str | None = None,
+    rarity: str | None = None,
+    def_id: int | None = None,
+    case_id: int | None = None,
 ):
     base = (
-        query.join(ItemDef, ItemDef.id == MarketListing.item_def_id)
-        .join(Collection, Collection.id == ItemDef.collection_id)
+        query.outerjoin(ItemDef, ItemDef.id == MarketListing.item_def_id)
+        .outerjoin(Collection, Collection.id == ItemDef.collection_id)
+        .outerjoin(ItemSet, ItemSet.id == ItemDef.set_id)
     )
+    if kind == "case":
+        base = base.where(MarketListing.case_id.is_not(None))
+    elif kind in ("piece", "board"):
+        base = base.where(ItemDef.kind == kind)
+    if set_code is not None:
+        base = base.where(ItemSet.code == set_code)
     if collection is not None:
         base = base.where(Collection.code == collection)
-    if kind is not None:
-        base = base.where(ItemDef.kind == kind)
+    if side is not None:
+        base = base.where(ItemDef.side == side)
     if piece_type is not None:
         base = base.where(ItemDef.piece_type == piece_type)
     if rarity is not None:
         base = base.where(ItemDef.rarity == rarity)
     if def_id is not None:
         base = base.where(MarketListing.item_def_id == def_id)
+    if case_id is not None:
+        base = base.where(MarketListing.case_id == case_id)
     return base
 
 
@@ -229,9 +265,12 @@ async def _out_listings(
             index += 1
             paired[listing.id] = ListingItemOut(
                 id=item_out.id,
+                kind=item_out.kind,
                 item_def=item_out.item_def,
+                case=item_out.case,
                 wear=item_out.wear,
                 exterior=item_out.exterior,
+                image=item_out.image,
             )
     result = []
     for listing, seller_login in rows:
@@ -254,33 +293,38 @@ async def browse(
     db: AsyncSession,
     viewer_id: int | None,
     *,
-    collection: str | None = None,
     kind: str | None = None,
+    set_code: str | None = None,
+    collection: str | None = None,
+    side: str | None = None,
     piece_type: str | None = None,
     rarity: str | None = None,
     def_id: int | None = None,
+    case_id: int | None = None,
     sort: str = "new",
     page: int = 1,
     limit: int = 20,
 ) -> tuple[list[ListingOut], int]:
     if sort not in _SORTS:
         raise AppError(422, "VALIDATION_ERROR", "Некорректная сортировка")
-    filtered = _apply_filters(
-        select(MarketListing, User.login).join(User, User.id == MarketListing.seller_id),
-        collection=collection,
+    filter_kwargs = dict(
         kind=kind,
+        set_code=set_code,
+        collection=collection,
+        side=side,
         piece_type=piece_type,
         rarity=rarity,
         def_id=def_id,
+        case_id=case_id,
+    )
+    filtered = _apply_filters(
+        select(MarketListing, User.login).join(User, User.id == MarketListing.seller_id),
+        **filter_kwargs,
     ).where(MarketListing.status == "active")
 
     count_query = _apply_filters(
         select(func.count()).select_from(MarketListing),
-        collection=collection,
-        kind=kind,
-        piece_type=piece_type,
-        rarity=rarity,
-        def_id=def_id,
+        **filter_kwargs,
     ).where(MarketListing.status == "active")
     total = await db.scalar(count_query) or 0
 
@@ -293,7 +337,7 @@ async def browse(
 
 
 async def def_market(db: AsyncSession, def_id: int, viewer_id: int | None) -> DefMarketOut:
-    item_def, collection = await load_listing_def(db, def_id)
+    item_def, item_set, collection = await load_listing_def(db, def_id)
     active_rows = (
         await db.execute(
             select(MarketListing, User.login)
@@ -329,7 +373,60 @@ async def def_market(db: AsyncSession, def_id: int, viewer_id: int | None) -> De
         )
     ).all()
     return DefMarketOut(
-        item_def=item_def_out(item_def, collection),
+        item_def=item_def_out(item_def, item_set, collection),
+        stats=MarketStatsOut(
+            active_count=active_count or 0,
+            min_price=min_price,
+            last_sale_price=last_sale_price,
+        ),
+        listings=listings,
+        sales=[
+            DefSaleOut(price=listing.price, closed_at=listing.closed_at)
+            for listing in sales_rows
+        ],
+    )
+
+
+async def case_market(db: AsyncSession, case_id: int, viewer_id: int | None) -> CaseMarketOut:
+    case = await db.get(Case, case_id)
+    if case is None or case.status == "draft":
+        raise _CASE_NOT_FOUND
+    active_rows = (
+        await db.execute(
+            select(MarketListing, User.login)
+            .join(User, User.id == MarketListing.seller_id)
+            .where(MarketListing.case_id == case_id, MarketListing.status == "active")
+            .order_by(MarketListing.price, MarketListing.id)
+            .limit(50)
+        )
+    ).all()
+    listings = await _out_listings(db, [tuple(row) for row in active_rows], viewer_id)
+    active_count = await db.scalar(
+        select(func.count())
+        .select_from(MarketListing)
+        .where(MarketListing.case_id == case_id, MarketListing.status == "active")
+    )
+    min_price = await db.scalar(
+        select(func.min(MarketListing.price)).where(
+            MarketListing.case_id == case_id, MarketListing.status == "active"
+        )
+    )
+    last_sale_price = await db.scalar(
+        select(MarketListing.price)
+        .where(MarketListing.case_id == case_id, MarketListing.status == "sold")
+        .order_by(MarketListing.closed_at.desc(), MarketListing.id.desc())
+        .limit(1)
+    )
+    sales_rows = (
+        await db.scalars(
+            select(MarketListing)
+            .where(MarketListing.case_id == case_id, MarketListing.status == "sold")
+            .order_by(MarketListing.closed_at.desc(), MarketListing.id.desc())
+            .limit(50)
+        )
+    ).all()
+    return CaseMarketOut(
+        case=case_ref_out(case),
         stats=MarketStatsOut(
             active_count=active_count or 0,
             min_price=min_price,
@@ -355,3 +452,42 @@ async def my_listings(
         query = query.where(MarketListing.status == status)
     rows = (await db.execute(query.order_by(MarketListing.id.desc()))).all()
     return await _out_listings(db, [tuple(row) for row in rows], user.id)
+
+
+async def take_unseen_sales(db: AsyncSession, user: User) -> list[dict]:
+    """Проданные лоты продавца, о которых он ещё не знает; помечает их увиденными."""
+    ids = list(
+        await db.scalars(
+            update(MarketListing)
+            .where(
+                MarketListing.seller_id == user.id,
+                MarketListing.status == "sold",
+                MarketListing.seller_seen.is_(False),
+            )
+            .values(seller_seen=True)
+            .returning(MarketListing.id)
+            .execution_options(synchronize_session=False)
+        )
+    )
+    if not ids:
+        return []
+    buyer = aliased(User)
+    rows = await db.execute(
+        select(MarketListing, ItemDef.name, Case.name, buyer.login)
+        .outerjoin(ItemDef, ItemDef.id == MarketListing.item_def_id)
+        .outerjoin(Case, Case.id == MarketListing.case_id)
+        .join(buyer, buyer.id == MarketListing.buyer_id)
+        .where(MarketListing.id.in_(ids))
+        .order_by(MarketListing.closed_at, MarketListing.id)
+    )
+    return [
+        {
+            "listing_id": listing.id,
+            "name": def_name if def_name is not None else case_name,
+            "price": listing.price,
+            "payout": listing.price - (listing.fee or 0),
+            "buyer_login": buyer_login,
+            "closed_at": listing.closed_at,
+        }
+        for listing, def_name, case_name, buyer_login in rows
+    ]

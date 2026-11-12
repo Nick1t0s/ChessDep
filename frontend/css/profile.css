@@ -8,3 +8,7 @@
 .pf-table td.pos { color: #4ade80; }
 .pf-table td.neg { color: #ff5470; }
 .profile .table-wrap { overflow-x: auto; }
+@media (max-width: 480px) {
+  .pf-table { font-size: 12px; }
+  .pf-table th, .pf-table td { padding: 6px 4px; }
+}

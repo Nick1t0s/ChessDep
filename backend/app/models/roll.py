@@ -22,7 +22,7 @@ from app.models.base import Base
 class Roll(Base):
     __tablename__ = "rolls"
     __table_args__ = (
-        CheckConstraint("kind IN ('dep', 'case_open', 'upgrade')", name="kind_whitelist"),
+        CheckConstraint("kind IN ('dep', 'case_open', 'upgrade', 'daily_reward')", name="kind_whitelist"),
         Index("ix_rolls_user_id_created_at", "user_id", text("created_at DESC")),
     )
 

@@ -14,22 +14,35 @@ from app.chess_engine import position_key
 from app.config import settings
 from app.db import SessionLocal, engine
 from app.main import app
-from app.models import Case, CaseDrop, Collection, Game, ItemDef, Setting, User
+from app.models import (
+    Case,
+    CaseDrop,
+    Collection,
+    DailyRewardPool,
+    Game,
+    ItemDef,
+    ItemSet,
+    Setting,
+    SkinImage,
+    User,
+)
 from app.redis import redis_client as redis
-from app.seed_data import genesis_rows
+from app.seed_data import seed_rows
+from app.seed_skins import seed_image_rows
 from app.services import rolls
 import app.core.clock as clock
-from app.services.items import create_item
+from app.services.items import create_case_item, create_item
 from app.services.settings import DEFAULTS
 
 _TRUNCATE_SQL = text(
     "TRUNCATE users, sessions, ledger, admin_audit, games, game_events, "
     "active_players, invites, rolls, collections, item_defs, inventory_items, "
-    "loadouts, cases, case_drops, market_listings, item_transfers, game_messages "
+    "loadouts, cases, case_drops, market_listings, item_transfers, game_messages, "
+    "item_sets, daily_reward_pool, skin_images "
     "RESTART IDENTITY CASCADE"
 )
 
-_SEED_SEQUENCE_TABLES = ("collections", "item_defs", "cases")
+_SEED_SEQUENCE_TABLES = ("item_sets", "collections", "item_defs", "cases")
 
 
 async def _seed_settings(db: AsyncSession) -> None:
@@ -41,11 +54,14 @@ async def _seed_settings(db: AsyncSession) -> None:
 
 
 async def _seed_genesis(db: AsyncSession) -> None:
-    rows = genesis_rows()
+    await db.execute(insert(SkinImage).values(seed_image_rows()))
+    rows = seed_rows()
+    await db.execute(insert(ItemSet).values(rows["item_sets"]))
     await db.execute(insert(Collection).values(rows["collections"]))
     await db.execute(insert(ItemDef).values(rows["item_defs"]))
     await db.execute(insert(Case).values(rows["cases"]))
     await db.execute(insert(CaseDrop).values(rows["case_drops"]))
+    await db.execute(insert(DailyRewardPool).values(rows["daily_reward_pool"]))
     # После вставки с явными id сдвинуть последовательности.
     for table in _SEED_SEQUENCE_TABLES:
         await db.execute(text(
@@ -227,6 +243,26 @@ async def give_items(user_login: str, codes: list[str]) -> list[int]:
         return item_ids
     finally:
         rolls.set_rng(prev)
+
+
+async def give_cases(user_login: str, case_ids: list[int]) -> list[int]:
+    """Создать предметы-кейсы (source=admin_grant) в отдельной сессии."""
+    async with SessionLocal() as db:
+        async with db.begin():
+            user = (await db.scalars(select(User).where(User.login == user_login))).one()
+            now = clock.now()
+            item_ids: list[int] = []
+            for case_id in case_ids:
+                item = await create_case_item(
+                    db,
+                    user_id=user.id,
+                    case_id=case_id,
+                    source="admin_grant",
+                    source_ref="test",
+                    now=now,
+                )
+                item_ids.append(item.id)
+    return item_ids
 
 
 async def start_game(

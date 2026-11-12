@@ -21,6 +21,12 @@ form.append(
 const errorNote = h('p', { class: 'error-note' });
 const note = h('p', { class: 'auth-note' }, 'Уже есть аккаунт? ', h('a', { href: '/login.html' }, 'Вход'));
 
+// Старая ошибка сервера уходит, как только пользователь правит форму.
+form.addEventListener('input', () => {
+  errorNote.textContent = '';
+  errorNote.classList.remove('show');
+});
+
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   errorNote.textContent = '';

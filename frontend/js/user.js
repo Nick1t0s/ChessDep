@@ -13,14 +13,20 @@ document.body.appendChild(main);
 const login = new URLSearchParams(location.search).get('login');
 
 if (login === null || !/^[A-Za-z0-9_-]{3,16}$/.test(login)) {
-  main.appendChild(h('p', {}, 'Некорректная ссылка'));
+  main.appendChild(h('div', { class: 'card' },
+    h('p', {}, 'Некорректная ссылка'),
+    h('a', { href: '/index.html', class: 'btn btn-gold' }, 'В лобби'),
+  ));
 } else {
   let user;
   try {
     user = await api('GET', '/users/' + encodeURIComponent(login));
   } catch (e) {
     if (e.status === 404) {
-      main.appendChild(h('p', {}, 'Игрок не найден'));
+      main.appendChild(h('div', { class: 'card' },
+        h('h3', { class: 'card-title' }, 'Игрок не найден'),
+        h('a', { class: 'btn btn-ghost', href: '/leaderboard.html' }, 'К таблице лидеров'),
+      ));
     } else {
       toast(e.message, 'error');
     }

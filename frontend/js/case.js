@@ -4,69 +4,106 @@ import { initLayout, setBalance } from './layout.js';
 import { toast } from './toast.js';
 import { openModal } from './modal.js';
 import { itemCard } from './items.js';
+import { playSound } from './sound.js';
 import { fmtCrystals } from './format.js';
 
-const me = await initLayout({ auth: 'required', active: 'cases' });
+await initLayout({ auth: 'optional', active: 'cases' });
 
 const main = h('main', { class: 'wrap-wide case-page' });
 document.body.appendChild(main);
 
-const id = new URLSearchParams(location.search).get('id') ?? '';
-if (!/^\d+$/.test(id)) {
-  main.appendChild(h('p', {}, 'Некорректная ссылка'));
+const params = new URLSearchParams(location.search);
+const idParam = params.get('id');
+const itemParam = params.get('item');
+
+if (idParam !== null && /^\d+$/.test(idParam)) {
+  await initDetail(idParam);
+} else if (itemParam !== null && /^\d+$/.test(itemParam)) {
+  await initOpen(itemParam);
+} else if (idParam !== null || itemParam !== null) {
+  main.appendChild(h('div', { class: 'card' },
+    h('p', {}, 'Некорректная ссылка'),
+    h('a', { href: '/index.html', class: 'btn btn-gold' }, 'В лобби'),
+  ));
 } else {
-  initPage();
+  main.appendChild(h('a', { href: '/cases.html', class: 'btn btn-ghost' }, 'В магазин'));
 }
 
-async function initPage() {
-  let loot = null;
+function caseCaption(c) {
+  if (c.kind === 'set' && c.set) return 'Набор ' + c.set.name;
+  if (c.kind === 'collection' && c.collection) return 'Коллекция ' + c.collection.name;
+  return null;
+}
+
+function detailHead(d) {
+  const head = h('div', { class: 'card case-detail-head' },
+    h('h1', { class: 'page-title' }, d.name),
+    caseCaption(d) !== null ? h('p', { class: 'case-collection' }, caseCaption(d)) : null,
+    h('p', { class: 'case-price mono' }, fmtCrystals(d.price)),
+  );
+  if (d.stock_left !== null) {
+    head.appendChild(h('p', { class: 'case-stock' }, 'Осталось ' + d.stock_left));
+  }
+  if (d.sale_ends_at !== null) {
+    head.appendChild(h('p', { class: 'case-sale' }, 'До ' + new Date(d.sale_ends_at).toLocaleString('ru-RU')));
+  }
+  if (!d.on_sale_now) {
+    head.appendChild(h('p', {}, 'Сейчас не продаётся'));
+  }
+  if (d.on_sale_now) {
+    const buyBtn = h('button', { type: 'button', class: 'btn btn-gold' }, 'Купить');
+    buyBtn.addEventListener('click', () => buyDetail(String(d.id), buyBtn));
+    head.appendChild(buyBtn);
+  }
+  return head;
+}
+
+function contentsCard(d) {
+  const grid = h('div', { class: 'item-grid' });
+  for (const drop of d.drops) {
+    grid.appendChild(itemCard(drop.def, { badge: drop.chance_text }));
+  }
+  return h('div', { class: 'card' },
+    h('h3', { class: 'card-title' }, 'Содержимое'),
+    grid,
+  );
+}
+
+async function initDetail(id) {
+  clear(main);
+  let d = null;
   try {
-    loot = await api('GET', '/cases/' + id);
+    d = await api('GET', '/cases/' + id);
   } catch (e) {
     toast(e.message, 'error');
     return;
   }
+  main.append(detailHead(d), contentsCard(d));
+}
 
-  const title = h('h1', { class: 'page-title' }, loot.name);
+async function buyDetail(id, btn) {
+  btn.disabled = true;
+  try {
+    await api('POST', '/cases/' + id + '/buy');
+    toast('Кейс в инвентаре', 'success');
+    const fresh = await api('GET', '/me');
+    setBalance(fresh.balance);
+    await initDetail(id);
+  } catch (e) {
+    toast(e.message, 'error');
+    btn.disabled = false;
+  }
+}
 
+function stripWindow() {
   const windowEl = h('div', { class: 'strip-window' },
     h('div', { class: 'strip-marker' }),
     h('div', { class: 'strip-track' }),
   );
-  const track = windowEl.querySelector('.strip-track');
-
-  const openBtn = h('button', { type: 'button', class: 'btn btn-gold' }, 'Открыть за ' + fmtCrystals(loot.price));
-  const stripCard = h('div', { class: 'card' }, windowEl, openBtn);
-
-  const contentsGrid = h('div', { class: 'item-grid' });
-  const contentsCard = h('div', { class: 'card' },
-    h('h3', { class: 'card-title' }, 'Содержимое'),
-    contentsGrid,
-  );
-
-  main.append(title, stripCard, contentsCard);
-
-  for (const drop of loot.drops) {
-    track.appendChild(h('div', { class: 'strip-cell' }, itemCard(drop.def)));
-  }
-  for (const drop of loot.drops) {
-    contentsGrid.appendChild(itemCard(drop.def, { badge: drop.chance_text }));
-  }
-
-  openBtn.addEventListener('click', () => openCase(openBtn, windowEl, track));
+  return [windowEl, windowEl.querySelector('.strip-track')];
 }
 
-async function openCase(openBtn, windowEl, track) {
-  openBtn.disabled = true;
-  let res = null;
-  try {
-    res = await api('POST', '/cases/' + id + '/open');
-  } catch (e) {
-    toast(e.message, 'error');
-    openBtn.disabled = false;
-    return;
-  }
-
+function playStrip(windowEl, track, res) {
   clear(track);
   for (const defId of res.strip) {
     track.appendChild(h('div', { class: 'strip-cell' }, itemCard(res.defs[String(defId)])));
@@ -81,27 +118,116 @@ async function openCase(openBtn, windowEl, track) {
   track.style.setProperty('transition', 'transform 5.5s cubic-bezier(.12,.8,.18,1)');
   track.style.setProperty('transform', 'translateX(' + String(-offset) + 'px)');
 
-  await new Promise((resolve) => {
+  // Щелчок, когда под маркер приезжает новая ячейка (ячейка с зазором — 132 px), как в CS.
+  const half = windowEl.clientWidth / 2;
+  let lastCell = null;
+  let raf = 0;
+  const step = () => {
+    const t = getComputedStyle(track).transform;
+    if (t !== 'none') {
+      const cell = Math.floor((half - new DOMMatrix(t).m41) / 132);
+      if (lastCell !== null && cell !== lastCell) playSound('tick', 0.5);
+      lastCell = cell;
+    }
+    raf = requestAnimationFrame(step);
+  };
+  raf = requestAnimationFrame(step);
+
+  return new Promise((resolve) => {
     let done = false;
     const finish = () => {
       if (done) return;
       done = true;
+      cancelAnimationFrame(raf);
       resolve();
     };
     track.addEventListener('transitionend', finish, { once: true });
     setTimeout(finish, 6000);
   });
+}
 
-  setBalance(res.balance);
+async function initOpen(itemId) {
+  clear(main);
+  let items = [];
+  try {
+    items = await api('GET', '/inventory?kind=case');
+  } catch (e) {
+    toast(e.message, 'error');
+    return;
+  }
+  const item = Array.isArray(items)
+    ? items.find((it) => String(it.id) === itemId && it.status === 'owned') ?? null
+    : null;
+  if (item === null) {
+    main.appendChild(h('p', {}, 'Кейс не найден'));
+    main.appendChild(h('a', { href: '/inventory.html', class: 'btn btn-ghost' }, 'В инвентарь'));
+    return;
+  }
+
+  let d = null;
+  try {
+    d = await api('GET', '/cases/' + String(item.case.id));
+  } catch (e) {
+    toast(e.message, 'error');
+    return;
+  }
+
+  const [windowEl, track] = stripWindow();
+  const openBtn = h('button', { type: 'button', class: 'btn btn-gold' }, 'Открыть');
+  const current = { id: String(item.id), caseId: item.case.id };
+  openBtn.addEventListener('click', () => openItemCase(current, openBtn, windowEl, track));
+
+  const stripCard = h('div', { class: 'card' }, windowEl, openBtn);
+
+  main.append(h('h1', { class: 'page-title' }, d.name), stripCard, contentsCard(d));
+
+  for (const drop of d.drops) {
+    track.appendChild(h('div', { class: 'strip-cell' }, itemCard(drop.def)));
+  }
+}
+
+// Неоткрытые кейсы того же вида из инвентаря (пусто — таких больше нет).
+async function nextCaseItems(caseId) {
+  try {
+    const items = await api('GET', '/inventory?kind=case');
+    return (items ?? []).filter((it) => it.case?.id === caseId && it.status === 'owned');
+  } catch {
+    return [];
+  }
+}
+
+async function openItemCase(current, openBtn, windowEl, track) {
+  openBtn.disabled = true;
+  let res = null;
+  try {
+    res = await api('POST', '/inventory/' + current.id + '/open');
+  } catch (e) {
+    toast(e.message, 'error');
+    openBtn.disabled = false;
+    return;
+  }
+
+  await playStrip(windowEl, track, res);
+  playSound('win');
+
   openModal({
     title: 'Выпало!',
     titleAnim: 'pop',
-    body: itemCard(res.item.def, { exterior: res.item.exterior }),
+    body: itemCard(res.item.def, { exterior: res.item.exterior, image: res.item.image }),
     actions: [
       { label: 'В инвентарь', kind: 'ghost', onClick: () => { location.href = '/inventory.html'; } },
-      { label: 'Ещё раз', kind: 'gold' },
+      { label: 'В магазин', kind: 'gold', onClick: () => { location.href = '/cases.html'; } },
     ],
   });
 
+  // Открытый кейс сгорел: кнопка переходит на следующий такой же, если он есть.
+  const rest = await nextCaseItems(current.caseId);
+  if (rest.length === 0) {
+    openBtn.textContent = 'Таких кейсов больше нет';
+    return;
+  }
+  current.id = String(rest[0].id);
+  history.replaceState(null, '', '/case.html?item=' + current.id);
+  openBtn.textContent = 'Открыть ещё (' + rest.length + ')';
   openBtn.disabled = false;
 }

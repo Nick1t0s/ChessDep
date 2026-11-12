@@ -4,13 +4,13 @@ import { initLayout, setBalance } from './layout.js';
 import { createBoard } from './board.js';
 import { connectGame } from './ws.js';
 import { playDep } from './dep-fx.js';
+import { playSound } from './sound.js';
 import { fmtClock, END_REASON_RU, PIECE_NAME_RU, DEP_REASON_RU } from './format.js';
-import { glyph, pieceColor } from './pieces.js';
+import { glyph, pieceNode } from './pieces.js';
 import { toast } from './toast.js';
 import { openModal, confirmModal } from './modal.js';
 import { createMoveList } from './game-moves.js';
 import { createChat } from './game-chat.js';
-import { createUserSocialControls } from './social-controls.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -34,7 +34,7 @@ async function main() {
 
   // ---- переменные партии ----
   let state = null;          // последнее применённое GameState
-  let mode = 'idle';         // idle | dep_piece | dep_target
+  let mode = 'idle';         // idle | dep_piece | dep_target | dep_confirm
   let selected = null;       // выбранная клетка
   let depOptions = null;
   let depPiece = null;
@@ -50,25 +50,6 @@ async function main() {
   let forbidden = false;
   let firstStateSeen = false;
   let viewing = null;        // просматриваемое событие (история ходов) или null
-
-  let rematchPollTimer = null;
-  let rematchInFlight = false;
-  let rematchDone = false;
-  let rematchExpiresAt = 0;
-  let pollInFlight = false;
-  let rematchBtnRef = null;
-  let rematchMsgRef = null;
-
-  window.addEventListener('pagehide', cleanupRematch);
-  window.addEventListener('beforeunload', cleanupRematch);
-
-  function cleanupRematch() {
-    if (rematchPollTimer !== null) {
-      clearInterval(rematchPollTimer);
-      rematchPollTimer = null;
-    }
-    pollInFlight = false;
-  }
 
   // ---- очередь событий: всё последовательно ----
   let chain = Promise.resolve();
@@ -92,22 +73,8 @@ async function main() {
   viewBannerBtn.addEventListener('click', () => exitView());
   const viewBanner = h('div', { class: 'view-banner', hidden: true }, viewBannerText, viewBannerBtn);
 
-  const checkBannerTitle = h('span', { class: 'check-banner-title' }, 'Вам шах');
-  const checkBannerHint = h('span', { class: 'check-banner-hint' }, 'Король под боем — защитите его или отступите');
-  const checkBanner = h('div', {
-    class: 'check-banner',
-    role: 'status',
-    'aria-live': 'polite',
-    hidden: true,
-  }, checkBannerTitle, checkBannerHint);
-
   const boardBox = h('div', { class: 'board-box' });
-  const boardApi = createBoard(boardBox, {
-    onSquareClick,
-    canDrag,
-    onDragStart,
-    onPieceDrop,
-  });
+  const boardApi = createBoard(boardBox, { onSquareClick });
 
   const drawBannerTitle = h('span', { class: 'banner-text' }, 'Соперник предлагает ничью');
   const drawAccept = h('button', { type: 'button', class: 'btn btn-gold btn-sm' }, 'Принять');
@@ -146,7 +113,7 @@ async function main() {
 
   const gameMain = h('main', { class: 'game-main' },
     h('div', { class: 'match-grid' },
-      h('div', { class: 'board-side' }, spectatorBadge, viewBanner, oppPanel, checkBanner, depHint, boardBox, youPanel),
+      h('div', { class: 'board-side' }, spectatorBadge, viewBanner, oppPanel, depHint, boardBox, youPanel),
       sideCol,
     ),
   );
@@ -170,19 +137,6 @@ async function main() {
     return state !== null && state.you === 'spectator';
   }
 
-  function isOwnKingInCheck() {
-    if (state === null || state.status !== 'active') return false;
-    if (isSpectator() || viewing !== null) return false;
-    if (!state.check_square) return false;
-    if (state.turn !== state.you) return false;
-    const cell = pieceAt(state.check_square);
-    return cell !== null && cell.piece === 'K' && cell.color === state.you;
-  }
-
-  function updateCheckBanner() {
-    checkBanner.hidden = !isOwnKingInCheck();
-  }
-
   function applyState(s) {
     if (s === null || typeof s !== 'object') return;
     if (state !== null && !(s.version > state.version)) return; // защита от перепутанного порядка
@@ -191,6 +145,10 @@ async function main() {
     receivedAt = performance.now();
     const spectator = isSpectator();
     const versionGrew = prevState !== null;
+    // Звук хода: ply растёт только от ходов (деп, ничья, чат его не меняют).
+    if (prevState !== null && state.ply > prevState.ply && state.last_action?.kind === 'move') {
+      playSound(state.last_action.san?.includes('x') ? 'capture' : 'move');
+    }
 
     // Игрок, чей сейчас ход, всегда смотрит актуальную позицию.
     if (viewing !== null && versionGrew && !spectator && state.turn === state.you) exitView();
@@ -208,11 +166,12 @@ async function main() {
     boardRender();
     renderPanels();
     updateButtons();
-    updateCheckBanner();
     spectatorBadge.hidden = !spectator;
     actionsCard.hidden = spectator;
-    depHint.hidden = spectator || mode !== 'dep_piece';
-    depPanel.hidden = spectator || mode === 'idle';
+    if (spectator) {
+      depHint.hidden = true;
+      depPanel.hidden = true;
+    }
     drawBanner.hidden = spectator
       || !(state.draw_offer_by !== null && state.draw_offer_by !== state.you && state.status === 'active');
     btnAbort.hidden = spectator || !(state.status === 'active' && state.ply < 2);
@@ -234,6 +193,8 @@ async function main() {
 
   function scheduleEnd() {
     if (endTimer !== null || endShown) return;
+    // партии, загруженные после окончания (перезагрузка страницы), не получат
+    // WS game_over — итоги показываем без Elo/наград.
     endTimer = setTimeout(() => {
       endTimer = null;
       showEnd(null);
@@ -266,6 +227,8 @@ async function main() {
     else showEnd(gameOverInfo);
   }
 
+  // game_over по WS может прийти позже, чем откроется модалка по таймеру
+  // (медленная сеть), — тогда строки Elo и награды дописываются в неё.
   function fillEndInfo(info) {
     if (endBody === null || info === null || endInfoFilled) return;
     endInfoFilled = true;
@@ -279,69 +242,11 @@ async function main() {
     }
   }
 
-  function onRematchClick(msgEl, btnEl) {
-    if (rematchInFlight || rematchDone) return false;
-    rematchInFlight = true;
-    if (btnEl) btnEl.disabled = true;
-    msgEl.hidden = false;
-    msgEl.textContent = 'Отправка вызова...';
-
-    api('POST', '/games/' + id + '/rematch')
-      .then((res) => {
-        rematchDone = true;
-        rematchInFlight = false;
-        if (res && res.expires_at) {
-          rematchExpiresAt = new Date(res.expires_at).getTime();
-        } else {
-          rematchExpiresAt = Date.now() + 60000;
-        }
-        msgEl.textContent = 'Ожидание соперника...';
-        startRematchPoll(msgEl, btnEl);
-      })
-      .catch((e) => {
-        rematchInFlight = false;
-        rematchDone = false;
-        if (btnEl) btnEl.disabled = false;
-        msgEl.textContent = e.message || 'Ошибка отправки вызова';
-        toast(e.message || 'Ошибка реванша', 'error');
-      });
-
-    return false;
-  }
-
-  function startRematchPoll(msgEl, btnEl) {
-    if (rematchPollTimer !== null) return;
-    rematchPollTimer = setInterval(async () => {
-      if (pollInFlight || document.hidden) return;
-      if (rematchExpiresAt > 0 && Date.now() > rematchExpiresAt) {
-        cleanupRematch();
-        rematchDone = false;
-        rematchInFlight = false;
-        if (btnEl) btnEl.disabled = false;
-        msgEl.textContent = 'Время ожидания реванша истекло';
-        return;
-      }
-      pollInFlight = true;
-      try {
-        const active = await api('GET', '/me/active-game');
-        if (active && active.game_id && active.game_id !== id) {
-          cleanupRematch();
-          location.href = '/game.html?id=' + active.game_id;
-        }
-      } catch {
-        /* ignore polling errors */
-      } finally {
-        pollInFlight = false;
-      }
-    }, 2000);
-  }
-
   function showEnd(info) {
     if (endShown) return;
     if (info === null && gameOverInfo !== null) info = gameOverInfo;
     endShown = true;
     clearEndTimer();
-    updateCheckBanner();
     const aborted = state?.status === 'aborted';
     const res = state?.result;
 
@@ -391,54 +296,15 @@ async function main() {
     endBody = body;
     fillEndInfo(info);
 
-    const oppColor = state?.you === 'white' ? 'black' : 'white';
-    const oppLogin = state?.players?.[oppColor]?.login;
-    if (oppLogin) {
-      body.appendChild(createUserSocialControls(oppLogin));
-    }
-
-    const rematchMsg = h('p', { class: 'm-line rematch-status', hidden: true });
-    body.appendChild(rematchMsg);
-    rematchMsgRef = rematchMsg;
-
-    const actions = [
-      {
-        label: 'В лобби',
-        kind: 'ghost',
-        onClick: () => {
-          cleanupRematch();
-          location.href = '/index.html';
-        },
-      },
-      {
-        label: 'Новая партия',
-        kind: 'ghost',
-        onClick: () => {
-          cleanupRematch();
-          location.href = '/index.html';
-        },
-      },
-    ];
-
-    if (!aborted) {
-      actions.push({
-        label: 'Реванш',
-        kind: 'gold',
-        onClick: () => {
-          const btnEl = document.querySelector('.m-btnrow .btn-gold');
-          rematchBtnRef = btnEl;
-          onRematchClick(rematchMsg, btnEl);
-          return false;
-        },
-      });
-    }
-
     openModal({
       title,
       titleAnim: anim,
       dismissible: false,
       body,
-      actions,
+      actions: [
+        { label: 'В лобби', kind: 'ghost', onClick: () => { location.href = '/index.html'; } },
+        { label: 'Новая партия', kind: 'gold', onClick: () => { location.href = '/index.html'; } },
+      ],
     });
   }
 
@@ -476,9 +342,6 @@ async function main() {
     if (mode === 'dep_piece' && depOptions !== null) {
       opts.depPickable = depOptions.pieces.map((p) => p.square);
     }
-    if (mode === 'dep_target' && depPiece !== null) {
-      opts.selected = depPiece.square;
-    }
     boardApi.render(state, opts);
   }
 
@@ -496,8 +359,7 @@ async function main() {
       const info = state.players?.[color];
       const loadout = info?.loadout ?? {};
       const king = panel.querySelector('.p-king');
-      king.textContent = glyph('K', color);
-      king.style.setProperty('--piece-color', pieceColor(loadout, 'K', color));
+      king.replaceChildren(pieceNode(loadout, 'K', color, 'p-king-img'));
       panel.querySelector('.p-login').textContent = info?.login ?? '—';
       panel.querySelector('.p-elo').textContent = 'Elo ' + (info?.elo ?? '—');
       const used = color === 'white' ? state.deps.white_used : state.deps.black_used;
@@ -508,6 +370,8 @@ async function main() {
   // Часы: локальный тик от момента получения состояния.
   function clockTick() {
     if (state === null) return;
+    // Во время анимации депа часы стоят: сервер даёт депающему паузу (DEP_CLOCK_PAUSE_MS).
+    if (fxRunning) return;
     const clocks = state.clocks;
     const delta = performance.now() - receivedAt;
     for (const color of ['white', 'black']) {
@@ -539,7 +403,6 @@ async function main() {
   }
 
   function depClickable() {
-    if (viewing !== null || isSpectator()) return false;
     if (state === null || mode !== 'idle' || busy || fxRunning || forbidden) return false;
     return depBlockedReason() === null;
   }
@@ -564,7 +427,6 @@ async function main() {
     else btnDraw.textContent = 'Предложить ничью';
     btnResign.disabled = !actionClickable();
     btnAbort.disabled = !actionClickable();
-    boardRender();
   }
 
   function onDepClick() {
@@ -611,7 +473,7 @@ async function main() {
   }
 
   function chooseDepPiece(square) {
-    depPiece = depOptions?.pieces?.find((p) => p.square === square) ?? null;
+    depPiece = depOptions.pieces.find((p) => p.square === square) ?? null;
     if (depPiece === null) {
       cancelDep();
       return;
@@ -624,144 +486,79 @@ async function main() {
 
   function renderDepPanel() {
     clear(depPanel);
-    const loadout = state?.players?.[state?.you]?.loadout ?? {};
-
-    if (mode === 'dep_piece' && depOptions !== null) {
-      depPanel.hidden = false;
-      const title = h('h4', { class: 'card-title' }, 'Деп: выберите фигуру');
-      const riskNote = h('p', { class: 'dep-risk-note' },
-        'Выберите фигуру на доске или в списке. Риск: при неудаче фигура сгорит.'
-      );
-      const grid = h('div', { class: 'dep-grid' });
-
-      for (const p of depOptions.pieces ?? []) {
-        const card = h('button', {
-          type: 'button',
-          class: ['dep-card', 'dep-card-source'],
-          'data-square': p.square,
-          'aria-label': (PIECE_NAME_RU[p.piece] ?? p.piece) + ' на ' + p.square,
-        });
-        const g = h('span', {
-          class: ['dep-card-glyph', state.you === 'white' ? 'side-white' : 'side-black'],
-        }, glyph(p.piece, state.you));
-        g.style.setProperty('--piece-color', pieceColor(loadout, p.piece, state.you));
-        const name = h('b', { class: 'dep-card-name' }, PIECE_NAME_RU[p.piece] ?? p.piece);
-        const sq = h('span', { class: 'dep-card-square mono' }, p.square);
-        const allowedCount = (p.targets ?? []).filter((t) => t.allowed).length;
-        const sub = h('span', { class: 'dep-card-sub' }, allowedCount > 0 ? (allowedCount + (allowedCount === 1 ? ' вариант' : ' варианта')) : 'нет целей');
-
-        card.appendChild(g);
-        card.appendChild(name);
-        card.appendChild(sq);
-        card.appendChild(sub);
-        card.addEventListener('click', () => chooseDepPiece(p.square));
-        grid.appendChild(card);
-      }
-
-      const cancelBtn = h('button', {
-        type: 'button',
-        class: 'btn btn-ghost btn-block',
-      }, 'Отмена');
-      cancelBtn.addEventListener('click', () => cancelDep());
-
-      depPanel.appendChild(title);
-      depPanel.appendChild(riskNote);
-      depPanel.appendChild(grid);
-      depPanel.appendChild(h('div', { class: 'dep-btnrow' }, cancelBtn));
-    } else if (mode === 'dep_target' && depPiece !== null) {
+    if (mode === 'dep_target' && depPiece !== null) {
       depPanel.hidden = false;
       const title = h('h4', { class: 'card-title' },
-        glyph(depPiece.piece, state.you) + ' ' + (PIECE_NAME_RU[depPiece.piece] ?? depPiece.piece) + ' ' + depPiece.square + ' → цель депа'
-      );
-      const riskNote = h('p', { class: 'dep-risk-note' },
-        'Нажмите фигуру для депа. Деп выполняется сразу. Риск: при неудаче фигура сгорит.'
-      );
-      const grid = h('div', { class: 'dep-grid' });
-
-      for (const target of depPiece.targets ?? []) {
-        const card = h('button', {
-          type: 'button',
-          class: ['dep-card', 'dep-card-target', target.allowed ? 'allowed' : 'disabled'],
-          'data-piece': target.piece,
-          'aria-label': (PIECE_NAME_RU[target.piece] ?? target.piece) + (target.allowed ? (' шанс ' + target.chance_text) : ' недоступно'),
-        });
-        const g = h('span', {
-          class: ['dep-card-glyph', state.you === 'white' ? 'side-white' : 'side-black'],
-        }, glyph(target.piece, state.you));
-        g.style.setProperty('--piece-color', pieceColor(loadout, target.piece, state.you));
-        const name = h('b', { class: 'dep-card-name' }, PIECE_NAME_RU[target.piece] ?? target.piece);
-
-        card.appendChild(g);
-        card.appendChild(name);
-
-        if (target.allowed) {
-          const chance = h('span', { class: 'dep-card-chance mono' }, 'шанс ' + target.chance_text);
-          card.appendChild(chance);
-          card.addEventListener('click', () => {
-            if (!target.allowed) return;
-            sendDep(depPiece, target);
-          });
-        } else {
-          card.disabled = true;
-          const reasonText = DEP_REASON_RU[target.reason] ?? target.reason ?? 'недоступно';
-          const note = h('small', { class: 'dep-card-reason' }, reasonText);
-          card.appendChild(note);
-        }
-        grid.appendChild(card);
-      }
-
-      const backBtn = h('button', {
-        type: 'button',
-        class: 'btn btn-ghost btn-block',
-      }, 'Назад');
-      backBtn.addEventListener('click', () => {
-        mode = 'dep_piece';
-        depPiece = null;
-        depTarget = null;
-        depHint.hidden = false;
-        renderDepPanel();
-        boardRender();
-      });
-
-      const cancelBtn = h('button', {
-        type: 'button',
-        class: 'btn btn-ghost btn-block',
-      }, 'Отмена');
-      cancelBtn.addEventListener('click', () => cancelDep());
-
+        glyph(depPiece.piece, state.you) + ' ' + PIECE_NAME_RU[depPiece.piece] + ' ' + depPiece.square + ' → во что?');
       depPanel.appendChild(title);
-      depPanel.appendChild(riskNote);
-      depPanel.appendChild(grid);
-      depPanel.appendChild(h('div', { class: 'dep-btnrow' }, backBtn, cancelBtn));
+      for (const target of depPiece.targets) {
+        const row = h('button', { type: 'button', class: 'dep-row' });
+        const g = pieceNode(state.players[state.you].loadout, target.piece, state.you, 'dep-row-glyph');
+        row.appendChild(g);
+        row.appendChild(h('b', { class: 'dep-row-name' }, PIECE_NAME_RU[target.piece]));
+        if (target.allowed) {
+          row.appendChild(h('span', { class: 'dep-row-chance mono' }, 'шанс ' + target.chance_text));
+        } else {
+          row.disabled = true;
+          row.appendChild(h('small', { class: 'dep-row-note' }, DEP_REASON_RU[target.reason] ?? target.reason ?? 'недоступно'));
+        }
+        row.addEventListener('click', () => {
+          if (!target.allowed) return;
+          depTarget = target;
+          mode = 'dep_confirm';
+          renderDepPanel();
+        });
+        depPanel.appendChild(row);
+      }
+      depPanel.appendChild(makePanelBtns(
+        { label: 'Отмена', kind: 'ghost', onClick: () => cancelDep() },
+      ));
+    } else if (mode === 'dep_confirm' && depPiece !== null && depTarget !== null) {
+      depPanel.hidden = false;
+      depPanel.appendChild(h('h4', { class: 'card-title' }, 'Подтверждение депа'));
+      depPanel.appendChild(h('p', { class: 'dep-summary' },
+        (PIECE_NAME_RU[depPiece.piece] ?? depPiece.piece) + ' → ' + (PIECE_NAME_RU[depTarget.piece] ?? depTarget.piece)
+        + ' · шанс ' + depTarget.chance_text + ' · при провале фигура сгорит'));
+      depPanel.appendChild(makePanelBtns(
+        { label: 'Депнуть', kind: 'gold', onClick: () => sendDep() },
+        { label: 'Назад', kind: 'ghost', onClick: () => {
+          mode = 'dep_target';
+          depTarget = null;
+          renderDepPanel();
+        } },
+      ));
     } else {
       depPanel.hidden = true;
     }
   }
 
-  function sendDep(pieceObj, targetObj) {
-    if (mode !== 'dep_target' || viewing !== null || isSpectator()) return;
-    const p = pieceObj ?? depPiece;
-    const t = targetObj ?? depTarget;
-    if (!p || !t || !t.allowed) return;
-    if (busy || fxRunning || forbidden) return;
-    if (!state || state.status !== 'active' || state.turn !== state.you) return;
-    if (state.deps.used_this_turn || myDepsUsed() >= state.deps.limit) return;
+  function makePanelBtns(...buttons) {
+    const row = h('div', { class: 'dep-btnrow' });
+    for (const b of buttons) {
+      const el = h('button', { type: 'button', class: 'btn btn-' + b.kind + ' btn-block' }, b.label);
+      el.addEventListener('click', () => {
+        const proceed = b.onClick ? b.onClick() : undefined;
+        if (proceed === false) return;
+      });
+      row.appendChild(el);
+    }
+    return row;
+  }
 
-    const square = p.square;
-    const target = t.piece;
-    const expectedVersion = state.version;
-
+  function sendDep() {
+    if (depPiece === null || depTarget === null || !state || state.status !== 'active') return;
+    const square = depPiece.square;
+    const target = depTarget.piece;
     cancelDep();
     busy = true;
     fxRunning = true;
     updateButtons();
-
     enqueue(async () => {
       try {
         const res = await api('POST', '/games/' + id + '/dep', {
           square,
           target,
-          expected_version: expectedVersion,
+          expected_version: state.version,
         });
         await playDep(boardApi, res, { mine: true });
         applyState(res.state);
@@ -776,50 +573,13 @@ async function main() {
     });
   }
 
-  // ---- клики и перетаскивание на доске ----
+  // ---- клики по доске ----
   function interactionAllowed() {
     if (state === null || forbidden) return false;
     if (state.status !== 'active') return false;
     if (state.turn !== state.you) return false;
     if (busy || fxRunning) return false;
     return true;
-  }
-
-  function canDrag(square) {
-    if (viewing !== null) return false;
-    if (isSpectator()) return false;
-    if (mode !== 'idle') return false;
-    if (busy || fxRunning || forbidden) return false;
-    if (state === null || state.status !== 'active') return false;
-    if (state.turn !== state.you) return false;
-    if (!square || typeof square !== 'string') return false;
-
-    const cell = pieceAt(square);
-    if (cell === null || cell.color !== state.you) return false;
-
-    return (state.legal_moves ?? []).some((uci) => uci.slice(0, 2) === square);
-  }
-
-  function onDragStart(square) {
-    if (!canDrag(square)) return;
-    selected = square;
-    boardRender();
-  }
-
-  function onPieceDrop(from, to) {
-    if (!canDrag(from)) return;
-    if (!to || typeof to !== 'string' || from === to) return;
-
-    const matches = (state?.legal_moves ?? []).filter(
-      (uci) => uci.slice(0, 2) === from && uci.slice(2, 4) === to
-    );
-    if (matches.length === 0) return;
-
-    if (matches.some((uci) => uci.length > 4)) {
-      openPromotion(matches);
-    } else {
-      sendMove(from + to);
-    }
   }
 
   function onSquareClick(name) {
@@ -830,12 +590,6 @@ async function main() {
         chooseDepPiece(name);
       } else {
         cancelDep();
-      }
-      return;
-    }
-    if (mode === 'dep_target') {
-      if (depOptions !== null && depOptions.pieces.some((p) => p.square === name)) {
-        chooseDepPiece(name);
       }
       return;
     }
@@ -866,8 +620,7 @@ async function main() {
       if (uci === undefined) continue;
       const upper = suffix.toUpperCase();
       const btn = h('button', { type: 'button', class: 'promo-btn', title: PIECE_NAME_RU[upper] });
-      const g = h('span', { class: 'glyph ' + (state.you === 'white' ? 'side-white' : 'side-black') }, glyph(upper, state.you));
-      g.style.setProperty('--piece-color', pieceColor(state.players[state.you].loadout, upper, state.you));
+      const g = pieceNode(state.players[state.you].loadout, upper, state.you, 'glyph');
       btn.appendChild(g);
       btn.appendChild(h('span', { class: 'promo-name' }, PIECE_NAME_RU[upper]));
       btn.addEventListener('click', () => {
@@ -953,8 +706,6 @@ async function main() {
     moves.select(ev.seq);
     viewBannerText.textContent = 'Просмотр позиции · ход ' + (Math.floor((ev.ply - 1) / 2) + 1);
     viewBanner.hidden = false;
-    updateCheckBanner();
-    updateButtons();
     boardRender();
   }
 
@@ -963,8 +714,6 @@ async function main() {
     viewing = null;
     moves.select(null);
     viewBanner.hidden = true;
-    updateCheckBanner();
-    updateButtons();
     boardRender();
   }
 

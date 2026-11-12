@@ -16,6 +16,9 @@ class OriginMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send) -> None:
+        if not settings.origin_check:
+            await self.app(scope, receive, send)
+            return
         if scope["type"] == "http":
             method = str(scope.get("method", "")).upper()
             if method not in _SAFE_METHODS and not self._origin_allowed(scope):

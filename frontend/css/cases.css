@@ -7,4 +7,11 @@
 .strip-marker { position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; margin-left: -1px; background: var(--gold); box-shadow: 0 0 12px var(--gold); z-index: 2; }
 .strip-track { display: flex; gap: 12px; padding: 10px 0; will-change: transform; }
 .strip-cell { flex: 0 0 120px; width: 120px; }
-.strip-cell .item-card { height: 170px; }
+.strip-cell .item-card { height: 170px; overflow: hidden; padding: 10px; gap: 4px; }
+.strip-cell .skin-preview { height: 72px; }
+.strip-cell .item-set { display: none; }
+.strip-cell .item-meta { flex-direction: column; gap: 0; }
+
+.modal:has(.case-drops) { width: min(960px, 94vw); }
+.case-drops { max-height: 65vh; overflow-y: auto; margin-bottom: 14px; padding: 4px; text-align: left; }
+.case-grid + .page-title { margin-top: 28px; }

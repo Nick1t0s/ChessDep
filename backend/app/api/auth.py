@@ -1,5 +1,6 @@
 from typing import Annotated
 
+import app.core.clock as clock
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -15,6 +16,7 @@ from app.db import get_db
 from app.models import User
 from app.schemas.auth import LoginIn, MeOut, RegisterIn
 from app.services.economy import apply_delta
+from app.services.items import grant_base_items
 from app.services.settings import get_setting
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -52,12 +54,12 @@ async def register(
         raise
     starting_balance = int(await get_setting(db, "starting_balance"))
     await apply_delta(db, user.id, starting_balance, "signup_bonus")
+    await grant_base_items(db, user.id, clock.now())
     token = await create_session(
         db, user.id, ip, request.headers.get("user-agent")
     )
     set_session_cookie(response, token)
-    cooldown_h = int(await get_setting(db, "daily_bonus_cooldown_h"))
-    return me_out(user, cooldown_h)
+    return me_out(user)
 
 
 @router.post("/login", status_code=200, response_model=MeOut)
@@ -80,8 +82,7 @@ async def login(
         raise AppError(403, "USER_BANNED", "Аккаунт заблокирован")
     token = await create_session(db, user.id, ip, request.headers.get("user-agent"))
     set_session_cookie(response, token)
-    cooldown_h = int(await get_setting(db, "daily_bonus_cooldown_h"))
-    return me_out(user, cooldown_h)
+    return me_out(user)
 
 
 @router.post("/logout", status_code=204)

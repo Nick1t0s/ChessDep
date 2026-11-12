@@ -1,17 +1,21 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.items import ItemDefOut
+from app.schemas.items import CaseRefOut, ItemDefOut
 
 
 class ListingItemOut(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     id: int
-    item_def: ItemDefOut = Field(alias="def")
-    wear: float
-    exterior: str
+    kind: Literal["skin", "case"]
+    item_def: ItemDefOut | None = Field(default=None, alias="def")
+    case: CaseRefOut | None = None
+    wear: float | None = None
+    exterior: str | None = None
+    image: str | None = None
 
 
 class ListingOut(BaseModel):
@@ -51,6 +55,15 @@ class DefMarketOut(BaseModel):
     sales: list[DefSaleOut]
 
 
+class CaseMarketOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    case: CaseRefOut
+    stats: MarketStatsOut
+    listings: list[ListingOut]
+    sales: list[DefSaleOut]
+
+
 class BrowseOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -63,3 +76,21 @@ class ListingCreateIn(BaseModel):
 
     item_id: int
     price: int = Field(ge=1, le=10_000_000)
+
+
+class SaleNoticeOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    listing_id: int
+    name: str
+    price: int
+    payout: int
+    buyer_login: str
+    closed_at: datetime
+
+
+class SalesUnseenOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sales: list[SaleNoticeOut]
+    balance: int

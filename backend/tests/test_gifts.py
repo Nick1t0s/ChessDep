@@ -2,11 +2,13 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
+import pytest
+
 import app.core.clock as clock
 from app.core.security import hash_password
 from app.db import SessionLocal
 from app.models import InventoryItem, User
-from tests.conftest import give_items
+from tests.conftest import give_cases, give_items
 
 
 async def _user_id(login: str) -> int:
@@ -15,9 +17,9 @@ async def _user_id(login: str) -> int:
 
 
 async def test_gift_flow(alice, bob) -> None:
-    ids = await give_items("alice", ["genesis-knight-frost"])
+    ids = await give_items("alice", ["genesis-wn"])
     item_id = ids[0]
-    resp = await alice.put("/api/v1/loadout/N", json={"inventory_item_id": item_id})
+    resp = await alice.put("/api/v1/loadout/wN", json={"inventory_item_id": item_id})
     assert resp.status_code == 200, resp.text
 
     inv_before = (await alice.get("/api/v1/inventory")).json()
@@ -37,7 +39,7 @@ async def test_gift_flow(alice, bob) -> None:
 
     # Слот пуст.
     loadout = (await alice.get("/api/v1/loadout")).json()
-    assert loadout["N"] is None
+    assert loadout["wN"]["bound"] is True
 
     # Предмет у bob, acquired_at обновлён.
     bob_id = await _user_id("bob")
@@ -78,7 +80,7 @@ async def test_gift_flow(alice, bob) -> None:
 
 
 async def test_gift_errors(alice, bob, db) -> None:
-    ids = await give_items("alice", ["genesis-pawn-chalk"])
+    ids = await give_items("alice", ["genesis-wp"])
 
     # Себе.
     resp = await alice.post(
@@ -134,7 +136,7 @@ async def test_gift_resets_trade_hold(alice, bob, frozen) -> None:
     from tests.conftest import set_setting
 
     await set_setting("trade_hold_hours", 24)
-    ids = await give_items("alice", ["genesis-pawn-chalk"])
+    ids = await give_items("alice", ["genesis-wp"])
     # Предмет получен alice двое суток назад.
     async with SessionLocal() as db:
         async with db.begin():
@@ -153,3 +155,40 @@ async def test_gift_resets_trade_hold(alice, bob, frozen) -> None:
     )
     assert resp.status_code == 400
     assert resp.json()["error"]["code"] == "TRADE_HOLD"
+
+
+async def test_gift_case(alice, bob) -> None:
+    (case_item_id,) = await give_cases("alice", [1])
+    resp = await alice.post(
+        "/api/v1/gifts", json={"item_id": case_item_id, "to_login": "bob"}
+    )
+    assert resp.status_code == 201, resp.text
+
+    # Кейс-предмет в инвентаре bob.
+    resp = await bob.get("/api/v1/inventory?kind=case")
+    assert resp.status_code == 200, resp.text
+    inv = resp.json()
+    assert len(inv) == 1
+    assert inv[0]["id"] == case_item_id
+    assert inv[0]["case"]["id"] == 1
+
+    # В списке подарков лот-кейс.
+    resp = await bob.get("/api/v1/me/gifts?direction=in")
+    assert resp.status_code == 200, resp.text
+    items = resp.json()["items"]
+    assert len(items) == 1
+    gift = items[0]
+    assert gift["item"]["id"] == case_item_id
+    assert gift["item"]["kind"] == "case"
+    assert gift["item"]["case"]["id"] == 1
+    assert gift["item"]["def"] is None
+
+
+async def test_gift_base_item(alice, bob) -> None:
+    inv = (await alice.get("/api/v1/inventory")).json()
+    base_id = next(i["id"] for i in inv if i["source"] == "base" and i["bound"] is True)
+    resp = await alice.post(
+        "/api/v1/gifts", json={"item_id": base_id, "to_login": "bob"}
+    )
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "ITEM_BOUND"

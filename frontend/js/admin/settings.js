@@ -32,7 +32,7 @@ export async function mount(root) {
       value: JSON.stringify(s.value),
       'aria-label': 'Значение ' + s.key,
     });
-    const changedCell = h('td', {}, fmtChanged(s.updated_at));
+    const changedCell = h('td', { class: 'set-changed' }, fmtChanged(s.updated_at));
     const saveBtn = h('button', { type: 'button', class: 'btn btn-gold btn-sm' }, 'Сохранить');
     saveBtn.addEventListener('click', async () => {
       let value;
@@ -55,7 +55,7 @@ export async function mount(root) {
     tbody.appendChild(h('tr', {},
       h('td', {}, h('span', { class: 'mono' }, s.key)),
       h('td', {}, input),
-      h('td', {}, h('span', { class: 'admin-muted mono' }, JSON.stringify(s.default))),
+      h('td', {}, h('span', { class: 'admin-muted mono set-default' }, JSON.stringify(s.default))),
       changedCell,
       h('td', {}, saveBtn),
     ));

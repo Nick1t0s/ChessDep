@@ -11,7 +11,8 @@ if (me && me.role !== 'admin') {
   main.append(h('p', {}, 'Нет доступа'));
 } else {
   const TABS = [
-    { key: 'catalog', label: 'Коллекции', path: './admin/catalog.js', fn: 'mount' },
+    { key: 'catalog', label: 'Наборы', path: './admin/catalog.js', fn: 'mount' },
+    { key: 'cases', label: 'Кейсы', path: './admin/cases.js', fn: 'mount' },
     { key: 'users', label: 'Пользователи', path: './admin/users.js', fn: 'mount' },
     { key: 'settings', label: 'Настройки', path: './admin/settings.js', fn: 'mount' },
     { key: 'market', label: 'Маркет', path: './admin/misc.js', fn: 'mountMarket' },
